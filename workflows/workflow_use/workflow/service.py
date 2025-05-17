@@ -201,6 +201,7 @@ class Workflow:
 			max_steps=5,
 			output=None,
 			description='Fallback agent to handle step failure',
+			waitForElement=None
 		)
 
 		return await self._run_agent_step(agent_step_config)

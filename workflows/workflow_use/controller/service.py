@@ -5,7 +5,7 @@ from browser_use.agent.views import ActionResult
 from browser_use.browser.context import BrowserContext
 from browser_use.controller.service import Controller
 
-from workflow_use.controller.utils import get_best_element_handle
+from workflow_use.controller.utils import get_best_element_handle, wait_for_element
 from workflow_use.controller.views import (
     ClickElementDeterministicAction,
     InputTextDeterministicAction,
@@ -67,6 +67,20 @@ class WorkflowController(Controller):
             await page.goto(params.url)
             await page.wait_for_load_state()
 
+            # Wait for waitForElement if present
+            if hasattr(params, "waitForElement") and params.waitForElement:
+                try:
+                    await wait_for_element(
+                        page,
+                        params.waitForElement,
+                        # params,
+                        timeout_ms=DEFAULT_ACTION_TIMEOUT_MS,
+                    )
+                except Exception as e:
+                    error_msg = f"Failed to wait for element after navigation. Selector: {params.waitForElement}. Error: {str(e)}"
+                    logger.error(error_msg)
+                    raise Exception(error_msg)
+
             msg = f"🔗  Navigated to URL: {params.url}"
             logger.info(msg)
             return ActionResult(extracted_content=msg, include_in_memory=True)
@@ -92,6 +106,15 @@ class WorkflowController(Controller):
                     timeout_ms=DEFAULT_ACTION_TIMEOUT_MS,
                 )
                 await locator.click(force=True)
+
+                # Wait for waitForElement if present
+                if hasattr(params, "waitForElement") and params.waitForElement:
+                    await wait_for_element(
+                        page,
+                        params.waitForElement,
+                        # params,
+                        timeout_ms=DEFAULT_ACTION_TIMEOUT_MS,
+                    )
 
                 msg = f"🖱️  Clicked element with CSS selector: {selector_used} (original: {original_selector})"
                 logger.info(msg)
@@ -137,6 +160,15 @@ class WorkflowController(Controller):
                 await locator.click(force=True)
                 await asyncio.sleep(0.5)
 
+                # Wait for waitForElement if present
+                if hasattr(params, "waitForElement") and params.waitForElement:
+                    await wait_for_element(
+                        page,
+                        params.waitForElement,
+                        # params,
+                        timeout_ms=DEFAULT_ACTION_TIMEOUT_MS,
+                    )
+
                 msg = f'⌨️  Input "{params.value}" into element with CSS selector: {selector_used} (original: {original_selector})'
                 logger.info(msg)
                 return ActionResult(extracted_content=msg, include_in_memory=True)
@@ -167,6 +199,15 @@ class WorkflowController(Controller):
 
                 await locator.select_option(label=params.selectedText)
 
+                # Wait for waitForElement if present
+                if hasattr(params, "waitForElement") and params.waitForElement:
+                    await wait_for_element(
+                        page,
+                        params.waitForElement,
+                        # params,
+                        timeout_ms=DEFAULT_ACTION_TIMEOUT_MS,
+                    )
+
                 msg = f'Selected option "{params.selectedText}" in dropdown {selector_used} (original: {original_selector})'
                 logger.info(msg)
                 return ActionResult(extracted_content=msg, include_in_memory=True)
@@ -193,6 +234,15 @@ class WorkflowController(Controller):
                 )
 
                 await locator.press(params.key)
+
+                # Wait for waitForElement if present
+                if hasattr(params, "waitForElement") and params.waitForElement:
+                    await wait_for_element(
+                        page,
+                        params.waitForElement,
+                        # params,
+                        timeout_ms=DEFAULT_ACTION_TIMEOUT_MS,
+                    )
 
                 msg = f"🔑  Pressed key '{params.key}' on element with CSS selector: {selector_used} (original: {original_selector})"
                 logger.info(msg)

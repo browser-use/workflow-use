@@ -39,6 +39,18 @@ async def get_best_element_handle(page, selector, params=None, timeout_ms=500):
 
     raise Exception(f"Failed to find element. Original: {original_selector}")
 
+async def wait_for_element(page, selector, timeout_ms=1000):
+    """Wait for an element to be visible using the provided CSS selector."""
+    try:
+        print(f"Starting wait for element with selector: {selector}")
+        locator = page.locator(selector)
+        await locator.wait_for(state="visible", timeout=timeout_ms)
+        print(f"Waited for element with selector: {selector}")
+        return selector
+    except Exception as e:
+        print(f"Failed to wait for element with selector: {selector}. Error: {e}")
+        raise Exception(f"Failed to wait for element. Selector: {selector}")
+
 
 def generate_stable_selectors(selector, params=None):
     """Generate selectors from most to least stable based on selector patterns."""
