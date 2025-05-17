@@ -24,6 +24,7 @@ class RecorderBase(StepMeta):
     elementText: Optional[str] = None
     frameUrl: Optional[str] = None
     screenshot: Optional[str] = None
+    waitForElement: Optional[str] = None
 
 
 class ClickElementDeterministicAction(RecorderBase):
@@ -63,6 +64,7 @@ class NavigationAction(_BaseExtra):
 
     type: Literal["navigation"]
     url: str
+    waitForElement: Optional[str] = None
 
 
 class ScrollDeterministicAction(_BaseExtra):

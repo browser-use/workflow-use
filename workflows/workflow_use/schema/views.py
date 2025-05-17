@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 class BaseWorkflowStep(BaseModel):
 	description: Optional[str] = Field(None, description="Optional description/comment about the step's purpose.")
 	output: Optional[str] = Field(None, description='Context key to store step output under.')
+	waitForElement: Optional[str] = Field(None, description='Element to wait for before executing the step.')
 	# Allow other fields captured from raw events but not explicitly modeled
 	model_config = {'extra': 'allow'}
 

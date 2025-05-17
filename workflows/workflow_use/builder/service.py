@@ -319,6 +319,27 @@ class BuilderService:
             )
             raise  # Re-raise other unexpected errors
 
+        # New logic: Add next_step_selector to each step
+        if workflow_data.steps:
+            for i in range(len(workflow_data.steps) - 1):  # Exclude the last step
+                current_step = workflow_data.steps[i]
+                next_step = workflow_data.steps[i + 1]
+
+                # Extract the CSS selector from the next step
+                next_selector = None
+                if getattr(next_step, "type", None) in ["click", "input", "select_change", "key_press"]:
+                    next_selector = getattr(next_step, "cssSelector", None)
+
+                if next_selector:
+                    setattr(current_step, "waitForElement", next_selector)
+                    logger.debug(
+                        f"Set waitForElement '{next_selector}' for step {i} (type: {getattr(current_step, 'type', None)})."
+                    )
+                else:
+                    logger.debug(
+                        f"Skipped waitForElement for step {i} (next step type: {getattr(next_step, 'type', None)}, cssSelector: {getattr(next_step, 'cssSelector', None)})."
+                    )
+
         # Return the workflow data object directly
         return workflow_data
 
