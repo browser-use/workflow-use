@@ -18,6 +18,7 @@ from workflow_use.controller.views import (
 logger = logging.getLogger(__name__)
 
 DEFAULT_ACTION_TIMEOUT_MS = 1000
+DEFAULT_WAIT_FOR_ELEMENT_TIMEOUT_MS = 3000
 
 # List of default actions from browser_use.controller.service.Controller to disable
 # todo: come up with a better way to filter out the actions (filter IN the actions would be much nicer in this case)
@@ -74,7 +75,7 @@ class WorkflowController(Controller):
                         page,
                         params.waitForElement,
                         # params,
-                        timeout_ms=DEFAULT_ACTION_TIMEOUT_MS,
+                        timeout_ms=DEFAULT_WAIT_FOR_ELEMENT_TIMEOUT_MS,
                     )
                 except Exception as e:
                     error_msg = f"Failed to wait for element after navigation. Selector: {params.waitForElement}. Error: {str(e)}"
@@ -113,7 +114,7 @@ class WorkflowController(Controller):
                         page,
                         params.waitForElement,
                         # params,
-                        timeout_ms=DEFAULT_ACTION_TIMEOUT_MS,
+                        timeout_ms=DEFAULT_WAIT_FOR_ELEMENT_TIMEOUT_MS,
                     )
 
                 msg = f"🖱️  Clicked element with CSS selector: {selector_used} (original: {original_selector})"
@@ -166,7 +167,7 @@ class WorkflowController(Controller):
                         page,
                         params.waitForElement,
                         # params,
-                        timeout_ms=DEFAULT_ACTION_TIMEOUT_MS,
+                        timeout_ms=DEFAULT_WAIT_FOR_ELEMENT_TIMEOUT_MS,
                     )
 
                 msg = f'⌨️  Input "{params.value}" into element with CSS selector: {selector_used} (original: {original_selector})'
@@ -205,7 +206,7 @@ class WorkflowController(Controller):
                         page,
                         params.waitForElement,
                         # params,
-                        timeout_ms=DEFAULT_ACTION_TIMEOUT_MS,
+                        timeout_ms=DEFAULT_WAIT_FOR_ELEMENT_TIMEOUT_MS,
                     )
 
                 msg = f'Selected option "{params.selectedText}" in dropdown {selector_used} (original: {original_selector})'
@@ -241,7 +242,7 @@ class WorkflowController(Controller):
                         page,
                         params.waitForElement,
                         # params,
-                        timeout_ms=DEFAULT_ACTION_TIMEOUT_MS,
+                        timeout_ms=DEFAULT_WAIT_FOR_ELEMENT_TIMEOUT_MS,
                     )
 
                 msg = f"🔑  Pressed key '{params.key}' on element with CSS selector: {selector_used} (original: {original_selector})"
