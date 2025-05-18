@@ -1,0 +1,104 @@
+{
+    "workflow_analysis": "The workflow is about checking and paying for a parking ticket using the Philadelphia Parking Authority's online portal. The process involves navigating to the online services hub, accepting the terms of use, searching for a ticket using a ticket number and vehicle details, and viewing details of a ticket. The workflow requires dynamic input such as ticket number and vehicle license plate to search for the ticket.",
+    "name": "Pay Parking Ticket",
+    "description": "A workflow to check and pay for a parking ticket through the Philadelphia Parking Authority's online portal.",
+    "version": "1.0",
+    "steps": [
+      {
+        "description": "Navigate to the PPA Online Service Hub for parking tickets.",
+        "output": null,
+        "timestamp": null,
+        "tabId": null,
+        "type": "navigation",
+        "url": "https://onlineserviceshub.com/ParkingPortal/Philadelphia"
+      },
+      {
+        "description": "Agree to the PPA Online Violation Payment Services Terms of Use Agreement.",
+        "output": null,
+        "timestamp": 1747416499198,
+        "tabId": 249360593,
+        "type": "click",
+        "cssSelector": "XXXXXXXlabel.checkBoxLabel[for=\"termsAgreement\"]",
+        "xpath": "XXXXXXXid(\"modalContent\")/form[1]/div[1]/div[2]/div[2]/table[1]/tbody[1]/tr[1]/td[2]/label[1]",
+        "elementTag": "XXXXXXXLABEL",
+        "elementText": "XXXXXXXI agree to the PPA Online Violation Payment Services Terms of Use Agreement"
+      },
+      {
+        "description": "Click the Continue button after agreeing to terms.",
+        "output": null,
+        "timestamp": 1747416499932,
+        "tabId": 249360593,
+        "type": "click",
+        "cssSelector": "button.button.button--primary.button--full-width.h-100[type=\"submit\"][id=\"disclaimerSubmitBtn\"]",
+        "xpath": "id(\"disclaimerSubmitBtn\")",
+        "elementTag": "BUTTON",
+        "elementText": "Continue"
+      },
+      {
+        "description": "Select search by Ticket/Citation Number.",
+        "output": null,
+        "timestamp": 1747416504966,
+        "tabId": 249360593,
+        "type": "select_change",
+        "cssSelector": "select.material-input.material-text-field__drop-down[id=\"searchBy\"]",
+        "selectedText": "Ticket/Citation Number",
+        "xpath": "id(\"searchBy\")",
+        "elementTag": "SELECT"
+      },
+      {
+        "description": "Input the ticket number to search for the parking ticket.",
+        "output": null,
+        "timestamp": 1747416525782,
+        "tabId": 249360593,
+        "type": "input",
+        "cssSelector": "input.material-input.material-text-field__input[id=\"otherFirstField\"][name=\"OtherFirstField\"][type=\"text\"]",
+        "value": "{ticket_number}",
+        "xpath": "id(\"otherFirstField\")",
+        "elementTag": "INPUT"
+      },
+      {
+        "description": "Input the vehicle license plate to assist in searching for the parking ticket.",
+        "output": null,
+        "timestamp": 1747416528830,
+        "tabId": 249360593,
+        "type": "input",
+        "cssSelector": "input.material-input.material-text-field__input[id=\"otherSecondField\"][name=\"OtherSecondField\"][type=\"text\"]",
+        "value": "{license_plate}",
+        "xpath": "id(\"otherSecondField\")",
+        "elementTag": "INPUT"
+      },
+      {
+        "description": "Click the reCAPTCHA checkbox (targeting the checkmark element).",
+        "output": null,
+        "timestamp": 1747416532064,
+        "tabId": 249360593,
+        "type": "click",
+        "cssSelector": "#recaptcha-anchor .recaptcha-checkbox-checkmark",
+        "xpath": "//span[@id='recaptcha-anchor']/div[@class='recaptcha-checkbox-checkmark']",
+        "elementTag": "DIV"
+      },
+      {
+        "description": "Click the Search button to find the parking ticket.",
+        "output": null,
+        "timestamp": 1747416536531,
+        "tabId": 249360593,
+        "type": "click",
+        "cssSelector": "i.fas.fa-external-link-alt",
+        "xpath": "id(\"openDetails112650268\")/i[1]",
+        "elementTag": "I",
+        "elementText": ""
+      }
+    ],
+    "input_schema": [
+      {
+        "name": "ticket_number",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "license_plate",
+        "type": "string",
+        "required": true
+      }
+    ]
+  }

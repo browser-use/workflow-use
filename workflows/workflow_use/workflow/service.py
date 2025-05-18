@@ -11,6 +11,7 @@ from browser_use.agent.service import Agent
 from browser_use.agent.views import ActionResult, AgentHistoryList
 from browser_use.browser.browser import Browser
 from browser_use.browser.context import BrowserContext
+from browser_use.controller.service import Controller
 from langchain.agents import AgentExecutor, create_tool_calling_agent
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.prompts import ChatPromptTemplate
@@ -47,6 +48,8 @@ class Workflow:
 		browser: Browser | None = None,
 		llm: BaseChatModel | None = None,
 		fallback_to_agent: bool = True,
+		agent_controller: Controller | None = None,
+		agent_custom_instructions: str | None = None,
 	) -> None:
 		"""Initialize a new Workflow instance from a schema object.
 
@@ -71,6 +74,8 @@ class Workflow:
 		self.browser = browser or Browser()
 		self.llm = llm
 		self.fallback_to_agent = fallback_to_agent
+		self.agent_controller = agent_controller or Controller()
+		self.agent_custom_instructions = agent_custom_instructions
 
 		self.browser_context = BrowserContext(browser=self.browser, config=self.browser.config.new_context_config)
 
@@ -88,12 +93,14 @@ class Workflow:
 		controller: WorkflowController | None = None,
 		browser: Browser | None = None,
 		llm: BaseChatModel | None = None,
+		agent_controller: Controller | None = None,
+		agent_custom_instructions: str | None = None,
 	) -> Workflow:
 		"""Load a workflow from a file."""
 		with open(file_path, 'r') as f:
 			data = _json.load(f)
 		workflow_schema = WorkflowDefinitionSchema(**data)
-		return Workflow(workflow_schema=workflow_schema, controller=controller, browser=browser, llm=llm)
+		return Workflow(workflow_schema=workflow_schema, controller=controller, browser=browser, llm=llm, agent_controller=agent_controller, agent_custom_instructions=agent_custom_instructions)
 
 	# --- Runners ---
 	async def _run_deterministic_step(self, step: DeterministicWorkflowStep) -> ActionResult:
@@ -124,6 +131,7 @@ class Workflow:
 			llm=self.llm,
 			browser=self.browser,
 			browser_context=self.browser_context,
+			controller=self.agent_controller,
 			use_vision=True,  # Consider making this configurable via WorkflowStep schema
 		)
 		return await agent.run(max_steps=max_steps)
@@ -190,7 +198,8 @@ class Workflow:
 			action_type=failed_action_name,
 			fail_details=fail_details,
 			failed_value=failed_value,
-			step_description=step_description
+			step_description=step_description,
+			agent_custom_instructions=self.agent_custom_instructions,
 		)
 		logger.info(f'Agent fallback task: {fallback_task}')
 

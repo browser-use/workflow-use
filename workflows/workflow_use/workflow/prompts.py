@@ -20,4 +20,5 @@ WORKFLOW_FALLBACK_PROMPT_TEMPLATE = (
     "For example, if a click failed, consider navigating to a URL, inputting text, or selecting an option. "
     "Once the objective of step {step_index} is reached, call the Done action to complete the step. "
     "Do not proceed to the next step; focus only on completing step {step_index}."
+    "The user has also provided the following custom instructions: {agent_custom_instructions}\n"
 )
