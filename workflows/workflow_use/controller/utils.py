@@ -1,4 +1,7 @@
 import re
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 async def get_best_element_handle(page, selector, params=None, timeout_ms=500):
@@ -13,13 +16,13 @@ async def get_best_element_handle(page, selector, params=None, timeout_ms=500):
 
     for try_selector in selectors_to_try:
         try:
-            print(f"Trying selector: {try_selector}")
+            logger.info(f"Trying selector: {try_selector}")
             locator = page.locator(try_selector)
             await locator.wait_for(state="visible", timeout=timeout_ms)
-            print(f"Found element with selector: {try_selector}")
+            logger.info(f"Found element with selector: {try_selector}")
             return locator, try_selector
         except Exception as e:
-            print(f"Selector failed: {try_selector} with error: {e}")
+            logger.error(f"Selector failed: {try_selector} with error: {e}")
 
     # Try XPath as last resort
     if params and getattr(params, "xpath", None):
@@ -30,25 +33,25 @@ async def get_best_element_handle(page, selector, params=None, timeout_ms=500):
 
             for try_xpath in xpath_alternatives:
                 xpath_selector = f"xpath={try_xpath}"
-                print(f"Trying XPath: {xpath_selector}")
+                logger.info(f"Trying XPath: {xpath_selector}")
                 locator = page.locator(xpath_selector)
                 await locator.wait_for(state="visible", timeout=timeout_ms)
                 return locator, xpath_selector
         except Exception as e:
-            print(f"All XPaths failed with error: {e}")
+            logger.error(f"All XPaths failed with error: {e}")
 
     raise Exception(f"Failed to find element. Original: {original_selector}")
 
 async def wait_for_element(page, selector, timeout_ms=1000):
     """Wait for an element to be visible using the provided CSS selector."""
     try:
-        print(f"Starting wait for element with selector: {selector}")
+        logger.info(f"Starting wait for element with selector: {selector}")
         locator = page.locator(selector)
         await locator.wait_for(state="visible", timeout=timeout_ms)
-        print(f"Waited for element with selector: {selector}")
+        logger.info(f"Waited for element with selector: {selector}")
         return selector
     except Exception as e:
-        print(f"Failed to wait for element with selector: {selector}. Error: {e}")
+        logger.error(f"Failed to wait for element with selector: {selector}. Error: {e}")
         raise Exception(f"Failed to wait for element. Selector: {selector}")
 
 
