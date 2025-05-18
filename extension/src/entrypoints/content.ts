@@ -414,13 +414,32 @@ function handleMouseOver(event: MouseEvent) {
   try {
     const xpath = getXPath(targetElement);
     // console.log('XPath of target element:', xpath);
-    const elementToHighlight = document.evaluate(
+    let elementToHighlight: HTMLElement | null = document.evaluate(
       xpath,
       document,
       null,
       XPathResult.FIRST_ORDERED_NODE_TYPE,
       null
-    ).singleNodeValue as HTMLElement;
+    ).singleNodeValue as HTMLElement | null;
+    if (!elementToHighlight) {
+      const enhancedSelector = getEnhancedCSSSelector(targetElement, xpath);
+      console.log('CSS Selector:', enhancedSelector);
+      const elements = document.querySelectorAll<HTMLElement>(enhancedSelector);
+
+      // Try to find the element under the mouse
+      for (const el of elements) {
+        const rect = el.getBoundingClientRect();
+        if (
+          event.clientX >= rect.left &&
+          event.clientX <= rect.right &&
+          event.clientY >= rect.top &&
+          event.clientY <= rect.bottom
+        ) {
+          elementToHighlight = el;
+          break;
+        }
+      }
+    }
     if (elementToHighlight) {
       const rect = elementToHighlight.getBoundingClientRect();
       const highlightOverlay = document.createElement('div');
