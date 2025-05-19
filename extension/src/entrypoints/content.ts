@@ -3,6 +3,7 @@ import { EventType, IncrementalSource } from '@rrweb/types';
 
 let stopRecording: (() => void) | undefined = undefined;
 let isRecordingActive = true; // Content script's local state
+let isHighlightingActive = false; // Set to true if you want to highlight by default
 let scrollTimeout: ReturnType<typeof setTimeout> | null = null;
 let lastScrollY: number | null = null;
 let lastDirection: 'up' | 'down' | null = null;
@@ -400,7 +401,7 @@ let currentOverlay: HTMLDivElement | null = null;
 
 // Handle mouseover to create overlay
 function handleMouseOver(event: MouseEvent) {
-  if (!isRecordingActive) return;
+  if (!isRecordingActive || !isHighlightingActive) return;
   const targetElement = event.target as HTMLElement;
   if (!targetElement) return;
 
@@ -467,7 +468,7 @@ function handleMouseOver(event: MouseEvent) {
 
 // Handle mouseout to remove overlay
 function handleMouseOut(event: MouseEvent) {
-  if (!isRecordingActive) return;
+  if (!isRecordingActive || !isHighlightingActive) return;
   if (currentOverlay) {
     currentOverlay.remove();
     currentOverlay = null;
@@ -486,6 +487,16 @@ export default defineContentScript({
           startRecorder();
         } else if (!shouldBeRecording && isRecordingActive) {
           stopRecorder();
+        }
+      } else if (message.type === 'SET_HIGHLIGHTING_STATUS') {
+        const shouldBeHighlighting = message.payload;
+        console.log(
+          `Received highlighting status update: ${shouldBeHighlighting}`
+        );
+        isHighlightingActive = shouldBeHighlighting;
+        if (!isHighlightingActive && currentOverlay) {
+          currentOverlay.remove();
+          currentOverlay = null;
         }
       }
       // If needed, handle other message types here

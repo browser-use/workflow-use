@@ -31,6 +31,7 @@ export default defineBackground(() => {
   const tabInfo: { [tabId: number]: { url?: string; title?: string } } = {};
 
   let isRecordingEnabled = true; // Default to disabled (OFF)
+  let isHighlighting = false;
   let lastWorkflowHash: string | null = null; // Cache for the last logged workflow hash
 
   const PYTHON_SERVER_ENDPOINT = "http://127.0.0.1:7331/event";
@@ -133,6 +134,40 @@ export default defineBackground(() => {
       })
       .catch((err) => {
         // console.debug("Could not send status update to sidepanel (might be closed)", err.message);
+      });
+  }
+  // Add this function after broadcastRecordingStatus
+  function broadcastHighlightingStatus() {
+    const statusString = isHighlighting
+      ? "highlighting_enabled"
+      : "highlighting_disabled";
+    // Broadcast to Sidepanel (using runtime message)
+    chrome.tabs.query({}, (tabs) => {
+      tabs.forEach((tab) => {
+        if (tab.id) {
+          chrome.tabs
+            .sendMessage(tab.id, {
+              type: "SET_HIGHLIGHTING_STATUS",
+              payload: isHighlighting,
+            })
+            .catch((err: Error) => {
+              console.debug(
+                `Could not send highlighting status to tab ${tab.id}: ${err.message}`
+              );
+            });
+        }
+      });
+    });
+    chrome.runtime
+      .sendMessage({
+        type: "highlighting_status_updated",
+        payload: { status: statusString },
+      })
+      .catch((err) => {
+        console.debug(
+          "Could not send highlighting status update to sidepanel (might be closed)",
+          err.message
+        );
       });
   }
 
@@ -524,6 +559,20 @@ export default defineBackground(() => {
         sendEventToServer(eventToSend);
       }
       sendResponse({ status: "stopped" }); // Send simple confirmation
+    } else if (message.type === "START_HIGHLIGHTING") {
+      console.log("Received START_HIGHLIGHTING request.");
+      if (!isHighlighting) {
+        isHighlighting = true;
+        broadcastHighlightingStatus();
+      }
+      sendResponse({ status: "highlighting_enabled" });
+    } else if (message.type === "STOP_HIGHLIGHTING") {
+      console.log("Received STOP_HIGHLIGHTING request.");
+      if (isHighlighting) {
+        isHighlighting = false;
+        broadcastHighlightingStatus();
+      }
+      sendResponse({ status: "highlighting_disabled" });
     }
     // --- Status Request from Content Script ---
     else if (message.type === "REQUEST_RECORDING_STATUS" && sender.tab?.id) {
@@ -549,6 +598,8 @@ export default defineBackground(() => {
   console.log(
     "Background script loaded. Initial recording status:",
     isRecordingEnabled,
+    "Highlighting status:",
+    isHighlighting,
     "(EventType:",
     EventType,
     ", IncrementalSource:",
