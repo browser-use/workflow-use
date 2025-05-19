@@ -54,7 +54,7 @@ python cli.py run-workflow examples/example.workflow.json
 ## Record your own workflow
 
 ```bash
-python cli.py record-workflow
+python cli.py create-workflow
 ```
 
 ## See all commands
