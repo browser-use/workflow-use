@@ -172,7 +172,7 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
     };
     // Keep dependencies: fetchWorkflowData is stable now,
     // recordingStatus dependency correctly handles interval setup/teardown.
-  }, [fetchWorkflowData, recordingStatus, highlightingStatus]);
+  }, [fetchWorkflowData, recordingStatus]);
 
   // startRecording, stopRecording, discardAndStartNew, selectEvent remain largely the same
   // but ensure isLoading is handled appropriately
