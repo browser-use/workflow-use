@@ -306,6 +306,11 @@ def run_workflow_command(
 		help='Path to the .workflow.json file.',
 		show_default=False,
 	),
+	scrape: str = typer.Option(
+        None,
+        '--scrape',
+        help='Enable HTML content scraping. If a string is provided, it will be used as a custom prompt for LLM analysis. If no value is provided, a default prompt will be used.',
+    ),
 ):
 	"""
 	Loads and executes a workflow, prompting the user for required inputs.
@@ -377,15 +382,18 @@ def run_workflow_command(
 	try:
 		# Call run on the Workflow instance
 		# close_browser_at_end=True is the default for Workflow.run, but explicit for clarity
-		result = asyncio.run(workflow_obj.run(inputs=inputs, close_browser_at_end=True))
+		result = asyncio.run(workflow_obj.run(inputs=inputs, close_browser_at_end=True, scrape=scrape))
 
 		typer.secho('\nWorkflow execution completed!', fg=typer.colors.GREEN, bold=True)
 		typer.echo(typer.style('Result:', bold=True))
 		# Output the number of steps executed, similar to previous behavior
-		typer.echo(f'{typer.style(str(len(result)), bold=True)} steps executed.')
+		typer.echo(f'{typer.style(str(len(result['steps'])), bold=True)} steps executed.')
 		# For more detailed results, one might want to iterate through the 'result' list
 		# and print each item, or serialize the whole list to JSON.
 		# For now, sticking to the step count as per original output.
+		if scrape:
+			typer.echo(typer.style('HTML content:', bold=True))
+			typer.echo(typer.style(result['scrape'].content, fg=typer.colors.CYAN, bold=True))
 
 	except Exception as e:
 		typer.secho(f'Error running workflow: {e}', fg=typer.colors.RED)

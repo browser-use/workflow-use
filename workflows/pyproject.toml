@@ -12,6 +12,7 @@ classifiers = [
 ]
 
 dependencies = [
+    "beautifulsoup4>=4.13.4",
     "browser-use>=0.1.46",
     "fastapi>=0.115.12",
     "typer>=0.15.3",

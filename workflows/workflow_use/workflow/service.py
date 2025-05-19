@@ -6,6 +6,7 @@ import json as _json
 import logging
 from pathlib import Path
 from typing import Any, Dict, List
+from bs4 import BeautifulSoup
 
 from browser_use.agent.service import Agent
 from browser_use.agent.views import ActionResult, AgentHistoryList
@@ -390,7 +391,7 @@ class Workflow:
 		# await self.browser.close() # <-- Commented out for testing
 		return result
 
-	async def run(self, inputs: dict[str, Any] | None = None, close_browser_at_end: bool = True) -> List[Any]:
+	async def run(self, inputs: dict[str, Any] | None = None, close_browser_at_end: bool = True, scrape: str | None = None) -> dict[str, Any]:
 		"""Execute the workflow asynchronously using step dictionaries.
 
 		@dev This is the main entry point for the workflow.
@@ -402,6 +403,8 @@ class Workflow:
 		self.context = runtime_inputs.copy()  # Start with a fresh context
 
 		results: List[Any] = []
+		html_contents: List[Dict[str, Any]] | None = [] if scrape else None
+		summary = None
 
 		await self.browser_context.__aenter__()
 		try:
@@ -417,11 +420,73 @@ class Workflow:
 				# Execute step using the unified _execute_step method
 				result = await self._execute_step(step_index, step_resolved)
 
+				# Save HTML content if requested
+				if scrape and html_contents is not None:
+					logger.info(f'Saving HTML content for step {step_index + 1}')
+					try:
+						page = await self.browser_context.get_agent_current_page()
+						html = await page.content()
+						# Parse the HTML
+						soup = BeautifulSoup(html, 'html.parser')
+						for tag in soup(['script', 'style', 'meta', 'head', 'title', 'link']):
+							tag.decompose()
+						text = soup.get_text(separator='\n')
+
+						lines = [line.strip() for line in text.splitlines() if line.strip()]
+						clean_text = '\n'.join(lines)
+						html_contents.append({
+							"step_index": step_index + 1,
+							"step_type": step_resolved.type,
+							"description": step_description,
+							"html": clean_text
+						})
+					except Exception as e:
+						logger.warning(f"Failed to capture HTML for step {step_index + 1}: {e}")
+						html_contents.append({
+							"step_index": step_index + 1,
+							"step_type": step_resolved.type,
+							"description": step_description,
+							"html": None,
+							"error": str(e)
+						})
+
 				results.append(result)
 				# Persist outputs using the resolved step dictionary
 				self._store_output(step_resolved, result)
 				logger.info(f'--- Finished Step {step_index + 1} ---\n')
 		finally:
+			if scrape and html_contents:
+				try:
+					if self.llm is None:
+						logger.warning("Cannot summarize HTML contents: No LLM instance provided")
+					else:
+						# Use custom prompt if provided, otherwise use default
+						default_prompt = """
+						Please analyze and summarize the following workflow steps and their HTML contents:
+
+						{html_contents}
+
+						Format your response in a clear, structured way."""
+
+						user_prompt = """
+						Please analyze using this instruction: {scrape}
+
+						{html_contents}
+
+						Format your response in a clear, structured way."""
+
+						if scrape:
+							summary_prompt = user_prompt.format(scrape=scrape, html_contents=json.dumps(html_contents, indent=2, ensure_ascii=False))
+						else:
+							summary_prompt = default_prompt.format(html_contents=json.dumps(html_contents, indent=2, ensure_ascii=False))
+
+						# Get summary from LLM
+						summary = await self.llm.ainvoke(summary_prompt)
+						logger.info("Generated workflow summary using LLM")
+					
+				except Exception as e:
+					logger.error(f"Failed to generate summary using LLM: {e}")
+
 			if close_browser_at_end:
 				# Ensure __aexit__ is called with appropriate args for exception handling if needed
 				# For simplicity, assuming no exception to pass: exc_type, exc_val, exc_tb = None, None, None
@@ -433,7 +498,10 @@ class Workflow:
 		if close_browser_at_end:
 			await self.browser.close()
 
-		return results
+		return {
+			'steps': results,
+			'scrape': summary
+		}
 
 	# ------------------------------------------------------------------
 	# LangChain tool wrapper
