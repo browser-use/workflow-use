@@ -391,7 +391,7 @@ class Workflow:
 		# await self.browser.close() # <-- Commented out for testing
 		return result
 
-	async def run(self, inputs: dict[str, Any] | None = None, close_browser_at_end: bool = True, scrape: str | None = None) -> dict[str, Any]:
+	async def run(self, inputs: dict[str, Any] | None = None, close_browser_at_end: bool = True, scrape: str | None = None, lazy_loading: bool = False) -> dict[str, Any]:
 		"""Execute the workflow asynchronously using step dictionaries.
 
 		@dev This is the main entry point for the workflow.
@@ -425,6 +425,37 @@ class Workflow:
 					logger.info(f'Saving HTML content for step {step_index + 1}')
 					try:
 						page = await self.browser_context.get_agent_current_page()
+						await self.browser_context._wait_for_stable_network()
+						if lazy_loading:
+							logger.info('Starting scanning for lazy-loaded content')
+							# 0. Remember current scroll position
+							pos = await page.evaluate("() => window.scrollY")
+
+							# 1. Scroll smoothly to the bottom so that all lazy-loaded content fires
+							await page.evaluate(
+								"""async () => {
+									await new Promise(resolve => {
+										const distance = 200;
+										const delay = 100;
+										let total = 0;
+										const timer = setInterval(() => {
+											window.scrollBy(0, distance);
+											total += distance;
+											if (total >= document.body.scrollHeight) {
+												clearInterval(timer);
+												resolve();
+											}
+										}, delay);
+									});
+								}"""
+							)
+
+							# 2. (Optional) Small pause to let any remaining XHR/images finish
+							await asyncio.sleep(0.5)
+
+							# 3. Scroll back to the original position
+							await page.evaluate(f"() => window.scrollTo(0, {pos})")
+							logger.info('Lazy-loaded content scanned')
 						html = await page.content()
 						# Parse the HTML
 						soup = BeautifulSoup(html, 'html.parser')
@@ -434,12 +465,21 @@ class Workflow:
 
 						lines = [line.strip() for line in text.splitlines() if line.strip()]
 						clean_text = '\n'.join(lines)
-						html_contents.append({
-							"step_index": step_index + 1,
-							"step_type": step_resolved.type,
-							"description": step_description,
-							"html": clean_text
-						})
+						# Compare to last step’s clean_text
+						if html_contents and html_contents[-1].get("clean_text") == clean_text:
+							html_contents.append({
+								"step_index": step_index + 1,
+								"step_type": step_resolved.type,
+								"description": step_description,
+								"note": "This has the same exact website structure as the last step"
+							})
+						else:
+							html_contents.append({
+								"step_index": step_index + 1,
+								"step_type": step_resolved.type,
+								"description": step_description,
+								"clean_text": clean_text
+							})
 					except Exception as e:
 						logger.warning(f"Failed to capture HTML for step {step_index + 1}: {e}")
 						html_contents.append({
@@ -456,6 +496,15 @@ class Workflow:
 				logger.info(f'--- Finished Step {step_index + 1} ---\n')
 		finally:
 			if scrape and html_contents:
+				# Uncomment to save HTML contents to file for debugging
+				# try:
+				# 	import time
+				# 	debug_file_path = Path(f"workflow_debug_output_{int(time.time())}.json")
+				# 	with open(debug_file_path, "w", encoding="utf-8") as f:
+				# 		json.dump(html_contents, f, indent=2, ensure_ascii=False)
+				# 	logger.info(f"Saved HTML contents to {debug_file_path} for debugging")
+				# except Exception as e:
+				# 	logger.error(f"Failed to save HTML contents to file: {e}")
 				try:
 					if self.llm is None:
 						logger.warning("Cannot summarize HTML contents: No LLM instance provided")
