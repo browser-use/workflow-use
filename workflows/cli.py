@@ -310,6 +310,11 @@ def run_workflow_command(
         None,
         '--scrape',
         help='Enable HTML content scraping. If a string is provided, it will be used as a custom prompt for LLM analysis. If no value is provided, a default prompt will be used.',
+	),
+	lazy_loading: bool = typer.Option(
+        False,
+        '--lazy-loading',
+        help='Enable scanning of lazy-loaded content. This will scroll to the bottom of the page and back to the original position after loading.',
     ),
 ):
 	"""
@@ -382,7 +387,7 @@ def run_workflow_command(
 	try:
 		# Call run on the Workflow instance
 		# close_browser_at_end=True is the default for Workflow.run, but explicit for clarity
-		result = asyncio.run(workflow_obj.run(inputs=inputs, close_browser_at_end=True, scrape=scrape))
+		result = asyncio.run(workflow_obj.run(inputs=inputs, close_browser_at_end=True, scrape=scrape, lazy_loading=lazy_loading))
 
 		typer.secho('\nWorkflow execution completed!', fg=typer.colors.GREEN, bold=True)
 		typer.echo(typer.style('Result:', bold=True))
