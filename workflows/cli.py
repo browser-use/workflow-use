@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 import tempfile  # For temporary file handling
 from pathlib import Path
 
@@ -11,6 +12,7 @@ from langchain_openai import ChatOpenAI
 
 from workflow_use.builder.service import BuilderService
 from workflow_use.controller.service import WorkflowController
+from workflow_use.llm.openrouter import ChatOpenRouter
 from workflow_use.recorder.service import RecordingService  # Added import
 from workflow_use.workflow.service import Workflow
 
@@ -27,13 +29,28 @@ app = typer.Typer(
 # Default LLM instance to None
 llm_instance = None
 try:
-	llm_instance = ChatOpenAI(model='gpt-4o')
-except Exception as e:
-	typer.secho(f'Error initializing LLM: {e}. Would you like to set your OPENAI_API_KEY?', fg=typer.colors.RED)
-	set_openai_api_key = input('Set OPENAI_API_KEY? (y/n): ')
-	if set_openai_api_key.lower() == 'y':
-		os.environ['OPENAI_API_KEY'] = input('Enter your OPENAI_API_KEY: ')
+	if os.getenv('OPENROUTER_API_KEY'):
+		llm_instance = ChatOpenRouter(model='openai/gpt-4o')
+
+	elif os.getenv('OPENAI_API_KEY'):
 		llm_instance = ChatOpenAI(model='gpt-4o')
+
+	else:
+		typer.secho(
+			'No LLM API key found. Set OPENROUTER_API_KEY or OPENAI_API_KEY.',
+			fg=typer.colors.RED,
+		)
+
+except Exception as e:
+	typer.secho(f'Error initialising LLM: {e}', fg=typer.colors.RED)
+	llm_instance = None
+
+if llm_instance is None:
+	typer.secho(
+		'No valid LLM configured. Set OPENROUTER_API_KEY or OPENAI_API_KEY.',
+		fg=typer.colors.RED,
+	)
+	raise typer.Exit(code=1)
 
 builder_service = BuilderService(llm=llm_instance) if llm_instance else None
 # recorder_service = RecorderService() # Placeholder
@@ -119,9 +136,9 @@ def _build_and_save_workflow_from_recording(
 		typer.style('Enter a name for the generated workflow file', bold=True) + ' (e.g., my_search.workflow.json):',
 		default=default_workflow_filename,
 	)
-		# Ensure the file name ends with .json
+	# Ensure the file name ends with .json
 	if not workflow_output_name.endswith('.json'):
-		workflow_output_name = f"{workflow_output_name}.json"
+		workflow_output_name = f'{workflow_output_name}.json'
 	final_workflow_path = output_dir / workflow_output_name
 
 	try:
