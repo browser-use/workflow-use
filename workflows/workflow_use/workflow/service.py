@@ -90,7 +90,7 @@ class Workflow:
 		llm: BaseChatModel | None = None,
 	) -> Workflow:
 		"""Load a workflow from a file."""
-		with open(file_path, 'r') as f:
+		with open(file_path, 'r', encoding="utf-8") as f:
 			data = _json.load(f)
 		workflow_schema = WorkflowDefinitionSchema(**data)
 		return Workflow(workflow_schema=workflow_schema, controller=controller, browser=browser, llm=llm)
