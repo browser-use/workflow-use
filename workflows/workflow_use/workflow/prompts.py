@@ -21,3 +21,18 @@ WORKFLOW_FALLBACK_PROMPT_TEMPLATE = (
     "Once the objective of step {step_index} is reached, call the Done action to complete the step. "
     "Do not proceed to the next step; focus only on completing step {step_index}."
 )
+
+SCRAPE_PROMPT_TEMPLATE = """
+You are an expert in workflow analysis. Extract the relevant structured workflow information
+from the raw HTML of various web pages.
+
+{user_prompt}
+
+Format your output as a JSON object with the following structure:
+{format_instructions}
+
+HTML content to analyze:
+{html_contents}
+
+IMPORTANT: Your response must be a valid JSON object. Do not include any text before or after the JSON object.
+"""
