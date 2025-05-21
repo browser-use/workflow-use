@@ -1,0 +1,30 @@
+{
+  "workflow_analysis": "Test shadow DOM navigation",
+  "name": "Shadow DOM Next.js Test",
+  "description": "Navigate and interact with nested shadow DOM elements",
+  "version": "1.0",
+  "steps": [
+    {
+      "description": "Navigate to local shadow page",
+      "type": "navigation",
+      "url": "http://localhost:8000/index.html"
+    },
+    {
+      "description": "Type in inner input",
+      "type": "input",
+      "cssSelector": "outer-element >>> inner-element >>> #inner-input",
+      "value": "hello"
+    },
+    {
+      "description": "Click inner button",
+      "type": "click",
+      "cssSelector": "outer-element >>> inner-element >>> #inner-btn"
+    },
+    {
+      "description": "Click outer button",
+      "type": "click",
+      "cssSelector": "outer-element >>> #outer-btn"
+    }
+  ],
+  "input_schema": []
+}
