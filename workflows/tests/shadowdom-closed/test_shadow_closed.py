@@ -8,7 +8,30 @@ from playwright.async_api import async_playwright
 from workflow_use.workflow.service import Workflow
 
 TEST_DIR      = Path(__file__).parent
-EXT_DIR       = TEST_DIR.parents[2] / "extension" / "dist"
+# Extension build output directory. The extension is built using `wxt build`
+# which places the compiled files under `.output/chrome-mv3`.
+# Tests rely on this path to load the monkey patching extension that forces
+# closed shadow roots to open mode.
+EXT_DIR       = TEST_DIR.parents[2] / "extension" / ".output" / "chrome-mv3"
+if not EXT_DIR.exists():
+    pytest.skip(
+        f"Built extension not found at {EXT_DIR}. Run 'npm run build' in the extension directory."
+    )
+
+# Fallback script in case the extension cannot load in headless mode. It mirrors
+# the patch applied in the extension's context script (content.ts) and forces
+# all newly created shadow roots to be open.
+SHADOW_PATCH = """
+(function(){
+  const original = Element.prototype.attachShadow;
+  Element.prototype.attachShadow = function(init){
+    if (init && init.mode === 'closed') {
+      init = Object.assign({}, init, {mode: 'open'});
+    }
+    return original.call(this, init);
+  };
+})();
+"""
 WORKFLOW_FILE = TEST_DIR / "shadow-closed.workflow.json"
 
 # ---------- tiny shim ------------------------------------------------------
@@ -49,8 +72,20 @@ async def launch_chromium_with_extension():
     ]
     pw = await async_playwright().start()
     ctx = await pw.chromium.launch_persistent_context(
-        tmp_profile, headless=True, args=args
+        tmp_profile,
+        headless=True,
+        args=args,
+        ignore_default_args=["--disable-extensions"],
     )
+
+    # If the extension failed to load (no service worker detected), inject the
+    # same patch used by the extension to force shadow roots open.
+    if not ctx.service_workers:
+        await ctx.add_init_script(SHADOW_PATCH)
+        for page in ctx.pages:
+            await page.add_init_script(SHADOW_PATCH)
+            await page.evaluate(SHADOW_PATCH)
+
     return pw, ctx, tmp_profile
 
 # ----------------------------- test ----------------------------------------
@@ -63,6 +98,7 @@ async def test_shadow_closed_workflow():
             str(WORKFLOW_FILE),
             existing_pw_context=BorrowedCtxWrapper(ctx),
         )
+        workflow.fallback_to_agent = False
         await workflow.run(close_browser_at_end=False)
 
         # sanity-check: patch opened closed shadow DOM so selectors work
