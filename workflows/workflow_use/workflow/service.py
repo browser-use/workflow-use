@@ -33,7 +33,21 @@ from workflow_use.schema.views import (
 )
 from workflow_use.workflow.prompts import WORKFLOW_FALLBACK_PROMPT_TEMPLATE
 
+# Patch to force closed shadow DOM roots to open mode so selectors work
+SHADOW_PATCH = """
+(function(){
+  const original = Element.prototype.attachShadow;
+  Element.prototype.attachShadow = function(init){
+    if (init && init.mode === 'closed') {
+      init = Object.assign({}, init, {mode: 'open'});
+    }
+    return original.call(this, init);
+  };
+})();
+"""
+
 from typing import Any, Dict, List, TYPE_CHECKING
+
 if TYPE_CHECKING:
 	from playwright.async_api import BrowserContext as PWContext
 
@@ -51,7 +65,6 @@ class Workflow:
 		browser: Browser | None = None,
 		llm: BaseChatModel | None = None,
 		fallback_to_agent: bool = True,
-		existing_pw_context: "PWContext | None" = None,
 	) -> None:
 		"""Initialize a new Workflow instance from a schema object.
 
@@ -74,22 +87,16 @@ class Workflow:
 
 		self.controller = controller or WorkflowController()
 		self.browser = browser or Browser()
-		
+
 		self.llm = llm
 		self.fallback_to_agent = fallback_to_agent
 
-		if existing_pw_context is not None:
-            # borrowing an already-launched persistent context (e.g. for tests)
-			self.browser_context = existing_pw_context
-			self._owns_context = False	
-		else:
-            # normal path – create a fresh context on demand
-			self.browser_context = BrowserContext(
-				browser=self.browser,
-                config=self.browser.config.new_context_config,
-            )
-			self._owns_context = True
-
+		# always create a fresh context on demand
+		self.browser_context = BrowserContext(
+			browser=self.browser,
+			config=self.browser.config.new_context_config,
+		)
+		self._owns_context = True
 
 		self.context: dict[str, Any] = {}
 
@@ -105,13 +112,12 @@ class Workflow:
 		controller: WorkflowController | None = None,
 		browser: Browser | None = None,
 		llm: BaseChatModel | None = None,
-		existing_pw_context: "PWContext | None" = None,
 	) -> Workflow:
 		"""Load a workflow from a file."""
 		with open(file_path, 'r') as f:
 			data = _json.load(f)
 		workflow_schema = WorkflowDefinitionSchema(**data)
-		return Workflow(workflow_schema=workflow_schema, controller=controller, browser=browser, llm=llm, existing_pw_context=existing_pw_context,)
+		return Workflow(workflow_schema=workflow_schema, controller=controller, browser=browser, llm=llm)
 
 	# --- Runners ---
 	async def _run_deterministic_step(self, step: DeterministicWorkflowStep) -> ActionResult:
@@ -159,24 +165,24 @@ class Workflow:
 		# Extract details from the failed step dictionary
 		failed_action_name = step_resolved.type
 		failed_params = step_resolved.model_dump()
-		step_description = step_resolved.description or "No description provided"
-		error_msg = str(error) if error else "Unknown error"
+		step_description = step_resolved.description or 'No description provided'
+		error_msg = str(error) if error else 'Unknown error'
 		total_steps = len(self.steps)
 		fail_details = (
 			f"step={step_index + 1}/{total_steps}, action='{failed_action_name}', "
 			f"description='{step_description}', params={str(failed_params)}, error='{error_msg}'"
 		)
-		
+
 		# Determine the failed_value based on step type and attributes
 		failed_value = None
-		description_prefix = f"Purpose: {step_description}. " if step_description else ""
-		
+		description_prefix = f'Purpose: {step_description}. ' if step_description else ''
+
 		if isinstance(step_resolved, NavigationStep):
-			failed_value = f"{description_prefix}Navigate to URL: {step_resolved.url}"
+			failed_value = f'{description_prefix}Navigate to URL: {step_resolved.url}'
 		elif isinstance(step_resolved, ClickStep):
 			# element_info = step_resolved.elementText or step_resolved.cssSelector
 			# failed_value = f"{description_prefix}Click element: {element_info}"
-			failed_value = f"Find and click element with description: {step_resolved.description}"
+			failed_value = f'Find and click element with description: {step_resolved.description}'
 		elif isinstance(step_resolved, InputStep):
 			failed_value = f"{description_prefix}Input text: '{step_resolved.value}' into element."
 		elif isinstance(step_resolved, SelectChangeStep):
@@ -184,20 +190,18 @@ class Workflow:
 		elif isinstance(step_resolved, KeyPressStep):
 			failed_value = f"{description_prefix}Press key: '{step_resolved.key}'"
 		elif isinstance(step_resolved, ScrollStep):
-			failed_value = f"{description_prefix}Scroll to position: (x={step_resolved.scrollX}, y={step_resolved.scrollY})"
+			failed_value = f'{description_prefix}Scroll to position: (x={step_resolved.scrollX}, y={step_resolved.scrollY})'
 		else:
 			failed_value = f"{description_prefix}No specific target value available for action '{failed_action_name}'"
-		
+
 		# Build workflow overview using the stored dictionaries
 		workflow_overview_lines: list[str] = []
 		for idx, step in enumerate(self.steps):
-			desc = step.description or ""
+			desc = step.description or ''
 			step_type_info = step.type
 			details = step.model_dump()
-			workflow_overview_lines.append(
-				f"  {idx + 1}. ({step_type_info}) {desc} - {details}"
-			)
-		workflow_overview = "\n".join(workflow_overview_lines)
+			workflow_overview_lines.append(f'  {idx + 1}. ({step_type_info}) {desc} - {details}')
+		workflow_overview = '\n'.join(workflow_overview_lines)
 		print(workflow_overview)
 
 		# Build the fallback task with the failed_value
@@ -208,7 +212,7 @@ class Workflow:
 			action_type=failed_action_name,
 			fail_details=fail_details,
 			failed_value=failed_value,
-			step_description=step_description
+			step_description=step_description,
 		)
 		logger.info(f'Agent fallback task: {fallback_task}')
 
@@ -421,9 +425,17 @@ class Workflow:
 
 		results: List[Any] = []
 
-		if self._owns_context:                
+		if self._owns_context:
 			await self.browser_context.__aenter__()
-		
+			try:
+				ctx = self.browser_context.session.context
+				await ctx.add_init_script(SHADOW_PATCH)
+				for page in ctx.pages:
+					await page.add_init_script(SHADOW_PATCH)
+					await page.evaluate(SHADOW_PATCH)
+			except Exception as e:
+				logger.debug(f'Failed to inject shadow patch: {e}')
+
 		try:
 			for step_index, step_dict in enumerate(self.steps):  # self.steps now holds dictionaries
 				await asyncio.sleep(0.1)
@@ -443,12 +455,11 @@ class Workflow:
 				logger.info(f'--- Finished Step {step_index + 1} ---\n')
 		finally:
 			if close_browser_at_end and self._owns_context:
-				
-				await asyncio.sleep(3)                       # optional pause
+				await asyncio.sleep(3)  # optional pause
 				await self.browser_context.__aexit__(None, None, None)
 
 		# Clean-up browser after finishing workflow
-		if close_browser_at_end  and self._owns_context:
+		if close_browser_at_end and self._owns_context:
 			await self.browser.close()
 
 		return results
