@@ -33,6 +33,10 @@ from workflow_use.schema.views import (
 )
 from workflow_use.workflow.prompts import WORKFLOW_FALLBACK_PROMPT_TEMPLATE
 
+from typing import Any, Dict, List, TYPE_CHECKING
+if TYPE_CHECKING:
+	from playwright.async_api import BrowserContext as PWContext
+
 logger = logging.getLogger(__name__)
 
 
@@ -47,6 +51,7 @@ class Workflow:
 		browser: Browser | None = None,
 		llm: BaseChatModel | None = None,
 		fallback_to_agent: bool = True,
+		existing_pw_context: "PWContext | None" = None,
 	) -> None:
 		"""Initialize a new Workflow instance from a schema object.
 
@@ -69,10 +74,22 @@ class Workflow:
 
 		self.controller = controller or WorkflowController()
 		self.browser = browser or Browser()
+		
 		self.llm = llm
 		self.fallback_to_agent = fallback_to_agent
 
-		self.browser_context = BrowserContext(browser=self.browser, config=self.browser.config.new_context_config)
+		if existing_pw_context is not None:
+            # borrowing an already-launched persistent context (e.g. for tests)
+			self.browser_context = existing_pw_context
+			self._owns_context = False	
+		else:
+            # normal path – create a fresh context on demand
+			self.browser_context = BrowserContext(
+				browser=self.browser,
+                config=self.browser.config.new_context_config,
+            )
+			self._owns_context = True
+
 
 		self.context: dict[str, Any] = {}
 
@@ -88,12 +105,13 @@ class Workflow:
 		controller: WorkflowController | None = None,
 		browser: Browser | None = None,
 		llm: BaseChatModel | None = None,
+		existing_pw_context: "PWContext | None" = None,
 	) -> Workflow:
 		"""Load a workflow from a file."""
 		with open(file_path, 'r') as f:
 			data = _json.load(f)
 		workflow_schema = WorkflowDefinitionSchema(**data)
-		return Workflow(workflow_schema=workflow_schema, controller=controller, browser=browser, llm=llm)
+		return Workflow(workflow_schema=workflow_schema, controller=controller, browser=browser, llm=llm, existing_pw_context=existing_pw_context,)
 
 	# --- Runners ---
 	async def _run_deterministic_step(self, step: DeterministicWorkflowStep) -> ActionResult:
@@ -403,7 +421,9 @@ class Workflow:
 
 		results: List[Any] = []
 
-		await self.browser_context.__aenter__()
+		if self._owns_context:                
+			await self.browser_context.__aenter__()
+		
 		try:
 			for step_index, step_dict in enumerate(self.steps):  # self.steps now holds dictionaries
 				await asyncio.sleep(0.1)
@@ -422,15 +442,13 @@ class Workflow:
 				self._store_output(step_resolved, result)
 				logger.info(f'--- Finished Step {step_index + 1} ---\n')
 		finally:
-			if close_browser_at_end:
-				# Ensure __aexit__ is called with appropriate args for exception handling if needed
-				# For simplicity, assuming no exception to pass: exc_type, exc_val, exc_tb = None, None, None
-				# wait 3 seconds before closing the browser
-				await asyncio.sleep(3)
+			if close_browser_at_end and self._owns_context:
+				
+				await asyncio.sleep(3)                       # optional pause
 				await self.browser_context.__aexit__(None, None, None)
 
 		# Clean-up browser after finishing workflow
-		if close_browser_at_end:
+		if close_browser_at_end  and self._owns_context:
 			await self.browser.close()
 
 		return results

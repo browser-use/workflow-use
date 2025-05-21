@@ -9,7 +9,8 @@ import pytest
 from workflow_use.workflow.service import Workflow
 
 
-TEST_DIR = Path(__file__).parent / "nextjs-shadow"
+TEST_DIR = Path(__file__).parent
+
 
 
 def start_server():

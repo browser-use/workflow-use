@@ -15,6 +15,7 @@ dependencies = [
     "browser-use>=0.1.46",
     "fastapi>=0.115.12",
     "pytest>=8.3.5",
+    "pytest-asyncio>=0.26.0",
     "typer>=0.15.3",
     "uvicorn>=0.34.2",
 ]

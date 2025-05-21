@@ -1,0 +1,41 @@
+{
+  "workflow_analysis": "Test navigation inside CLOSED shadow roots",
+  "name": "Shadow DOM (closed) Test",
+  "description": "Navigate and interact with nested *closed* Shadow DOM elements",
+  "version": "1.0",
+  "steps": [
+    {
+      "description": "Navigate to local closed-shadow page",
+      "type": "navigation",
+      "url": "http://localhost:8000/closed.html",
+      "timestamp": 0,
+      "tabId": 0
+    },
+    {
+      "description": "Type in inner input (closed)",
+      "type": "input",
+      "cssSelector": "css=outer-closed >> deep=inner-closed >> deep=#inner-input",
+      "value": "hello-closed",
+      "timeoutMs": 5000,
+      "timestamp": 0,
+      "tabId": 0
+    },
+    {
+      "description": "Click inner button (closed)",
+      "type": "click",
+      "cssSelector": "css=outer-closed >> deep=inner-closed >> deep=#inner-btn",
+      "timeoutMs": 5000,
+      "timestamp": 0,
+      "tabId": 0
+    },
+    {
+      "description": "Click outer button (closed)",
+      "type": "click",
+      "cssSelector": "css=outer-closed >> deep=#outer-btn",
+      "timeoutMs": 5000,
+      "timestamp": 0,
+      "tabId": 0
+    }
+  ],
+  "input_schema": []
+}

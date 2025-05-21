@@ -7,23 +7,31 @@
     {
       "description": "Navigate to local shadow page",
       "type": "navigation",
-      "url": "http://localhost:8000/index.html"
+      "url": "http://localhost:8000/index.html",
+      "timestamp": 0,
+      "tabId": 0
     },
     {
       "description": "Type in inner input",
       "type": "input",
       "cssSelector": "outer-element >>> inner-element >>> #inner-input",
-      "value": "hello"
+      "value": "hello",
+      "timestamp": 0,
+      "tabId": 0
     },
     {
       "description": "Click inner button",
       "type": "click",
-      "cssSelector": "outer-element >>> inner-element >>> #inner-btn"
+      "cssSelector": "outer-element >>> inner-element >>> #inner-btn",
+      "timestamp": 0,
+      "tabId": 0
     },
     {
       "description": "Click outer button",
       "type": "click",
-      "cssSelector": "outer-element >>> #outer-btn"
+      "cssSelector": "outer-element >>> #outer-btn",
+      "timestamp": 0,
+      "tabId": 0
     }
   ],
   "input_schema": []
