@@ -1,18 +1,20 @@
+from dotenv import load_dotenv
+load_dotenv()
 import asyncio
 import json
 import tempfile  # For temporary file handling
 from pathlib import Path
+import os
 
 import typer
 from browser_use.browser.browser import Browser
-
-# Assuming OPENAI_API_KEY is set in the environment
-from langchain_openai import ChatOpenAI
 
 from workflow_use.builder.service import BuilderService
 from workflow_use.controller.service import WorkflowController
 from workflow_use.recorder.service import RecordingService  # Added import
 from workflow_use.workflow.service import Workflow
+from workflow_use.llm.llm_provider import get_llm_model
+from workflow_use.llm.config import model_names
 
 # Placeholder for recorder functionality
 # from src.recorder.service import RecorderService
@@ -27,13 +29,26 @@ app = typer.Typer(
 # Default LLM instance to None
 llm_instance = None
 try:
-	llm_instance = ChatOpenAI(model='gpt-4o')
+    # Get provider and model name from environment or default to openai
+    provider = os.getenv("LLM_PROVIDER", "openai").lower()
+    model_name = os.getenv("MODEL_NAME", "")
+
+    # If no model name specified, prompt user
+    if not model_name:
+        typer.echo(f"Available models for {provider}:")
+        typer.echo(f"{model_names[provider]}")
+
+        model_name = typer.prompt(f"model name for {provider}, default=", default=model_names[provider][0])
+        os.environ["MODEL_NAME"] = model_name
+
+    # Initialize LLM with selected provider and model
+    llm_instance = get_llm_model(provider, model_name=model_name)
+
 except Exception as e:
-	typer.secho(f'Error initializing LLM: {e}. Would you like to set your OPENAI_API_KEY?', fg=typer.colors.RED)
-	set_openai_api_key = input('Set OPENAI_API_KEY? (y/n): ')
-	if set_openai_api_key.lower() == 'y':
-		os.environ['OPENAI_API_KEY'] = input('Enter your OPENAI_API_KEY: ')
-		llm_instance = ChatOpenAI(model='gpt-4o')
+    typer.secho(
+        f"Error initializing LLM: {e}. Would you like to set your API key?",
+        fg=typer.colors.RED,
+    )
 
 builder_service = BuilderService(llm=llm_instance) if llm_instance else None
 # recorder_service = RecorderService() # Placeholder
