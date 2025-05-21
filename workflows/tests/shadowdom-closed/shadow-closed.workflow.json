@@ -14,7 +14,7 @@
     {
       "description": "Type in inner input (closed)",
       "type": "input",
-      "cssSelector": "css=outer-closed >> deep=inner-closed >> deep=#inner-input",
+      "cssSelector": "css=outer-closed >> inner-closed >> #inner-input",
       "value": "hello-closed",
       "timeoutMs": 5000,
       "timestamp": 0,
@@ -23,7 +23,7 @@
     {
       "description": "Click inner button (closed)",
       "type": "click",
-      "cssSelector": "css=outer-closed >> deep=inner-closed >> deep=#inner-btn",
+      "cssSelector": "css=outer-closed >> inner-closed >> #inner-btn",
       "timeoutMs": 5000,
       "timestamp": 0,
       "tabId": 0
@@ -31,7 +31,7 @@
     {
       "description": "Click outer button (closed)",
       "type": "click",
-      "cssSelector": "css=outer-closed >> deep=#outer-btn",
+      "cssSelector": "css=outer-closed >> #outer-btn",
       "timeoutMs": 5000,
       "timestamp": 0,
       "tabId": 0

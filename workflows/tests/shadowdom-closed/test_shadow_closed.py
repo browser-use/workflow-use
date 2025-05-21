@@ -48,7 +48,6 @@ async def launch_chromium_with_extension():
         f"--load-extension={EXT_DIR}",
     ]
     pw = await async_playwright().start()
-
     ctx = await pw.chromium.launch_persistent_context(
         tmp_profile, headless=True, args=args
     )
@@ -66,10 +65,10 @@ async def test_shadow_closed_workflow():
         )
         await workflow.run(close_browser_at_end=False)
 
-        # sanity-check: selector can pierce closed shadows
+        # sanity-check: patch opened closed shadow DOM so selectors work
         page  = ctx.pages[0] if ctx.pages else await ctx.new_page()
         value = await page.input_value(
-            "css=outer-closed >> deep=inner-closed >> deep=#inner-input"
+            "css=outer-closed >> inner-closed >> #inner-input"
         )
         assert value == "hello-closed"
     finally:
