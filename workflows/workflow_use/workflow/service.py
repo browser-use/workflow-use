@@ -32,9 +32,11 @@ from workflow_use.schema.views import (
 	WorkflowStep,
 )
 from workflow_use.workflow.prompts import WORKFLOW_FALLBACK_PROMPT_TEMPLATE
+from workflow_use.controller.utils import get_best_element_handle
 
 logger = logging.getLogger(__name__)
 
+WAIT_FOR_ELEMENT_TIMEOUT = 2500
 
 class Workflow:
 	"""Simple orchestrator that executes a list of workflow *steps* defined in a WorkflowDefinitionSchema."""
@@ -96,7 +98,7 @@ class Workflow:
 		return Workflow(workflow_schema=workflow_schema, controller=controller, browser=browser, llm=llm)
 
 	# --- Runners ---
-	async def _run_deterministic_step(self, step: DeterministicWorkflowStep) -> ActionResult:
+	async def _run_deterministic_step(self, step: DeterministicWorkflowStep, step_index: int) -> ActionResult:
 		"""Execute a deterministic (controller) action based on step dictionary."""
 		# Assumes WorkflowStep for deterministic type has 'action' and 'params' keys
 		action_name: str = step.type  # Expect 'action' key for deterministic steps
@@ -107,9 +109,37 @@ class Workflow:
 		action_model = ActionModel(**{action_name: params})
 
 		try:
-			return await self.controller.act(action_model, self.browser_context)
+			result = await self.controller.act(action_model, self.browser_context)
 		except Exception as e:
 			raise RuntimeError(f"Deterministic action '{action_name}' failed: {str(e)}")
+
+		# Helper function to truncate long selectors in logs
+		def truncate_selector(selector: str) -> str:
+			return selector if len(selector) <= 45 else f"{selector[:45]}..."
+		# Determine if this is not the last step, and extract next step's cssSelector if available
+		current_index = step_index
+		if current_index < len(self.steps) - 1:
+			next_step = self.steps[current_index + 1]
+			next_step_resolved = self._resolve_placeholders(next_step)
+			css_selector = getattr(next_step_resolved, "cssSelector", None)
+			if css_selector:
+				try:
+					await self.browser_context._wait_for_stable_network()
+					page = await self.browser_context.get_agent_current_page()
+					
+					logger.info(f"Waiting for element with selector: {truncate_selector(css_selector)}")
+					locator, selector_used = await get_best_element_handle(
+						page,
+						css_selector,
+						next_step_resolved,
+						timeout_ms=WAIT_FOR_ELEMENT_TIMEOUT
+					)
+					logger.info(f"Element with selector found: {truncate_selector(selector_used)}")
+				except Exception as e:
+					logger.error(f"Failed to wait for element with selector: {truncate_selector(css_selector)}. Error: {e}")
+					raise Exception(f"Failed to wait for element. Selector: {css_selector}") from e
+
+		return result
 
 	async def _run_agent_step(self, step: AgenticWorkflowStep) -> AgentHistoryList | dict[str, Any]:
 		"""Spin-up an Agent based on step dictionary."""
@@ -137,7 +167,7 @@ class Workflow:
 		"""Handle step failure by delegating to an agent."""
 		if self.llm is None:
 			raise ValueError("Cannot fall back to agent: An 'llm' instance must be supplied")
-		print('Workflow steps:', step_resolved)
+		# print('Workflow steps:', step_resolved)
 		# Extract details from the failed step dictionary
 		failed_action_name = step_resolved.type
 		failed_params = step_resolved.model_dump()
@@ -180,7 +210,7 @@ class Workflow:
 				f"  {idx + 1}. ({step_type_info}) {desc} - {details}"
 			)
 		workflow_overview = "\n".join(workflow_overview_lines)
-		print(workflow_overview)
+		# print(workflow_overview)
 
 		# Build the fallback task with the failed_value
 		fallback_task = WORKFLOW_FALLBACK_PROMPT_TEMPLATE.format(
@@ -328,7 +358,7 @@ class Workflow:
 				# Use action key from step dictionary
 				action_name = step_resolved.type or '[No action specified]'
 				logger.info(f'Attempting deterministic action: {action_name}')
-				result = await self._run_deterministic_step(step_resolved)
+				result = await self._run_deterministic_step(step_resolved, step_index)
 				if isinstance(result, ActionResult) and result.error:
 					logger.warning(f'Deterministic action reported error: {result.error}')
 					raise ValueError(f'Deterministic action {action_name} failed: {result.error}')
@@ -341,13 +371,29 @@ class Workflow:
 					raise ValueError('Cannot fall back to agent: LLM instance required.')
 				if self.fallback_to_agent:
 					result = await self._fallback_to_agent(step_resolved, step_index, e)
+					if not result.is_successful():
+						raise ValueError(f'Deterministic step {step_index + 1} ({action_name}) failed even after fallback')
 				else:
 					raise ValueError(f'Deterministic step {step_index + 1} ({action_name}) failed: {e}')
 		elif isinstance(step_resolved, AgenticWorkflowStep):
 			# Use task key from step dictionary
 			task_description = step_resolved.task
 			logger.info(f'Running agent task: {task_description}')
-			result = await self._run_agent_step(step_resolved)
+			try:
+				result = await self._run_agent_step(step_resolved)
+				if not result.is_successful():
+					logger.warning(f'Agent step {step_index + 1} failed evaluation.')
+					raise ValueError(f'Agent step {step_index + 1} failed evaluation.')
+			except Exception as e:
+				if self.fallback_to_agent:
+					logger.warning(f'Agent step {step_index + 1} failed: {e}. Attempting fallback with agent.')
+					if self.llm is None:
+						raise ValueError('Cannot fall back to agent: LLM instance required.')
+					result = await self._fallback_to_agent(step_resolved, step_index, e)
+					if not result.is_successful():
+						raise ValueError(f'Agent step {step_index + 1} failed even after fallback')
+				else:
+					raise ValueError(f'Agent step {step_index + 1} failed: {e}')
 
 		return result
 
@@ -390,7 +436,7 @@ class Workflow:
 		# await self.browser.close() # <-- Commented out for testing
 		return result
 
-	async def run(self, inputs: dict[str, Any] | None = None, close_browser_at_end: bool = True) -> List[Any]:
+	async def run(self, inputs: dict[str, Any] | None = None, close_browser_at_end: bool = True, cancel_event: asyncio.Event | None = None) -> List[Any]:
 		"""Execute the workflow asynchronously using step dictionaries.
 
 		@dev This is the main entry point for the workflow.
@@ -407,6 +453,12 @@ class Workflow:
 		try:
 			for step_index, step_dict in enumerate(self.steps):  # self.steps now holds dictionaries
 				await asyncio.sleep(0.1)
+				await self.browser_context._wait_for_stable_network()
+
+				# Check if cancellation was requested
+				if cancel_event and cancel_event.is_set():
+					logger.info(f"Cancellation requested - stopping workflow execution")
+					break
 
 				# Use description from the step dictionary
 				step_description = step_dict.description or 'No description provided'

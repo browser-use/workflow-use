@@ -12,6 +12,7 @@ classifiers = [
 ]
 
 dependencies = [
+    "aiofiles>=24.1.0",
     "browser-use>=0.1.46",
     "fastapi>=0.115.12",
     "typer>=0.15.3",
