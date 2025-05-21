@@ -16,6 +16,7 @@ dependencies = [
     "fastapi>=0.115.12",
     "typer>=0.15.3",
     "uvicorn>=0.34.2",
+    "pyperclip>=1.8.2",
 ]
 
 
