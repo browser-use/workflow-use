@@ -73,7 +73,7 @@ async def launch_chromium_with_extension():
     pw = await async_playwright().start()
     ctx = await pw.chromium.launch_persistent_context(
         tmp_profile,
-        headless=True,
+        headless=False,
         args=args,
         ignore_default_args=["--disable-extensions"],
     )
