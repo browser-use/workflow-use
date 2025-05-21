@@ -1,39 +1,52 @@
 import asyncio
 import json
+import os
 import tempfile  # For temporary file handling
 from pathlib import Path
 
 import typer
-from browser_use.browser.browser import Browser
-
-# Assuming OPENAI_API_KEY is set in the environment
-from langchain_openai import ChatOpenAI
-
+from fastapi import FastAPI
 from workflow_use.builder.service import BuilderService
-from workflow_use.controller.service import WorkflowController
-from workflow_use.recorder.service import RecordingService  # Added import
-from workflow_use.workflow.service import Workflow
+from workflow_use.recorder.service import RecordingService
 
-# Placeholder for recorder functionality
-# from src.recorder.service import RecorderService
+# --- Gemini API Key support ---
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "YOURGEMINIAPIKEY")
 
-app = typer.Typer(
-	name='workflow-cli',
-	help='A CLI tool to create and run workflows.',
-	add_completion=False,
-	no_args_is_help=True,
-)
+# --- FastAPI app for orchestration ---
+fastapi_app = FastAPI()
+
+try:
+    from workflow_use.orchestrator.mcp_orchestrator import router as mcp_router
+    fastapi_app.include_router(mcp_router, prefix="/api/enterprise")
+except ImportError:
+    pass
 
 # Default LLM instance to None
 llm_instance = None
-try:
-	llm_instance = ChatOpenAI(model='gpt-4o')
-except Exception as e:
-	typer.secho(f'Error initializing LLM: {e}. Would you like to set your OPENAI_API_KEY?', fg=typer.colors.RED)
-	set_openai_api_key = input('Set OPENAI_API_KEY? (y/n): ')
-	if set_openai_api_key.lower() == 'y':
-		os.environ['OPENAI_API_KEY'] = input('Enter your OPENAI_API_KEY: ')
-		llm_instance = ChatOpenAI(model='gpt-4o')
+OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
+if OPENAI_API_KEY:
+    try:
+        from langchain_openai import ChatOpenAI
+        llm_instance = ChatOpenAI(model='gpt-4o')
+    except Exception as e:
+        typer.secho(f'Error initializing OpenAI LLM: {e}', fg=typer.colors.RED)
+else:
+    # Use Gemini as default LLM if OpenAI key is not set
+    class GeminiLLM:
+        def __init__(self, api_key):
+            self.api_key = api_key
+            self.model = "gemini-2.5-flash-preview-05-20"
+        def run(self, prompt):
+            import requests
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent?key={self.api_key}"
+            payload = {"contents": [{"parts": [{"text": prompt}]}]}
+            headers = {"Content-Type": "application/json"}
+            resp = requests.post(url, json=payload, headers=headers)
+            return resp.json()
+        def with_structured_output(self, *args, **kwargs):
+            # For compatibility with BuilderService, just return self
+            return self
+    llm_instance = GeminiLLM(GEMINI_API_KEY)
 
 builder_service = BuilderService(llm=llm_instance) if llm_instance else None
 # recorder_service = RecorderService() # Placeholder
@@ -136,7 +149,15 @@ def _build_and_save_workflow_from_recording(
 		return None
 
 
-@app.command(
+cli = typer.Typer(
+	name='workflow-cli',
+	help='A CLI tool to create and run workflows.',
+	add_completion=False,
+	no_args_is_help=True,
+)
+
+
+@cli.command(
 	name='create-workflow',
 	help='Records a new browser interaction and then builds a workflow definition.',
 )
@@ -202,7 +223,7 @@ def create_workflow():
 		raise typer.Exit(code=1)
 
 
-@app.command(
+@cli.command(
 	name='build-from-recording',
 	help='Builds a workflow definition from an existing recording JSON file.',
 )
@@ -236,7 +257,7 @@ def build_from_recording_command(
 		raise typer.Exit(code=1)
 
 
-@app.command(
+@cli.command(
 	name='run-as-tool',
 	help='Runs an existing workflow and automatically parse the required variables from prompt.',
 )
@@ -298,7 +319,7 @@ def run_as_tool_command(
 		raise typer.Exit(code=1)
 
 
-@app.command(name='run-workflow', help='Runs an existing workflow from a JSON file.')
+@cli.command(name='run-workflow', help='Runs an existing workflow from a JSON file.')
 def run_workflow_command(
 	workflow_path: Path = typer.Argument(
 		...,
@@ -395,5 +416,8 @@ def run_workflow_command(
 		raise typer.Exit(code=1)
 
 
-if __name__ == '__main__':
-	app()
+if __name__ == "__main__":
+    cli()
+
+# Expose FastAPI app for uvicorn
+app = fastapi_app
