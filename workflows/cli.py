@@ -305,11 +305,102 @@ def run_workflow_command(
 		readable=True,
 		help='Path to the .workflow.json file.',
 		show_default=False,
-	),
-	scrape: str = typer.Option(
-        None,
-        '--scrape',
-        help='Enable HTML content scraping. If a string is provided, it will be used as a custom prompt for LLM analysis. If no value is provided, a default prompt will be used.',
+	)
+):
+	"""
+	Loads and executes a workflow, prompting the user for required inputs.
+	"""
+	typer.echo(
+		typer.style(f'Loading workflow from: {typer.style(str(workflow_path.resolve()), fg=typer.colors.MAGENTA)}', bold=True)
+	)
+	typer.echo()  # Add space
+
+	try:
+		# Instantiate Browser and WorkflowController for the Workflow instance
+		# Pass llm_instance for potential agent fallbacks or agentic steps
+		browser_instance = Browser()  # Add any necessary config if required
+		controller_instance = WorkflowController()  # Add any necessary config if required
+		workflow_obj = Workflow.load_from_file(
+			str(workflow_path), llm=llm_instance, browser=browser_instance, controller=controller_instance
+		)
+	except Exception as e:
+		typer.secho(f'Error loading workflow: {e}', fg=typer.colors.RED)
+		raise typer.Exit(code=1)
+
+	typer.secho('Workflow loaded successfully.', fg=typer.colors.GREEN, bold=True)
+
+	inputs = {}
+	input_definitions = workflow_obj.inputs_def  # Access inputs_def from the Workflow instance
+
+	if input_definitions:  # Check if the list is not empty
+		typer.echo()  # Add space
+		typer.echo(typer.style('Provide values for the following workflow inputs:', bold=True))
+		typer.echo()  # Add space
+
+		for input_def in input_definitions:
+			var_name_styled = typer.style(input_def.name, fg=typer.colors.CYAN, bold=True)
+			prompt_question = typer.style(f'Enter value for {var_name_styled}', bold=True)
+
+			var_type = input_def.type.lower()  # type is a direct attribute
+			is_required = input_def.required
+
+			type_info_str = f'type: {var_type}'
+			if is_required:
+				status_str = typer.style('required', fg=typer.colors.RED)
+			else:
+				status_str = typer.style('optional', fg=typer.colors.YELLOW)
+
+			full_prompt_text = f'{prompt_question} ({status_str}, {type_info_str})'
+
+			input_val = None
+			if var_type == 'bool':
+				input_val = typer.confirm(full_prompt_text)
+			elif var_type == 'number':
+				input_val = typer.prompt(full_prompt_text, type=float)
+			elif var_type == 'string':  # Default to string for other unknown types as well
+				input_val = typer.prompt(full_prompt_text, type=str)
+			else:  # Should ideally not happen if schema is validated, but good to have a fallback
+				typer.secho(
+					f"Warning: Unknown type '{var_type}' for variable '{input_def.name}'. Treating as string.",
+					fg=typer.colors.YELLOW,
+				)
+				input_val = typer.prompt(full_prompt_text, type=str)
+
+			inputs[input_def.name] = input_val
+			typer.echo()  # Add space after each prompt
+	else:
+		typer.echo('No input schema found in the workflow, or no properties defined. Proceeding without inputs.')
+
+	typer.echo()  # Add space
+	typer.echo(typer.style('Running workflow...', bold=True))
+
+	try:
+		# Call run on the Workflow instance
+		# close_browser_at_end=True is the default for Workflow.run, but explicit for clarity
+		result = asyncio.run(workflow_obj.run(inputs=inputs, close_browser_at_end=True))
+
+		typer.secho('\nWorkflow execution completed!', fg=typer.colors.GREEN, bold=True)
+		typer.echo(typer.style('Result:', bold=True))
+		# Output the number of steps executed, similar to previous behavior
+		typer.echo(f'{typer.style(str(len(result)), bold=True)} steps executed.')
+		# For more detailed results, one might want to iterate through the 'result' list
+		# and print each item, or serialize the whole list to JSON.
+		# For now, sticking to the step count as per original output.
+
+	except Exception as e:
+		typer.secho(f'Error running workflow: {e}', fg=typer.colors.RED)
+		raise typer.Exit(code=1)
+	
+@app.command(name='scrape-workflow', help='Scrapes the HTML content of an existing workflow. The CLI does not support user prompt or custom model currently!')
+def scrape_workflow_command(
+	workflow_path: Path = typer.Argument(
+		...,
+		exists=True,
+		file_okay=True,
+		dir_okay=False,
+		readable=True,
+		help='Path to the .workflow.json file.',
+		show_default=False,
 	),
 	lazy_loading: bool = typer.Option(
         False,
@@ -382,23 +473,28 @@ def run_workflow_command(
 		typer.echo('No input schema found in the workflow, or no properties defined. Proceeding without inputs.')
 
 	typer.echo()  # Add space
-	typer.echo(typer.style('Running workflow...', bold=True))
+	typer.echo(typer.style('Scraping workflow...', bold=True))
 
 	try:
 		# Call run on the Workflow instance
 		# close_browser_at_end=True is the default for Workflow.run, but explicit for clarity
-		result = asyncio.run(workflow_obj.run(inputs=inputs, close_browser_at_end=True, scrape=scrape, lazy_loading=lazy_loading))
+		result = asyncio.run(workflow_obj.scrape(inputs=inputs, close_browser_at_end=True, lazy_loading=lazy_loading))
 
 		typer.secho('\nWorkflow execution completed!', fg=typer.colors.GREEN, bold=True)
 		typer.echo(typer.style('Result:', bold=True))
 		# Output the number of steps executed, similar to previous behavior
 		typer.echo(f'{typer.style(str(len(result['steps'])), bold=True)} steps executed.')
-		# For more detailed results, one might want to iterate through the 'result' list
-		# and print each item, or serialize the whole list to JSON.
-		# For now, sticking to the step count as per original output.
-		if scrape:
-			typer.echo(typer.style('HTML content:', bold=True))
-			typer.echo(typer.style(result['scrape'].content, fg=typer.colors.CYAN, bold=True))
+		typer.echo(typer.style('JSON content:', bold=True))
+		
+		# Extract JSON content between code fences
+		scrape_content = result['scrape'].content
+		if '```json' in scrape_content and '```' in scrape_content:
+			start_idx = scrape_content.find('```json') + 7  # Length of ```json
+			end_idx = scrape_content.find('```', start_idx)
+			json_content = scrape_content[start_idx:end_idx].strip()
+			typer.echo(typer.style(json_content, fg=typer.colors.CYAN))
+		else:
+			typer.echo(typer.style(scrape_content, fg=typer.colors.CYAN))
 
 	except Exception as e:
 		typer.secho(f'Error running workflow: {e}', fg=typer.colors.RED)
