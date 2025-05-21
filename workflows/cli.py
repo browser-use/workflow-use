@@ -1,6 +1,9 @@
 import asyncio
 import json
+import os
+import subprocess
 import tempfile  # For temporary file handling
+import webbrowser
 from pathlib import Path
 
 import typer
@@ -119,9 +122,9 @@ def _build_and_save_workflow_from_recording(
 		typer.style('Enter a name for the generated workflow file', bold=True) + ' (e.g., my_search.workflow.json):',
 		default=default_workflow_filename,
 	)
-		# Ensure the file name ends with .json
+	# Ensure the file name ends with .json
 	if not workflow_output_name.endswith('.json'):
-		workflow_output_name = f"{workflow_output_name}.json"
+		workflow_output_name = f'{workflow_output_name}.json'
 	final_workflow_path = output_dir / workflow_output_name
 
 	try:
@@ -393,6 +396,31 @@ def run_workflow_command(
 	except Exception as e:
 		typer.secho(f'Error running workflow: {e}', fg=typer.colors.RED)
 		raise typer.Exit(code=1)
+
+
+@app.command('launch-gui', help='Launch the workflow visualizer GUI.')
+def launch_gui():
+	"""Launch the workflow visualizer GUI."""
+	typer.echo(typer.style('Launching workflow visualizer GUI...', bold=True))
+
+	logs_dir = Path('./tmp/logs')
+	logs_dir.mkdir(parents=True, exist_ok=True)
+	backend_log = open(logs_dir / 'backend.log', 'w')
+	frontend_log = open(logs_dir / 'frontend.log', 'w')
+
+	backend = subprocess.Popen(['uvicorn', 'backend.api:app', '--reload'], stdout=backend_log, stderr=subprocess.STDOUT)
+	typer.echo(typer.style('Starting frontend...', bold=True))
+	frontend = subprocess.Popen(['npm', 'run', 'dev'], cwd='../ui', stdout=frontend_log, stderr=subprocess.STDOUT)
+	typer.echo(typer.style('Opening browser...', bold=True))
+	webbrowser.open('http://localhost:5173')
+	try:
+		typer.echo(typer.style('Press Ctrl+C to stop the GUI and servers.', fg=typer.colors.YELLOW, bold=True))
+		backend.wait()
+		frontend.wait()
+	except KeyboardInterrupt:
+		typer.echo(typer.style('\nShutting down servers...', fg=typer.colors.RED, bold=True))
+		backend.terminate()
+		frontend.terminate()
 
 
 if __name__ == '__main__':

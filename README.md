@@ -74,6 +74,53 @@ workflow = Workflow.load_from_file("example.workflow.json")
 result = asyncio.run(workflow.run_as_tool("I want to search for 'workflow use'"))
 ```
 
+## Launch the GUI
+
+The Workflow UI provides a visual interface for managing, viewing, and executing workflows.
+
+### Option 1: Using the CLI command (Recommended)
+
+The easiest way to start the GUI is with the built-in CLI command:
+
+```bash
+cd workflows
+python cli.py launch-gui
+```
+
+This command will:
+- Start the backend server (FastAPI)
+- Start the frontend development server
+- Automatically open http://localhost:5173 in your browser
+- Capture logs to the `./tmp/logs` directory
+
+Press Ctrl+C to stop both servers when you're done.
+
+### Option 2: Start servers separately
+
+Alternatively, you can start the servers individually:
+
+#### Start the backend server
+
+```bash
+cd workflows
+uvicorn backend.api:app --reload
+```
+
+#### Start the frontend development server
+
+```bash
+cd ui
+npm install
+npm run dev
+```
+
+Once both servers are running, you can access the Workflow GUI at http://localhost:5173 in your browser. The UI allows you to:
+
+- Visualize workflows as interactive graphs
+- Execute workflows with custom input parameters
+- Monitor workflow execution logs in real-time
+- Edit workflow metadata and details
+
 # Demos
 
 ## Workflow Use filling out form instantly

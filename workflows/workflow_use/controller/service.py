@@ -5,7 +5,7 @@ from browser_use.agent.views import ActionResult
 from browser_use.browser.context import BrowserContext
 from browser_use.controller.service import Controller
 
-from workflow_use.controller.utils import get_best_element_handle
+from workflow_use.controller.utils import get_best_element_handle, truncate_selector
 from workflow_use.controller.views import (
     ClickElementDeterministicAction,
     InputTextDeterministicAction,
@@ -93,11 +93,11 @@ class WorkflowController(Controller):
                 )
                 await locator.click(force=True)
 
-                msg = f"🖱️  Clicked element with CSS selector: {selector_used} (original: {original_selector})"
+                msg = f"🖱️  Clicked element with CSS selector: {truncate_selector(selector_used)} (original: {truncate_selector(original_selector)})"
                 logger.info(msg)
                 return ActionResult(extracted_content=msg, include_in_memory=True)
             except Exception as e:
-                error_msg = f"Failed to click element. Original selector: {original_selector}. Error: {str(e)}"
+                error_msg = f"Failed to click element. Original selector: {truncate_selector(original_selector)}. Error: {str(e)}"
                 logger.error(error_msg)
                 raise Exception(error_msg)
 
@@ -137,11 +137,11 @@ class WorkflowController(Controller):
                 await locator.click(force=True)
                 await asyncio.sleep(0.5)
 
-                msg = f'⌨️  Input "{params.value}" into element with CSS selector: {selector_used} (original: {original_selector})'
+                msg = f'⌨️  Input "{params.value}" into element with CSS selector: {truncate_selector(selector_used)} (original: {truncate_selector(original_selector)})'
                 logger.info(msg)
                 return ActionResult(extracted_content=msg, include_in_memory=True)
             except Exception as e:
-                error_msg = f"Failed to input text. Original selector: {original_selector}. Error: {str(e)}"
+                error_msg = f"Failed to input text. Original selector: {truncate_selector(original_selector)}. Error: {str(e)}"
                 logger.error(error_msg)
                 raise Exception(error_msg)
 
@@ -167,11 +167,11 @@ class WorkflowController(Controller):
 
                 await locator.select_option(label=params.selectedText)
 
-                msg = f'Selected option "{params.selectedText}" in dropdown {selector_used} (original: {original_selector})'
+                msg = f'Selected option "{params.selectedText}" in dropdown {truncate_selector(selector_used)} (original: {truncate_selector(original_selector)})'
                 logger.info(msg)
                 return ActionResult(extracted_content=msg, include_in_memory=True)
             except Exception as e:
-                error_msg = f"Failed to select option. Original selector: {original_selector}. Error: {str(e)}"
+                error_msg = f"Failed to select option. Original selector: {truncate_selector(original_selector)}. Error: {str(e)}"
                 logger.error(error_msg)
                 raise Exception(error_msg)
 
@@ -194,11 +194,11 @@ class WorkflowController(Controller):
 
                 await locator.press(params.key)
 
-                msg = f"🔑  Pressed key '{params.key}' on element with CSS selector: {selector_used} (original: {original_selector})"
+                msg = f"🔑  Pressed key '{params.key}' on element with CSS selector: {truncate_selector(selector_used)} (original: {truncate_selector(original_selector)})"
                 logger.info(msg)
                 return ActionResult(extracted_content=msg, include_in_memory=True)
             except Exception as e:
-                error_msg = f"Failed to press key. Original selector: {original_selector}. Error: {str(e)}"
+                error_msg = f"Failed to press key. Original selector: {truncate_selector(original_selector)}. Error: {str(e)}"
                 logger.error(error_msg)
                 raise Exception(error_msg)
 

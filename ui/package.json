@@ -1,0 +1,39 @@
+{
+  "name": "workflow-use-ui",
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "preview": "vite preview",
+    "get-openapi": "curl http://localhost:${BACKEND_PORT:-8000}/openapi.json -o ./src/lib/api/openapi.json",
+    "type-gen": "npx openapi-typescript ./src/lib/api/openapi.json -o ./src/lib/api/apigen.d.ts",
+    "type-gen-update": "rm -rf ./src/lib/api/apigen.d.ts && npm run get-openapi && npm run type-gen",
+    "postinstall": "test -n \"$NOYARNPOSTINSTALL\" || npm run type-gen"
+  },
+  "dependencies": {
+    "@tailwindcss/vite": "^4.1.7",
+    "@xyflow/react": "^12.5.1",
+    "openapi-fetch": "^0.14.0",
+    "openapi-react-query": "^0.5.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "tailwindcss": "^4.1.7",
+    "zod": "^3.24.4"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.19",
+    "@types/react": "^18.2.53",
+    "@types/react-dom": "^18.2.18",
+    "@typescript-eslint/eslint-plugin": "^6.20.0",
+    "@typescript-eslint/parser": "^6.20.0",
+    "@vitejs/plugin-react": "^4.2.1",
+    "eslint": "^8.56.0",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "eslint-plugin-react-refresh": "^0.4.5",
+    "openapi-typescript": "^7.8.0",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.12"
+  }
+}
