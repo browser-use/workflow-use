@@ -1,17 +1,14 @@
-/* src/entrypoints/content.ts
- *  – RRWeb recorder + custom events
+/*  – RRWeb recorder + custom events
  *  – Open+closed Shadow-DOM instrumentation
  *  – Safe for WXT’s Node build (no DOM at top level)
  */
-
-import { defineContentScript } from '#imports'; // <- run `wxt prepare` for TS defs
+import { defineContentScript } from '#imports';
 import * as rrweb from 'rrweb';
 import { EventType, IncrementalSource } from '@rrweb/types';
 
-/* ──────────────── globals ──────────────── */
+/* ───────────── globals ───────────── */
 let stopRecording: (() => void) | undefined;
 let isRecordingActive = true;
-
 let scrollTimeout: ReturnType<typeof setTimeout> | null = null;
 let lastScrollY: number | null = null;
 let lastDirection: 'up' | 'down' | null = null;
@@ -50,8 +47,7 @@ function cssSelector(el: HTMLElement, xpath: string): string {
         : `[${n}]`;
     }
     return sel;
-  } catch (e) {
-    console.error('selector-gen', e);
+  } catch {
     return `${el.tagName.toLowerCase()}[xpath="${xpath.replace(/"/g, '"')}"]`;
   }
 }
@@ -59,42 +55,27 @@ function cssSelector(el: HTMLElement, xpath: string): string {
 /* ───────────── Shadow helpers ───────────── */
 const composedTarget = (e: Event) =>
   (e.composedPath?.().find(n => n instanceof HTMLElement) ??
-    (e.target instanceof HTMLElement ? e.target : null)) as HTMLElement | null;
+   (e.target instanceof HTMLElement ? e.target : null)) as HTMLElement | null;
 
 function chain(el: HTMLElement): string[] {
-  const chain: string[] = [];
+  const parts: string[] = [];
   let node: HTMLElement | null = el;
   while (node) {
-    chain.unshift(cssSelector(node, getXPath(node)));
-    node = node.getRootNode() instanceof ShadowRoot ? (node.getRootNode() as ShadowRoot).host as HTMLElement : node.parentElement;
+    parts.unshift(cssSelector(node, getXPath(node)));
+    node = node.getRootNode() instanceof ShadowRoot
+      ? (node.getRootNode() as ShadowRoot).host as HTMLElement
+      : node.parentElement;
   }
-  return chain;
+  return parts;
 }
 
 function instrumentRoot(root: ShadowRoot) {
-  root.addEventListener('click', onClick as EventListener, true);
-  root.addEventListener('input', onInput as EventListener, true);
+  root.addEventListener('click',  onClick  as EventListener, true);
+  root.addEventListener('input',  onInput  as EventListener, true);
   root.addEventListener('change', onSelect as EventListener, true);
-  root.addEventListener('keydown', onKey as EventListener, true);
-  root.querySelectorAll('*').forEach(n => n instanceof HTMLElement && n.shadowRoot && instrumentRoot(n.shadowRoot));
-}
-
-function scanOpenRoots() {
-  document.querySelectorAll('*').forEach(el => {
-    const sr = (el as HTMLElement).shadowRoot;
-    if (sr) instrumentRoot(sr);
-  });
-}
-
-function scanClosedRoots() {
-  const api = (chrome as any)?.dom?.openOrClosedShadowRoot; // Chrome Canary devtools API
-  if (!api) return;
-  document.querySelectorAll('*').forEach(el => {
-    try {
-      const sr = api(el);
-      sr && instrumentRoot(sr);
-    } catch {}
-  });
+  root.addEventListener('keydown',onKey    as EventListener, true);
+  root.querySelectorAll('*')
+      .forEach(n => n instanceof HTMLElement && n.shadowRoot && instrumentRoot(n.shadowRoot));
 }
 
 /* ───────────── rrweb recorder ───────────── */
@@ -104,7 +85,8 @@ function startRecorder() {
     emit(evt) {
       if (!isRecordingActive) return;
 
-      if (evt.type === EventType.IncrementalSnapshot && evt.data.source === IncrementalSource.Scroll) {
+      if (evt.type === EventType.IncrementalSnapshot &&
+          evt.data.source === IncrementalSource.Scroll) {
         const d = evt.data as { id: number; x: number; y: number };
         const y = Math.round(d.y), x = Math.round(d.x);
         const dir = lastScrollY != null ? (y > lastScrollY ? 'down' : 'up') : null;
@@ -124,23 +106,24 @@ function startRecorder() {
     },
     maskInputOptions: { password: true },
     checkoutEveryNms: 10_000,
-    checkoutEveryNth: 200,
+    checkoutEveryNth : 200,
   });
-  (window as any).rrwebStop = stopRecorder;
-  document.addEventListener('click', onClick, true);
-  document.addEventListener('input', onInput, true);
+
+  /* hook native DOM events */
+  document.addEventListener('click',  onClick , true);
+  document.addEventListener('input',  onInput , true);
   document.addEventListener('change', onSelect, true);
-  document.addEventListener('keydown', onKey, true);
+  document.addEventListener('keydown',onKey   , true);
 }
 
 function stopRecorder() {
   if (!stopRecording) return;
-  stopRecording(); stopRecording = undefined; isRecordingActive = false;
-  (window as any).rrwebStop = undefined;
-  document.removeEventListener('click', onClick, true);
-  document.removeEventListener('input', onInput, true);
+  stopRecording(); stopRecording = undefined;
+  isRecordingActive = false;
+  document.removeEventListener('click',  onClick , true);
+  document.removeEventListener('input',  onInput , true);
   document.removeEventListener('change', onSelect, true);
-  document.removeEventListener('keydown', onKey, true);
+  document.removeEventListener('keydown',onKey   , true);
 }
 
 /* ───────────── CUSTOM EVENT HANDLERS ───────────── */
@@ -151,12 +134,12 @@ function onClick(e: MouseEvent) {
   chrome.runtime.sendMessage({
     type: 'CUSTOM_CLICK_EVENT',
     payload: {
-      timestamp: Date.now(),
-      url: document.location.href,
-      frameUrl: window.location.href,
-      xpath: getXPath(el),
+      timestamp : Date.now(),
+      url       : document.location.href,
+      frameUrl  : window.location.href,
+      xpath     : getXPath(el),
       cssSelector: chain(el).join(' >> '),
-      elementTag: el.tagName,
+      elementTag : el.tagName,
       elementText: el.textContent?.trim().slice(0, 200) ?? '',
     },
   });
@@ -169,13 +152,13 @@ function onInput(e: Event) {
   chrome.runtime.sendMessage({
     type: 'CUSTOM_INPUT_EVENT',
     payload: {
-      timestamp: Date.now(),
-      url: document.location.href,
-      frameUrl: window.location.href,
-      xpath: getXPath(el),
+      timestamp  : Date.now(),
+      url        : document.location.href,
+      frameUrl   : window.location.href,
+      xpath      : getXPath(el),
       cssSelector: chain(el).join(' >> '),
-      elementTag: el.tagName,
-      value: el.type === 'password' ? '********' : el.value,
+      elementTag : el.tagName,
+      value      : el.type === 'password' ? '********' : el.value,
     },
   });
 }
@@ -188,14 +171,14 @@ function onSelect(e: Event) {
   chrome.runtime.sendMessage({
     type: 'CUSTOM_SELECT_EVENT',
     payload: {
-      timestamp: Date.now(),
-      url: document.location.href,
-      frameUrl: window.location.href,
-      xpath: getXPath(el),
+      timestamp  : Date.now(),
+      url        : document.location.href,
+      frameUrl   : window.location.href,
+      xpath      : getXPath(el),
       cssSelector: chain(el).join(' >> '),
-      elementTag: el.tagName,
+      elementTag : el.tagName,
       selectedValue: el.value,
-      selectedText: opt ? opt.text : '',
+      selectedText : opt ? opt.text : '',
     },
   });
 }
@@ -209,20 +192,21 @@ function onKey(e: KeyboardEvent) {
   if (!isRecordingActive) return;
   let k = '';
   if (KEYS.has(e.key)) k = e.key;
-  else if ((e.ctrlKey || e.metaKey) && e.key.length === 1) k = `CmdOrCtrl+${e.key.toUpperCase()}`;
+  else if ((e.ctrlKey || e.metaKey) && e.key.length === 1)
+    k = `CmdOrCtrl+${e.key.toUpperCase()}`;
   if (!k) return;
 
   const el = composedTarget(e);
   chrome.runtime.sendMessage({
     type: 'CUSTOM_KEY_EVENT',
     payload: {
-      timestamp: Date.now(),
-      url: document.location.href,
-      frameUrl: window.location.href,
-      key: k,
-      xpath: el ? getXPath(el) : '',
+      timestamp : Date.now(),
+      url       : document.location.href,
+      frameUrl  : window.location.href,
+      key       : k,
+      xpath     : el ? getXPath(el) : '',
       cssSelector: el ? chain(el).join(' >> ') : '',
-      elementTag: el ? el.tagName : 'document',
+      elementTag : el ? el.tagName : 'document',
     },
   });
 }
@@ -230,9 +214,9 @@ function onKey(e: KeyboardEvent) {
 /* ───────────── content-script entry ───────────── */
 export default defineContentScript({
   matches: ['<all_urls>'],
-  runAt: 'document_start',
+  runAt  : 'document_start',
   main() {
-    // Safe patches – run only in the real browser
+    /* 1. Monkey-patch attachShadow early, keep closed → open AND auto-instrument */
     if (typeof Element !== 'undefined') {
       const original = Element.prototype.attachShadow;
       Element.prototype.attachShadow = function (init: ShadowRootInit): ShadowRoot {
@@ -243,12 +227,12 @@ export default defineContentScript({
       };
     }
 
+    /* 2. Wrap customElements.define so custom elements created later are covered */
     if (typeof customElements !== 'undefined') {
       const origDefine = customElements.define.bind(customElements);
       customElements.define = (name, ctor, opts) => {
         const Wrapped = class extends (ctor as any) {
           constructor(...a: any[]) {
-            // @ts-ignore
             super(...a);
             const sr = (this as any).shadowRoot;
             sr && instrumentRoot(sr);
@@ -259,18 +243,22 @@ export default defineContentScript({
       };
     }
 
+    /* 3. Observe DOM for shadow hosts added after load */
     new MutationObserver(recs =>
       recs.forEach(r =>
-        r.addedNodes.forEach(n => n instanceof HTMLElement && n.shadowRoot && instrumentRoot(n.shadowRoot)),
-      ),
-    ).observe(document.documentElement, { childList: true, subtree: true });
+        r.addedNodes.forEach(n =>
+          n instanceof HTMLElement && n.shadowRoot && instrumentRoot(n.shadowRoot))))
+      .observe(document.documentElement, { childList: true, subtree: true });
 
-    scanOpenRoots();
-    scanClosedRoots();
+    /* 4. Scan any open / dev-tools-exposed closed roots present at startup */
+    document.querySelectorAll('*')
+      .forEach(el => el instanceof HTMLElement && el.shadowRoot && instrumentRoot(el.shadowRoot));
 
-    chrome.runtime.onMessage.addListener(msg => {
-      if (msg.type === 'SET_RECORDING_STATUS') msg.payload ? startRecorder() : stopRecorder();
-    });
+    /* 5. Recording control wiring */
+    chrome.runtime.onMessage.addListener(msg =>
+      msg.type === 'SET_RECORDING_STATUS'
+        ? msg.payload ? startRecorder() : stopRecorder()
+        : undefined);
 
     chrome.runtime.sendMessage({ type: 'REQUEST_RECORDING_STATUS' }, res => {
       if (!chrome.runtime.lastError && res?.isRecordingEnabled) startRecorder();
