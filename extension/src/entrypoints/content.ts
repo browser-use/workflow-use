@@ -1,460 +1,281 @@
+/* src/entrypoints/content.ts
+ *  – RRWeb recorder + custom events
+ *  – Open+closed Shadow-DOM instrumentation
+ *  – Safe for WXT’s Node build (no DOM at top level)
+ */
+
+import { defineContentScript } from '#imports'; // <- run `wxt prepare` for TS defs
 import * as rrweb from 'rrweb';
 import { EventType, IncrementalSource } from '@rrweb/types';
 
-let stopRecording: (() => void) | undefined = undefined;
-let isRecordingActive = true; // Content script's local state
+/* ──────────────── globals ──────────────── */
+let stopRecording: (() => void) | undefined;
+let isRecordingActive = true;
+
 let scrollTimeout: ReturnType<typeof setTimeout> | null = null;
 let lastScrollY: number | null = null;
 let lastDirection: 'up' | 'down' | null = null;
-const DEBOUNCE_MS = 500; // Wait 500ms after scroll stops
+const DEBOUNCE_MS = 500;
 
-// --- Helper function to generate XPath ---
-function getXPath(element: HTMLElement): string {
-  if (element.id !== '') {
-    return `id("${element.id}")`;
-  }
-  if (element === document.body) {
-    return element.tagName.toLowerCase();
-  }
-
+/* ───────────── helper: XPath + CSS selector ───────────── */
+function getXPath(el: HTMLElement): string {
+  if (el.id) return `id("${el.id}")`;
+  if (el === document.body) return el.tagName.toLowerCase();
   let ix = 0;
-  const siblings = element.parentNode?.children;
-  if (siblings) {
-    for (let i = 0; i < siblings.length; i++) {
-      const sibling = siblings[i];
-      if (sibling === element) {
-        return `${getXPath(
-          element.parentElement as HTMLElement
-        )}/${element.tagName.toLowerCase()}[${ix + 1}]`;
-      }
-      if (sibling.nodeType === 1 && sibling.tagName === element.tagName) {
-        ix++;
-      }
-    }
+  for (const sib of Array.from(el.parentNode?.children ?? [])) {
+    if (sib === el)
+      return `${getXPath(el.parentElement as HTMLElement)}/${el.tagName.toLowerCase()}[${ix + 1}]`;
+    if (sib.nodeType === 1 && (sib as HTMLElement).tagName === el.tagName) ix++;
   }
-  // Fallback (should not happen often)
-  return element.tagName.toLowerCase();
+  return el.tagName.toLowerCase();
 }
-// --- End Helper ---
 
-// --- Helper function to generate CSS Selector ---
-// Expanded set of safe attributes (similar to Python)
-const SAFE_ATTRIBUTES = new Set([
-  'id',
-  'name',
-  'type',
-  'placeholder',
-  'aria-label',
-  'aria-labelledby',
-  'aria-describedby',
-  'role',
-  'for',
-  'autocomplete',
-  'required',
-  'readonly',
-  'alt',
-  'title',
-  'src',
-  'href',
-  'target',
-  // Add common data attributes if stable
-  'data-id',
-  'data-qa',
-  'data-cy',
-  'data-testid',
+const SAFE_ATTRS = new Set([
+  'id','name','type','placeholder','aria-label','aria-labelledby','aria-describedby','role','for',
+  'autocomplete','required','readonly','alt','title','src','href','target',
+  'data-id','data-qa','data-cy','data-testid',
 ]);
 
-function getEnhancedCSSSelector(element: HTMLElement, xpath: string): string {
+function cssSelector(el: HTMLElement, xpath: string): string {
   try {
-    // Base selector from simplified XPath or just tagName
-    let cssSelector = element.tagName.toLowerCase();
-
-    // Handle class attributes
-    if (element.classList && element.classList.length > 0) {
-      const validClassPattern = /^[a-zA-Z_][a-zA-Z0-9_-]*$/;
-      element.classList.forEach((className) => {
-        if (className && validClassPattern.test(className)) {
-          cssSelector += `.${CSS.escape(className)}`;
-        }
-      });
+    let sel = el.tagName.toLowerCase();
+    el.classList.forEach(c => /^[a-zA-Z_][\w-]*$/.test(c) && (sel += `.${CSS.escape(c)}`));
+    for (const { name, value } of Array.from(el.attributes)) {
+      if (name === 'class' || !SAFE_ATTRS.has(name)) continue;
+      const n = CSS.escape(name);
+      sel += value
+        ? /["'<>`\s]/.test(value)
+          ? `[${n}*="${value.replace(/"/g, '"')}"]`
+          : `[${n}="${value}"]`
+        : `[${n}]`;
     }
-
-    // Handle other safe attributes
-    for (const attr of element.attributes) {
-      const attrName = attr.name;
-      const attrValue = attr.value;
-
-      if (attrName === 'class') continue;
-      if (!attrName.trim()) continue;
-      if (!SAFE_ATTRIBUTES.has(attrName)) continue;
-
-      const safeAttribute = CSS.escape(attrName);
-
-      if (attrValue === '') {
-        cssSelector += `[${safeAttribute}]`;
-      } else {
-        const safeValue = attrValue.replace(/"/g, '"');
-        if (/["'<>`\s]/.test(attrValue)) {
-          cssSelector += `[${safeAttribute}*="${safeValue}"]`;
-        } else {
-          cssSelector += `[${safeAttribute}="${safeValue}"]`;
-        }
-      }
-    }
-    return cssSelector;
-  } catch (error) {
-    console.error('Error generating enhanced CSS selector:', error);
-    return `${element.tagName.toLowerCase()}[xpath="${xpath.replace(
-      /"/g,
-      '"'
-    )}"]`;
+    return sel;
+  } catch (e) {
+    console.error('selector-gen', e);
+    return `${el.tagName.toLowerCase()}[xpath="${xpath.replace(/"/g, '"')}"]`;
   }
 }
 
-function startRecorder() {
-  if (stopRecording) {
-    console.log('Recorder already running.');
-    return; // Already running
+/* ───────────── Shadow helpers ───────────── */
+const composedTarget = (e: Event) =>
+  (e.composedPath?.().find(n => n instanceof HTMLElement) ??
+    (e.target instanceof HTMLElement ? e.target : null)) as HTMLElement | null;
+
+function chain(el: HTMLElement): string[] {
+  const chain: string[] = [];
+  let node: HTMLElement | null = el;
+  while (node) {
+    chain.unshift(cssSelector(node, getXPath(node)));
+    node = node.getRootNode() instanceof ShadowRoot ? (node.getRootNode() as ShadowRoot).host as HTMLElement : node.parentElement;
   }
-  console.log('Starting rrweb recorder for:', window.location.href);
-  isRecordingActive = true;
+  return chain;
+}
+
+function instrumentRoot(root: ShadowRoot) {
+  root.addEventListener('click', onClick as EventListener, true);
+  root.addEventListener('input', onInput as EventListener, true);
+  root.addEventListener('change', onSelect as EventListener, true);
+  root.addEventListener('keydown', onKey as EventListener, true);
+  root.querySelectorAll('*').forEach(n => n instanceof HTMLElement && n.shadowRoot && instrumentRoot(n.shadowRoot));
+}
+
+function scanOpenRoots() {
+  document.querySelectorAll('*').forEach(el => {
+    const sr = (el as HTMLElement).shadowRoot;
+    if (sr) instrumentRoot(sr);
+  });
+}
+
+function scanClosedRoots() {
+  const api = (chrome as any)?.dom?.openOrClosedShadowRoot; // Chrome Canary devtools API
+  if (!api) return;
+  document.querySelectorAll('*').forEach(el => {
+    try {
+      const sr = api(el);
+      sr && instrumentRoot(sr);
+    } catch {}
+  });
+}
+
+/* ───────────── rrweb recorder ───────────── */
+function startRecorder() {
+  if (stopRecording) return;
   stopRecording = rrweb.record({
-    emit(event) {
+    emit(evt) {
       if (!isRecordingActive) return;
 
-      // Handle scroll events with debouncing and direction detection
-      if (
-        event.type === EventType.IncrementalSnapshot &&
-        event.data.source === IncrementalSource.Scroll
-      ) {
-        const scrollData = event.data as { id: number; x: number; y: number };
-        const currentScrollY = scrollData.y;
-
-        // Round coordinates
-        const roundedScrollData = {
-          ...scrollData,
-          x: Math.round(scrollData.x),
-          y: Math.round(scrollData.y),
-        };
-
-        // Determine scroll direction
-        let currentDirection: 'up' | 'down' | null = null;
-        if (lastScrollY !== null) {
-          currentDirection = currentScrollY > lastScrollY ? 'down' : 'up';
-        }
-
-        // Record immediately if direction changes
-        if (
-          lastDirection !== null &&
-          currentDirection !== null &&
-          currentDirection !== lastDirection
-        ) {
-          if (scrollTimeout) {
-            clearTimeout(scrollTimeout);
-            scrollTimeout = null;
-          }
-          chrome.runtime.sendMessage({
-            type: 'RRWEB_EVENT',
-            payload: {
-              ...event,
-              data: roundedScrollData, // Use rounded coordinates
-            },
-          });
-          lastDirection = currentDirection;
-          lastScrollY = currentScrollY;
-          return;
-        }
-
-        // Update direction and position
-        lastDirection = currentDirection;
-        lastScrollY = currentScrollY;
-
-        // Debouncer
-        if (scrollTimeout) {
+      if (evt.type === EventType.IncrementalSnapshot && evt.data.source === IncrementalSource.Scroll) {
+        const d = evt.data as { id: number; x: number; y: number };
+        const y = Math.round(d.y), x = Math.round(d.x);
+        const dir = lastScrollY != null ? (y > lastScrollY ? 'down' : 'up') : null;
+        if (dir && lastDirection && dir !== lastDirection && scrollTimeout) {
           clearTimeout(scrollTimeout);
-        }
-        scrollTimeout = setTimeout(() => {
-          chrome.runtime.sendMessage({
-            type: 'RRWEB_EVENT',
-            payload: {
-              ...event,
-              data: roundedScrollData, // Use rounded coordinates
-            },
-          });
           scrollTimeout = null;
-          lastDirection = null; // Reset direction for next scroll
+        }
+        lastDirection = dir; lastScrollY = y;
+        if (scrollTimeout) clearTimeout(scrollTimeout);
+        scrollTimeout = setTimeout(() => {
+          chrome.runtime.sendMessage({ type: 'RRWEB_EVENT', payload: { ...evt, data: { ...d, x, y } } });
+          scrollTimeout = null; lastDirection = null;
         }, DEBOUNCE_MS);
       } else {
-        // Pass through non-scroll events unchanged
-        chrome.runtime.sendMessage({ type: 'RRWEB_EVENT', payload: event });
+        chrome.runtime.sendMessage({ type: 'RRWEB_EVENT', payload: evt });
       }
     },
-    maskInputOptions: {
-      password: true,
-    },
-    checkoutEveryNms: 10000,
+    maskInputOptions: { password: true },
+    checkoutEveryNms: 10_000,
     checkoutEveryNth: 200,
   });
-
-  // Add the stop function to window for potenti
-  // --- End CSS Selector Helper --- al manual cleanup
   (window as any).rrwebStop = stopRecorder;
-
-  // --- Attach Custom Event Listeners Permanently ---
-  // These listeners are always active, but the handlers check `isRecordingActive`
-  document.addEventListener('click', handleCustomClick, true);
-  document.addEventListener('input', handleInput, true);
-  document.addEventListener('change', handleSelectChange, true);
-  document.addEventListener('keydown', handleKeydown, true);
-  console.log('Permanently attached custom event listeners.');
+  document.addEventListener('click', onClick, true);
+  document.addEventListener('input', onInput, true);
+  document.addEventListener('change', onSelect, true);
+  document.addEventListener('keydown', onKey, true);
 }
 
 function stopRecorder() {
-  if (stopRecording) {
-    console.log('Stopping rrweb recorder for:', window.location.href);
-    stopRecording();
-    stopRecording = undefined;
-    isRecordingActive = false;
-    (window as any).rrwebStop = undefined; // Clean up window property
-    // Remove custom listeners when recording stops
-    document.removeEventListener('click', handleCustomClick, true);
-    document.removeEventListener('input', handleInput, true);
-    document.removeEventListener('change', handleSelectChange, true); // Remove change listener
-    document.removeEventListener('keydown', handleKeydown, true); // Remove keydown listener
-  } else {
-    console.log('Recorder not running, cannot stop.');
-  }
+  if (!stopRecording) return;
+  stopRecording(); stopRecording = undefined; isRecordingActive = false;
+  (window as any).rrwebStop = undefined;
+  document.removeEventListener('click', onClick, true);
+  document.removeEventListener('input', onInput, true);
+  document.removeEventListener('change', onSelect, true);
+  document.removeEventListener('keydown', onKey, true);
 }
 
-// --- Custom Click Handler ---
-function handleCustomClick(event: MouseEvent) {
+/* ───────────── CUSTOM EVENT HANDLERS ───────────── */
+function onClick(e: MouseEvent) {
   if (!isRecordingActive) return;
-  const targetElement = event.target as HTMLElement;
-  if (!targetElement) return;
-
-  try {
-    const xpath = getXPath(targetElement);
-    const clickData = {
-      timestamp: Date.now(),
-      url: document.location.href, // Use document.location for main page URL
-      frameUrl: window.location.href, // URL of the frame where the event occurred
-      xpath: xpath,
-      cssSelector: getEnhancedCSSSelector(targetElement, xpath),
-      elementTag: targetElement.tagName,
-      elementText: targetElement.textContent?.trim().slice(0, 200) || '',
-    };
-    console.log('Sending CUSTOM_CLICK_EVENT:', clickData);
-    chrome.runtime.sendMessage({
-      type: 'CUSTOM_CLICK_EVENT',
-      payload: clickData,
-    });
-  } catch (error) {
-    console.error('Error capturing click data:', error);
-  }
-}
-// --- End Custom Click Handler ---
-
-// --- Custom Input Handler ---
-function handleInput(event: Event) {
-  if (!isRecordingActive) return;
-  const targetElement = event.target as HTMLInputElement | HTMLTextAreaElement;
-  if (!targetElement || !('value' in targetElement)) return;
-  const isPassword = targetElement.type === 'password';
-
-  try {
-    const xpath = getXPath(targetElement);
-    const inputData = {
+  const el = composedTarget(e);
+  if (!el) return;
+  chrome.runtime.sendMessage({
+    type: 'CUSTOM_CLICK_EVENT',
+    payload: {
       timestamp: Date.now(),
       url: document.location.href,
       frameUrl: window.location.href,
-      xpath: xpath,
-      cssSelector: getEnhancedCSSSelector(targetElement, xpath),
-      elementTag: targetElement.tagName,
-      value: isPassword ? '********' : targetElement.value,
-    };
-    console.log('Sending CUSTOM_INPUT_EVENT:', inputData);
-    chrome.runtime.sendMessage({
-      type: 'CUSTOM_INPUT_EVENT',
-      payload: inputData,
-    });
-  } catch (error) {
-    console.error('Error capturing input data:', error);
-  }
+      xpath: getXPath(el),
+      cssSelector: chain(el).join(' >> '),
+      elementTag: el.tagName,
+      elementText: el.textContent?.trim().slice(0, 200) ?? '',
+    },
+  });
 }
-// --- End Custom Input Handler ---
 
-// --- Custom Select Change Handler ---
-function handleSelectChange(event: Event) {
+function onInput(e: Event) {
   if (!isRecordingActive) return;
-  const targetElement = event.target as HTMLSelectElement;
-  // Ensure it's a select element
-  if (!targetElement || targetElement.tagName !== 'SELECT') return;
-
-  try {
-    const xpath = getXPath(targetElement);
-    const selectedOption = targetElement.options[targetElement.selectedIndex];
-    const selectData = {
+  const el = composedTarget(e) as HTMLInputElement | HTMLTextAreaElement;
+  if (!el || !('value' in el)) return;
+  chrome.runtime.sendMessage({
+    type: 'CUSTOM_INPUT_EVENT',
+    payload: {
       timestamp: Date.now(),
       url: document.location.href,
       frameUrl: window.location.href,
-      xpath: xpath,
-      cssSelector: getEnhancedCSSSelector(targetElement, xpath),
-      elementTag: targetElement.tagName,
-      selectedValue: targetElement.value,
-      selectedText: selectedOption ? selectedOption.text : '', // Get selected option text
-    };
-    console.log('Sending CUSTOM_SELECT_EVENT:', selectData);
-    chrome.runtime.sendMessage({
-      type: 'CUSTOM_SELECT_EVENT',
-      payload: selectData,
-    });
-  } catch (error) {
-    console.error('Error capturing select change data:', error);
-  }
+      xpath: getXPath(el),
+      cssSelector: chain(el).join(' >> '),
+      elementTag: el.tagName,
+      value: el.type === 'password' ? '********' : el.value,
+    },
+  });
 }
-// --- End Custom Select Change Handler ---
 
-// --- Custom Keydown Handler ---
-// Set of keys we want to capture explicitly
-const CAPTURED_KEYS = new Set([
-  'Enter',
-  'Tab',
-  'Escape',
-  'ArrowUp',
-  'ArrowDown',
-  'ArrowLeft',
-  'ArrowRight',
-  'Home',
-  'End',
-  'PageUp',
-  'PageDown',
-  'Backspace',
-  'Delete',
+function onSelect(e: Event) {
+  if (!isRecordingActive) return;
+  const el = composedTarget(e) as HTMLSelectElement;
+  if (!el || el.tagName !== 'SELECT') return;
+  const opt = el.options[el.selectedIndex];
+  chrome.runtime.sendMessage({
+    type: 'CUSTOM_SELECT_EVENT',
+    payload: {
+      timestamp: Date.now(),
+      url: document.location.href,
+      frameUrl: window.location.href,
+      xpath: getXPath(el),
+      cssSelector: chain(el).join(' >> '),
+      elementTag: el.tagName,
+      selectedValue: el.value,
+      selectedText: opt ? opt.text : '',
+    },
+  });
+}
+
+const KEYS = new Set([
+  'Enter','Tab','Escape','ArrowUp','ArrowDown','ArrowLeft','ArrowRight',
+  'Home','End','PageUp','PageDown','Backspace','Delete',
 ]);
 
-function handleKeydown(event: KeyboardEvent) {
+function onKey(e: KeyboardEvent) {
   if (!isRecordingActive) return;
+  let k = '';
+  if (KEYS.has(e.key)) k = e.key;
+  else if ((e.ctrlKey || e.metaKey) && e.key.length === 1) k = `CmdOrCtrl+${e.key.toUpperCase()}`;
+  if (!k) return;
 
-  const key = event.key;
-  let keyToLog = '';
-
-  // Check if it's a key we explicitly capture
-  if (CAPTURED_KEYS.has(key)) {
-    keyToLog = key;
-  }
-  // Check for common modifier combinations (Ctrl/Cmd + key)
-  else if (
-    (event.ctrlKey || event.metaKey) &&
-    key.length === 1 &&
-    /[a-zA-Z0-9]/.test(key)
-  ) {
-    // Use 'CmdOrCtrl' to be cross-platform friendly in logs
-    keyToLog = `CmdOrCtrl+${key.toUpperCase()}`;
-  }
-  // You could add more specific checks here (Alt+, Shift+, etc.) if needed
-
-  // If we have a key we want to log, send the event
-  if (keyToLog) {
-    const targetElement = event.target as HTMLElement;
-    let xpath = '';
-    let cssSelector = '';
-    let elementTag = 'document'; // Default if target is not an element
-    if (targetElement && typeof targetElement.tagName === 'string') {
-      try {
-        xpath = getXPath(targetElement);
-        cssSelector = getEnhancedCSSSelector(targetElement, xpath);
-        elementTag = targetElement.tagName;
-      } catch (e) {
-        console.error('Error getting selector for keydown target:', e);
-      }
-    }
-
-    try {
-      const keyData = {
-        timestamp: Date.now(),
-        url: document.location.href,
-        frameUrl: window.location.href,
-        key: keyToLog, // The key or combination pressed
-        xpath: xpath, // XPath of the element in focus (if any)
-        cssSelector: cssSelector, // CSS selector of the element in focus (if any)
-        elementTag: elementTag, // Tag name of the element in focus
-      };
-      console.log('Sending CUSTOM_KEY_EVENT:', keyData);
-      chrome.runtime.sendMessage({
-        type: 'CUSTOM_KEY_EVENT',
-        payload: keyData,
-      });
-    } catch (error) {
-      console.error('Error capturing keydown data:', error);
-    }
-  }
+  const el = composedTarget(e);
+  chrome.runtime.sendMessage({
+    type: 'CUSTOM_KEY_EVENT',
+    payload: {
+      timestamp: Date.now(),
+      url: document.location.href,
+      frameUrl: window.location.href,
+      key: k,
+      xpath: el ? getXPath(el) : '',
+      cssSelector: el ? chain(el).join(' >> ') : '',
+      elementTag: el ? el.tagName : 'document',
+    },
+  });
 }
-// --- End Custom Keydown Handler ---
 
+/* ───────────── content-script entry ───────────── */
 export default defineContentScript({
   matches: ['<all_urls>'],
-  main(ctx) {
-    // Listener for status updates from the background script
-    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-      if (message.type === 'SET_RECORDING_STATUS') {
-        const shouldBeRecording = message.payload;
-        console.log(`Received recording status update: ${shouldBeRecording}`);
-        if (shouldBeRecording && !isRecordingActive) {
-          startRecorder();
-        } else if (!shouldBeRecording && isRecordingActive) {
-          stopRecorder();
-        }
-      }
-      // If needed, handle other message types here
+  runAt: 'document_start',
+  main() {
+    // Safe patches – run only in the real browser
+    if (typeof Element !== 'undefined') {
+      const original = Element.prototype.attachShadow;
+      Element.prototype.attachShadow = function (init: ShadowRootInit): ShadowRoot {
+        if (init && init.mode === 'closed') init = { ...init, mode: 'open' };
+        const sr = original.call(this, init);
+        instrumentRoot(sr);
+        return sr;
+      };
+    }
+
+    if (typeof customElements !== 'undefined') {
+      const origDefine = customElements.define.bind(customElements);
+      customElements.define = (name, ctor, opts) => {
+        const Wrapped = class extends (ctor as any) {
+          constructor(...a: any[]) {
+            // @ts-ignore
+            super(...a);
+            const sr = (this as any).shadowRoot;
+            sr && instrumentRoot(sr);
+          }
+        };
+        // @ts-ignore
+        return origDefine(name, Wrapped, opts);
+      };
+    }
+
+    new MutationObserver(recs =>
+      recs.forEach(r =>
+        r.addedNodes.forEach(n => n instanceof HTMLElement && n.shadowRoot && instrumentRoot(n.shadowRoot)),
+      ),
+    ).observe(document.documentElement, { childList: true, subtree: true });
+
+    scanOpenRoots();
+    scanClosedRoots();
+
+    chrome.runtime.onMessage.addListener(msg => {
+      if (msg.type === 'SET_RECORDING_STATUS') msg.payload ? startRecorder() : stopRecorder();
     });
 
-    // Request initial status when the script loads
-    console.log(
-      'Content script loaded, requesting initial recording status...'
-    );
-    chrome.runtime.sendMessage(
-      { type: 'REQUEST_RECORDING_STATUS' },
-      (response) => {
-        if (chrome.runtime.lastError) {
-          console.error(
-            'Error requesting initial status:',
-            chrome.runtime.lastError.message
-          );
-          // Handle error - maybe default to not recording?
-          return;
-        }
-        if (response && response.isRecordingEnabled) {
-          console.log('Initial status: Recording enabled.');
-          startRecorder();
-        } else {
-          console.log('Initial status: Recording disabled.');
-          // Ensure recorder is stopped if it somehow started
-          stopRecorder();
-        }
-      }
-    );
-
-    // Optional: Clean up recorder if the page is unloading
-    window.addEventListener('beforeunload', () => {
-      // Also remove permanent listeners on unload?
-      // Might not be strictly necessary as the page context is destroyed,
-      // but good practice if the script could somehow persist.
-      document.removeEventListener('click', handleCustomClick, true);
-      document.removeEventListener('input', handleInput, true);
-      document.removeEventListener('change', handleSelectChange, true);
-      document.removeEventListener('keydown', handleKeydown, true);
-      stopRecorder(); // Ensure rrweb is stopped
+    chrome.runtime.sendMessage({ type: 'REQUEST_RECORDING_STATUS' }, res => {
+      if (!chrome.runtime.lastError && res?.isRecordingEnabled) startRecorder();
     });
 
-    // Optional: Log when the content script is injected
-    // console.log("rrweb recorder injected into:", window.location.href);
-
-    // Listener for potential messages from popup/background if needed later
-    // chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-    //   if (msg.type === 'GET_EVENTS') {
-    //     sendResponse(events);
-    //   }
-    //   return true; // Keep the message channel open for asynchronous response
-    // });
+    window.addEventListener('beforeunload', stopRecorder);
   },
 });
