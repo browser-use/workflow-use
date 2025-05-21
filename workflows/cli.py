@@ -28,29 +28,22 @@ app = typer.Typer(
 
 # Default LLM instance to None
 llm_instance = None
+
 try:
-	if os.getenv('OPENROUTER_API_KEY'):
-		llm_instance = ChatOpenRouter(model='openai/gpt-4o')
-
-	elif os.getenv('OPENAI_API_KEY'):
-		llm_instance = ChatOpenAI(model='gpt-4o')
-
-	else:
-		typer.secho(
-			'No LLM API key found. Set OPENROUTER_API_KEY or OPENAI_API_KEY.',
-			fg=typer.colors.RED,
-		)
-
+    if os.getenv("OPENROUTER_API_KEY"):
+        llm_instance = ChatOpenRouter(model="openai/gpt-4o")
+    elif os.getenv("OPENAI_API_KEY"):
+        llm_instance = ChatOpenAI(model="gpt-4o")
 except Exception as e:
-	typer.secho(f'Error initialising LLM: {e}', fg=typer.colors.RED)
-	llm_instance = None
+    typer.secho(f"Error initialising LLM: {e}", fg=typer.colors.RED)
+    raise typer.Exit(code=1)
 
 if llm_instance is None:
-	typer.secho(
-		'No valid LLM configured. Set OPENROUTER_API_KEY or OPENAI_API_KEY.',
-		fg=typer.colors.RED,
-	)
-	raise typer.Exit(code=1)
+    typer.secho(
+        "No LLM API key found. Set OPENROUTER_API_KEY or OPENAI_API_KEY.",
+        fg=typer.colors.RED,
+    )
+    raise typer.Exit(code=1)
 
 builder_service = BuilderService(llm=llm_instance) if llm_instance else None
 # recorder_service = RecorderService() # Placeholder
