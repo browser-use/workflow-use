@@ -327,7 +327,7 @@ class BuilderService:
         self, path: Path, user_goal: str
     ) -> WorkflowDefinitionSchema:
         """Build a workflow from a JSON file path."""
-        with open(path, "r") as f:
+        with open(path, "r", encoding="utf-8") as f:
             workflow_data = json.load(f)
 
         workflow_data_schema = WorkflowDefinitionSchema.model_validate(workflow_data)
