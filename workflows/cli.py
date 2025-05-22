@@ -8,6 +8,7 @@ from browser_use.browser.browser import Browser
 
 # Assuming OPENAI_API_KEY is set in the environment
 from langchain_openai import ChatOpenAI
+from pydantic import BaseModel
 
 from workflow_use.builder.service import BuilderService
 from workflow_use.controller.service import WorkflowController
@@ -116,9 +117,9 @@ def _build_and_save_workflow_from_recording(
 		typer.style('Enter a name for the generated workflow file', bold=True) + ' (e.g., my_search.workflow.json):',
 		default=default_workflow_filename,
 	)
-		# Ensure the file name ends with .json
+	# Ensure the file name ends with .json
 	if not workflow_output_name.endswith('.json'):
-		workflow_output_name = f"{workflow_output_name}.json"
+		workflow_output_name = f'{workflow_output_name}.json'
 	final_workflow_path = output_dir / workflow_output_name
 
 	try:
@@ -305,7 +306,7 @@ def run_workflow_command(
 		readable=True,
 		help='Path to the .workflow.json file.',
 		show_default=False,
-	)
+	),
 ):
 	"""
 	Loads and executes a workflow, prompting the user for required inputs.
@@ -390,8 +391,12 @@ def run_workflow_command(
 	except Exception as e:
 		typer.secho(f'Error running workflow: {e}', fg=typer.colors.RED)
 		raise typer.Exit(code=1)
-	
-@app.command(name='scrape-workflow', help='Scrapes the HTML content of an existing workflow. The CLI does not support user prompt or custom model currently!')
+
+
+@app.command(
+	name='scrape-workflow',
+	help='Scrapes the HTML content of an existing workflow. The CLI does not support user prompt or custom model currently!',
+)
 def scrape_workflow_command(
 	workflow_path: Path = typer.Argument(
 		...,
@@ -402,11 +407,6 @@ def scrape_workflow_command(
 		help='Path to the .workflow.json file.',
 		show_default=False,
 	),
-	lazy_loading: bool = typer.Option(
-        False,
-        '--lazy-loading',
-        help='Enable scanning of lazy-loaded content. This will scroll to the bottom of the page and back to the original position after loading.',
-    ),
 ):
 	"""
 	Loads and executes a workflow, prompting the user for required inputs.
@@ -472,29 +472,29 @@ def scrape_workflow_command(
 	else:
 		typer.echo('No input schema found in the workflow, or no properties defined. Proceeding without inputs.')
 
+	typer.echo()  # Add spac
+	user_prompt = typer.prompt('Enter a custom instruction for the LLM (or leave empty)', default='')
 	typer.echo()  # Add space
 	typer.echo(typer.style('Scraping workflow...', bold=True))
 
 	try:
-		# Call run on the Workflow instance
-		# close_browser_at_end=True is the default for Workflow.run, but explicit for clarity
-		result = asyncio.run(workflow_obj.scrape(inputs=inputs, close_browser_at_end=True, lazy_loading=lazy_loading))
 
-		typer.secho('\nWorkflow execution completed!', fg=typer.colors.GREEN, bold=True)
-		typer.echo(typer.style('Result:', bold=True))
-		# Output the number of steps executed, similar to previous behavior
-		typer.echo(f'{typer.style(str(len(result['steps'])), bold=True)} steps executed.')
+		class DefaultScrapeModel(BaseModel):
+			title: str
+			summary: str
+			items: dict[str, str] = {}
+			metadata: dict[str, str] = {}
+
+		# close_browser_at_end=True is the default for Workflow.scrape, but explicit for clarity
+		result = asyncio.run(
+			workflow_obj.scrape(
+				inputs=inputs, close_browser_at_end=True, output_model=DefaultScrapeModel, user_prompt=user_prompt
+			)
+		)
+
+		typer.secho('Scraping completed!', fg=typer.colors.GREEN, bold=True)
 		typer.echo(typer.style('JSON content:', bold=True))
-		
-		# Extract JSON content between code fences
-		scrape_content = result['scrape'].content
-		if '```json' in scrape_content and '```' in scrape_content:
-			start_idx = scrape_content.find('```json') + 7  # Length of ```json
-			end_idx = scrape_content.find('```', start_idx)
-			json_content = scrape_content[start_idx:end_idx].strip()
-			typer.echo(typer.style(json_content, fg=typer.colors.CYAN))
-		else:
-			typer.echo(typer.style(scrape_content, fg=typer.colors.CYAN))
+		typer.echo(json.dumps(result.model_dump(), indent=2))
 
 	except Exception as e:
 		typer.secho(f'Error running workflow: {e}', fg=typer.colors.RED)
