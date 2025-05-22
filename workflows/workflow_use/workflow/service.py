@@ -442,7 +442,6 @@ class Workflow:
 		output_model: Type[T],
 		inputs: dict[str, Any] | None = None,
 		close_browser_at_end: bool = True,
-		lazy_loading: bool = False,
 		user_prompt: str | None = None,
 	) -> T:
 		"""Execute the workflow asynchronously using step dictionaries.

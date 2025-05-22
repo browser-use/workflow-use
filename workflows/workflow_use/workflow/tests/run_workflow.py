@@ -1,8 +1,10 @@
 import asyncio
 from pathlib import Path
+from typing import List
 
 # Ensure langchain-openai is installed and OPENAI_API_KEY is set
 from langchain_openai import ChatOpenAI
+from pydantic import BaseModel, Field
 
 from workflow_use.builder.service import BuilderService
 from workflow_use.workflow.service import Workflow
@@ -29,34 +31,25 @@ async def test_scrape_workflow():
 	This test demonstrates how to extract content from web pages using the workflow's scrape method.
 	"""
 	path = Path(__file__).parent.parent.parent.parent / 'examples' / 'example.workflow.json'
-	
+
 	# Load the workflow
 	workflow = Workflow.load_from_file(path, llm=ChatOpenAI(model='gpt-4o'))
-	
-	# Define a custom output model for structured scraping results
-	from pydantic import BaseModel, Field
-	from typing import List
-	
+
 	class ScrapedContent(BaseModel):
-		title: str = Field(..., description="The title of the page")
-		main_content: str = Field(..., description="The main content of the page")
-		title_content: List[str] = Field(default_factory=list, description="List of title and content found on the page")
-	
+		title: str = Field(..., description='The title of the page')
+		main_content: str = Field(..., description='The main content of the page')
+		title_content: List[str] = Field(default_factory=list, description='List of title and content found on the page')
+
 	# Run the scraping with custom output model and user prompt
 	result = await workflow.scrape(
-		inputs={
-			'first_name': 'John',
-			'last_name': 'Doe',
-			'social_security_last4': '1234'
-		},
+		inputs={'first_name': 'John', 'last_name': 'Doe', 'social_security_last4': '1234'},
 		close_browser_at_end=True,
-		lazy_loading=False,  # Disable scanning of lazy-loaded content since it is a small page
-		user_prompt="Extract the main content, title, and links from the page",
-		output_model=ScrapedContent
+		user_prompt='Extract the main content, title, and links from the page',
+		output_model=ScrapedContent,
 	)
-	
-	print("Scraping Results:")
-	print(result['scrape'])
+
+	print('Scraping Results:')
+	print(result.model_dump())
 
 
 if __name__ == '__main__':
