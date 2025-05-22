@@ -5,19 +5,19 @@ import json
 import json as _json
 import logging
 from pathlib import Path
-from typing import Any, Dict, List
-from bs4 import BeautifulSoup
+from typing import Any, Dict, List, Type, TypeVar
 
 from browser_use.agent.service import Agent
 from browser_use.agent.views import ActionResult, AgentHistoryList
 from browser_use.browser.browser import Browser
 from browser_use.browser.context import BrowserContext
+from bs4 import BeautifulSoup
 from langchain.agents import AgentExecutor, create_tool_calling_agent
 from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, create_model
-from langchain_core.output_parsers import PydanticOutputParser
 
 from workflow_use.controller.service import WorkflowController
 from workflow_use.schema.views import (
@@ -33,9 +33,11 @@ from workflow_use.schema.views import (
 	WorkflowInputSchemaDefinition,
 	WorkflowStep,
 )
-from workflow_use.workflow.prompts import WORKFLOW_FALLBACK_PROMPT_TEMPLATE, SCRAPE_PROMPT_TEMPLATE
+from workflow_use.workflow.prompts import SCRAPE_PROMPT_TEMPLATE, WORKFLOW_FALLBACK_PROMPT_TEMPLATE
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar('T', bound=BaseModel)
 
 
 class Workflow:
@@ -143,24 +145,24 @@ class Workflow:
 		# Extract details from the failed step dictionary
 		failed_action_name = step_resolved.type
 		failed_params = step_resolved.model_dump()
-		step_description = step_resolved.description or "No description provided"
-		error_msg = str(error) if error else "Unknown error"
+		step_description = step_resolved.description or 'No description provided'
+		error_msg = str(error) if error else 'Unknown error'
 		total_steps = len(self.steps)
 		fail_details = (
 			f"step={step_index + 1}/{total_steps}, action='{failed_action_name}', "
 			f"description='{step_description}', params={str(failed_params)}, error='{error_msg}'"
 		)
-		
+
 		# Determine the failed_value based on step type and attributes
 		failed_value = None
-		description_prefix = f"Purpose: {step_description}. " if step_description else ""
-		
+		description_prefix = f'Purpose: {step_description}. ' if step_description else ''
+
 		if isinstance(step_resolved, NavigationStep):
-			failed_value = f"{description_prefix}Navigate to URL: {step_resolved.url}"
+			failed_value = f'{description_prefix}Navigate to URL: {step_resolved.url}'
 		elif isinstance(step_resolved, ClickStep):
 			# element_info = step_resolved.elementText or step_resolved.cssSelector
 			# failed_value = f"{description_prefix}Click element: {element_info}"
-			failed_value = f"Find and click element with description: {step_resolved.description}"
+			failed_value = f'Find and click element with description: {step_resolved.description}'
 		elif isinstance(step_resolved, InputStep):
 			failed_value = f"{description_prefix}Input text: '{step_resolved.value}' into element."
 		elif isinstance(step_resolved, SelectChangeStep):
@@ -168,20 +170,18 @@ class Workflow:
 		elif isinstance(step_resolved, KeyPressStep):
 			failed_value = f"{description_prefix}Press key: '{step_resolved.key}'"
 		elif isinstance(step_resolved, ScrollStep):
-			failed_value = f"{description_prefix}Scroll to position: (x={step_resolved.scrollX}, y={step_resolved.scrollY})"
+			failed_value = f'{description_prefix}Scroll to position: (x={step_resolved.scrollX}, y={step_resolved.scrollY})'
 		else:
 			failed_value = f"{description_prefix}No specific target value available for action '{failed_action_name}'"
-		
+
 		# Build workflow overview using the stored dictionaries
 		workflow_overview_lines: list[str] = []
 		for idx, step in enumerate(self.steps):
-			desc = step.description or ""
+			desc = step.description or ''
 			step_type_info = step.type
 			details = step.model_dump()
-			workflow_overview_lines.append(
-				f"  {idx + 1}. ({step_type_info}) {desc} - {details}"
-			)
-		workflow_overview = "\n".join(workflow_overview_lines)
+			workflow_overview_lines.append(f'  {idx + 1}. ({step_type_info}) {desc} - {details}')
+		workflow_overview = '\n'.join(workflow_overview_lines)
 		print(workflow_overview)
 
 		# Build the fallback task with the failed_value
@@ -192,7 +192,7 @@ class Workflow:
 			action_type=failed_action_name,
 			fail_details=fail_details,
 			failed_value=failed_value,
-			step_description=step_description
+			step_description=step_description,
 		)
 		logger.info(f'Agent fallback task: {fallback_task}')
 
@@ -437,9 +437,14 @@ class Workflow:
 
 		return results
 
-	async def scrape(self, inputs: dict[str, Any] | None = None, close_browser_at_end: bool = True, lazy_loading: bool = False, 
-				  user_prompt: str | None = None, 
-				  output_model: type[BaseModel] | None = None) -> dict[str, Any]:
+	async def scrape(
+		self,
+		output_model: Type[T],
+		inputs: dict[str, Any] | None = None,
+		close_browser_at_end: bool = True,
+		lazy_loading: bool = False,
+		user_prompt: str | None = None,
+	) -> T:
 		"""Execute the workflow asynchronously using step dictionaries.
 
 		@dev This is the main entry point for the workflow.
@@ -452,7 +457,7 @@ class Workflow:
 
 		results: List[Any] = []
 		html_contents: List[Dict[str, Any]] = []
-		summary = None
+		result: T | None = None
 
 		await self.browser_context.__aenter__()
 		try:
@@ -472,36 +477,6 @@ class Workflow:
 				try:
 					page = await self.browser_context.get_agent_current_page()
 					await self.browser_context._wait_for_stable_network()
-					if lazy_loading:
-						logger.info('Starting scanning for lazy-loaded content')
-						# 0. Remember current scroll position
-						pos = await page.evaluate("() => window.scrollY")
-
-						# 1. Scroll smoothly to the bottom so that all lazy-loaded content fires
-						await page.evaluate(
-							"""async () => {
-								await new Promise(resolve => {
-									const distance = 200;
-									const delay = 100;
-									let total = 0;
-									const timer = setInterval(() => {
-										window.scrollBy(0, distance);
-										total += distance;
-										if (total >= document.body.scrollHeight) {
-											clearInterval(timer);
-											resolve();
-										}
-									}, delay);
-								});
-							}"""
-						)
-
-						# 2. Small pause to let any remaining XHR/images finish
-						await asyncio.sleep(0.5)
-
-						# 3. Scroll back to the original position
-						await page.evaluate(f"() => window.scrollTo(0, {pos})")
-						logger.info('Lazy-loaded content scanned')
 					html = await page.content()
 					# Parse the HTML
 					soup = BeautifulSoup(html, 'html.parser')
@@ -512,29 +487,35 @@ class Workflow:
 					lines = [line.strip() for line in text.splitlines() if line.strip()]
 					clean_text = '\n'.join(lines)
 					# Compare to last step's clean_text
-					if html_contents and html_contents[-1].get("clean_text") == clean_text:
-						html_contents.append({
-							"step_index": step_index + 1,
-							"step_type": step_resolved.type,
-							"description": step_description,
-							"note": "This has the same exact website structure as the last step"
-						})
+					if html_contents and html_contents[-1].get('clean_text') == clean_text:
+						html_contents.append(
+							{
+								'step_index': step_index + 1,
+								'step_type': step_resolved.type,
+								'description': step_description,
+								'note': 'This has the same exact website structure as the last step',
+							}
+						)
 					else:
-						html_contents.append({
-							"step_index": step_index + 1,
-							"step_type": step_resolved.type,
-							"description": step_description,
-							"clean_text": clean_text
-						})
+						html_contents.append(
+							{
+								'step_index': step_index + 1,
+								'step_type': step_resolved.type,
+								'description': step_description,
+								'clean_text': clean_text,
+							}
+						)
 				except Exception as e:
-					logger.warning(f"Failed to capture HTML for step {step_index + 1}: {e}")
-					html_contents.append({
-						"step_index": step_index + 1,
-						"step_type": step_resolved.type,
-						"description": step_description,
-						"html": None,
-						"error": str(e)
-					})
+					logger.warning(f'Failed to capture HTML for step {step_index + 1}: {e}')
+					html_contents.append(
+						{
+							'step_index': step_index + 1,
+							'step_type': step_resolved.type,
+							'description': step_description,
+							'html': None,
+							'error': str(e),
+						}
+					)
 
 				results.append(result)
 				# Persist outputs using the resolved step dictionary
@@ -554,53 +535,38 @@ class Workflow:
 				try:
 					# Ensure LLM is available
 					if self.llm is None:
-						logger.warning("Cannot summarize HTML contents: No LLM instance provided")
-					else:
-						# Only create parser and format instructions if a model is provided
-						if output_model:
-							parser = PydanticOutputParser(pydantic_object=output_model)
-							format_instructions = parser.get_format_instructions()
-						else:
-							parser = None
-							format_instructions = ""
+						logger.warning('Cannot summarize HTML contents: No LLM instance provided')
+						raise ValueError('Cannot summarize HTML contents: No LLM instance provided')
 
-						# Default user_prompt to empty string if None
-						user_prompt = user_prompt or ""
+					# Only create parser and format instructions if a model is provided
+					parser = PydanticOutputParser(pydantic_object=output_model)
+					format_instructions = parser.get_format_instructions()
+					user_prompt = user_prompt or ''
 
-						# Step 2: Create prompt with user-provided guidance
-						prompt = PromptTemplate(
-							template=SCRAPE_PROMPT_TEMPLATE,
-							input_variables=["html_contents", "user_prompt"],
-							partial_variables={"format_instructions": format_instructions}
-						)
+					prompt = PromptTemplate(
+						template=SCRAPE_PROMPT_TEMPLATE,
+						input_variables=['html_contents', 'user_prompt'],
+						partial_variables={'format_instructions': format_instructions},
+					)
+					summary_prompt = prompt.format(
+						html_contents=json.dumps(html_contents, indent=2, ensure_ascii=False), user_prompt=user_prompt
+					)
+					response = await self.llm.ainvoke(summary_prompt)
 
-						# Step 3: Format the prompt
-						summary_prompt = prompt.format(
-							html_contents=json.dumps(html_contents, indent=2, ensure_ascii=False),
-							user_prompt=user_prompt
-						)
+					try:
+						result = parser.parse(response.content)
+					except Exception as e:
+						logger.error(f'Failed to parse LLM response: {e}')
+						raise ValueError(f'Failed to parse LLM response: {e}')
 
-						# Step 4: Invoke the LLM and parse the result
-						response = await self.llm.ainvoke(summary_prompt)
-
-						# If a parser is set, parse the response
-						if parser:
-							try:
-								parsed = parser.parse(response.content)
-								summary = parsed.model_dump()
-							except Exception as e:
-								logger.error(f"Failed to parse LLM response: {e}")
-								summary = response
-						else:
-							summary = response
-					
 				except Exception as e:
-					logger.error(f"Failed to generate summary using LLM: {e}")
+					logger.error(f'Failed to generate summary using LLM: {e}')
+					raise ValueError(f'Failed to generate summary using LLM: {e}')
 
 			if close_browser_at_end:
 				# Ensure __aexit__ is called with appropriate args for exception handling if needed
 				# For simplicity, assuming no exception to pass: exc_type, exc_val, exc_tb = None, None, None
-				# wait 3 seconds before closing the browser
+				# wait 3 seconds before closing the browseraskin
 				await asyncio.sleep(3)
 				await self.browser_context.__aexit__(None, None, None)
 
@@ -608,10 +574,9 @@ class Workflow:
 		if close_browser_at_end:
 			await self.browser.close()
 
-		return {
-			'steps': results,
-			'scrape': summary
-		}
+		if result is None:
+			raise ValueError('The scraping process had no output')
+		return result
 
 	# ------------------------------------------------------------------
 	# LangChain tool wrapper
