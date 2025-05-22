@@ -1,8 +1,8 @@
-import { WorkflowMetadata } from './workflow-layout.types';
+import { Workflow } from './workflow-layout.types';
 
 export interface PlayButtonProps {
   workflowName: string | null;
-  workflowMetadata: WorkflowMetadata | null;
+  workflowData: Workflow | null;
 }
 
 export interface InputField {
