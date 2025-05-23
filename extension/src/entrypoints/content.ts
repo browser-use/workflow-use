@@ -226,28 +226,61 @@ function stopRecorder() {
   }
 }
 
+let lastClickedElement: HTMLElement | null = null;
+let lastClickTimestamp = 0;
+const CLICK_DEBOUNCE_MS = 80;
+
 // --- Custom Click Handler ---
 function handleCustomClick(event: MouseEvent) {
   if (!isRecordingActive) return;
   const targetElement = event.target as HTMLElement;
   if (!targetElement) return;
+  // Remove error popup if present from previous invalid click
+  const existingError = document.getElementById('selector-error-popup');
+  if (existingError) {
+    existingError.remove();
+  }
 
   try {
     const xpath = getXPath(targetElement);
+    const cssSelector = getEnhancedCSSSelector(targetElement, xpath);
     const clickData = {
       timestamp: Date.now(),
       url: document.location.href, // Use document.location for main page URL
       frameUrl: window.location.href, // URL of the frame where the event occurred
       xpath: xpath,
-      cssSelector: getEnhancedCSSSelector(targetElement, xpath),
+      cssSelector: cssSelector,
       elementTag: targetElement.tagName,
       elementText: targetElement.textContent?.trim().slice(0, 200) || '',
     };
+    // Check if the selector is unstable
+    const matchedElements = document.querySelectorAll(cssSelector);
+    if (
+      matchedElements.length > 1 ||
+      cssSelector === targetElement.tagName.toLowerCase()
+    ) {
+      if (!(clickData.timestamp - lastClickTimestamp < CLICK_DEBOUNCE_MS)) {
+        showSelectorError(
+          `Too many matching elements for selector: ${cssSelector}`
+        );
+        event.preventDefault(); // Block default action
+        event.stopPropagation(); // Stop possible propagation
+        lastClickedElement = targetElement;
+        lastClickTimestamp = clickData.timestamp;
+        return;
+      } else {
+        lastClickedElement = targetElement;
+        lastClickTimestamp = clickData.timestamp;
+        return;
+      }
+    }
     console.log('Sending CUSTOM_CLICK_EVENT:', clickData);
     chrome.runtime.sendMessage({
       type: 'CUSTOM_CLICK_EVENT',
       payload: clickData,
     });
+    lastClickedElement = targetElement;
+    lastClickTimestamp = clickData.timestamp;
   } catch (error) {
     console.error('Error capturing click data:', error);
   }
@@ -390,6 +423,38 @@ function handleKeydown(event: KeyboardEvent) {
   }
 }
 // --- End Custom Keydown Handler ---
+
+function showSelectorError(message: string) {
+  const existing = document.getElementById('selector-error-popup');
+  if (existing) return; // Prevent stacking popups
+
+  const div = document.createElement('div');
+  div.id = 'selector-error-popup';
+  div.textContent = message;
+  Object.assign(div.style, {
+    position: 'fixed',
+    bottom: '50%',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    backgroundColor: '#ff4d4f',
+    color: '#fff',
+    padding: '12px 30px',
+    borderRadius: '4px',
+    fontSize: '16px',
+    zIndex: '99999',
+    boxShadow: '0 2px 6px rgba(0,0,0,0.2)',
+    opacity: '1',
+    transition: 'opacity 1s ease-out',
+  });
+
+  document.body.appendChild(div);
+  setTimeout(() => {
+    div.style.opacity = '0';
+  }, 1000);
+  setTimeout(() => {
+    div.remove();
+  }, 1500);
+}
 
 export default defineContentScript({
   matches: ['<all_urls>'],
