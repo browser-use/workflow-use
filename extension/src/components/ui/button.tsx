@@ -57,3 +57,40 @@ function Button({
 }
 
 export { Button, buttonVariants };
+
+interface ToggleButtonProps extends React.ComponentProps<typeof Button> {
+  checked: boolean;
+  onCheckedChange: (checked: boolean) => void;
+  onLabel?: string;
+  offLabel?: string;
+}
+
+function ToggleButton({
+  checked,
+  onCheckedChange,
+  onLabel = "On",
+  offLabel = "Off",
+  className,
+  variant,
+  size = "sm",
+  ...props
+}: ToggleButtonProps) {
+  const handleClick = () => {
+    onCheckedChange(!checked);
+  };
+
+  return (
+    <Button
+      variant={checked ? "default" : "secondary"} // Green for on, gray for off
+      size={size}
+      onClick={handleClick}
+      className={cn("min-w-[60px] justify-center", className)} // Ensure minimum width
+      aria-pressed={checked}
+      {...props}
+    >
+      {checked ? onLabel : offLabel}
+    </Button>
+  );
+}
+
+export { ToggleButton };

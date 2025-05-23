@@ -3,6 +3,7 @@ import { EventType, IncrementalSource } from '@rrweb/types';
 
 let stopRecording: (() => void) | undefined = undefined;
 let isRecordingActive = true; // Content script's local state
+let isHighlightingActive = false; // Set to true if you want to highlight by default
 let scrollTimeout: ReturnType<typeof setTimeout> | null = null;
 let lastScrollY: number | null = null;
 let lastDirection: 'up' | 'down' | null = null;
@@ -206,6 +207,8 @@ function startRecorder() {
   document.addEventListener('input', handleInput, true);
   document.addEventListener('change', handleSelectChange, true);
   document.addEventListener('keydown', handleKeydown, true);
+  document.addEventListener('mouseover', handleMouseOver, true);
+  document.addEventListener('mouseout', handleMouseOut, true);
   console.log('Permanently attached custom event listeners.');
 }
 
@@ -221,6 +224,8 @@ function stopRecorder() {
     document.removeEventListener('input', handleInput, true);
     document.removeEventListener('change', handleSelectChange, true); // Remove change listener
     document.removeEventListener('keydown', handleKeydown, true); // Remove keydown listener
+    document.removeEventListener('mouseover', handleMouseOver, true);
+    document.removeEventListener('mouseout', handleMouseOut, true);
   } else {
     console.log('Recorder not running, cannot stop.');
   }
@@ -391,6 +396,85 @@ function handleKeydown(event: KeyboardEvent) {
 }
 // --- End Custom Keydown Handler ---
 
+// Store the current overlay to manage its lifecycle
+let currentOverlay: HTMLDivElement | null = null;
+
+// Handle mouseover to create overlay
+function handleMouseOver(event: MouseEvent) {
+  if (!isRecordingActive || !isHighlightingActive) return;
+  const targetElement = event.target as HTMLElement;
+  if (!targetElement) return;
+
+  // Remove any existing overlay to avoid duplicates
+  if (currentOverlay) {
+    // console.log('Removing existing overlay');
+    currentOverlay.remove();
+    currentOverlay = null;
+  }
+
+  try {
+    const xpath = getXPath(targetElement);
+    // console.log('XPath of target element:', xpath);
+    let elementToHighlight: HTMLElement | null = document.evaluate(
+      xpath,
+      document,
+      null,
+      XPathResult.FIRST_ORDERED_NODE_TYPE,
+      null
+    ).singleNodeValue as HTMLElement | null;
+    if (!elementToHighlight) {
+      const enhancedSelector = getEnhancedCSSSelector(targetElement, xpath);
+      console.log('CSS Selector:', enhancedSelector);
+      const elements = document.querySelectorAll<HTMLElement>(enhancedSelector);
+
+      // Try to find the element under the mouse
+      for (const el of elements) {
+        const rect = el.getBoundingClientRect();
+        if (
+          event.clientX >= rect.left &&
+          event.clientX <= rect.right &&
+          event.clientY >= rect.top &&
+          event.clientY <= rect.bottom
+        ) {
+          elementToHighlight = el;
+          break;
+        }
+      }
+    }
+    if (elementToHighlight) {
+      const rect = elementToHighlight.getBoundingClientRect();
+      const highlightOverlay = document.createElement('div');
+      highlightOverlay.className = 'highlight-overlay';
+      Object.assign(highlightOverlay.style, {
+        position: 'absolute',
+        top: `${rect.top + window.scrollY}px`,
+        left: `${rect.left + window.scrollX}px`,
+        width: `${rect.width}px`,
+        height: `${rect.height}px`,
+        border: '2px solid lightgreen',
+        backgroundColor: 'rgba(144, 238, 144, 0.2)', // lightgreen tint
+        pointerEvents: 'none',
+        zIndex: '2147483000',
+      });
+      document.body.appendChild(highlightOverlay);
+      currentOverlay = highlightOverlay;
+    } else {
+      console.warn('No element found to highlight for xpath:', xpath);
+    }
+  } catch (error) {
+    console.error('Error creating highlight overlay:', error);
+  }
+}
+
+// Handle mouseout to remove overlay
+function handleMouseOut(event: MouseEvent) {
+  if (!isRecordingActive || !isHighlightingActive) return;
+  if (currentOverlay) {
+    currentOverlay.remove();
+    currentOverlay = null;
+  }
+}
+
 export default defineContentScript({
   matches: ['<all_urls>'],
   main(ctx) {
@@ -403,6 +487,16 @@ export default defineContentScript({
           startRecorder();
         } else if (!shouldBeRecording && isRecordingActive) {
           stopRecorder();
+        }
+      } else if (message.type === 'SET_HIGHLIGHTING_STATUS') {
+        const shouldBeHighlighting = message.payload;
+        console.log(
+          `Received highlighting status update: ${shouldBeHighlighting}`
+        );
+        isHighlightingActive = shouldBeHighlighting;
+        if (!isHighlightingActive && currentOverlay) {
+          currentOverlay.remove();
+          currentOverlay = null;
         }
       }
       // If needed, handle other message types here
@@ -443,6 +537,8 @@ export default defineContentScript({
       document.removeEventListener('input', handleInput, true);
       document.removeEventListener('change', handleSelectChange, true);
       document.removeEventListener('keydown', handleKeydown, true);
+      document.removeEventListener('mouseover', handleMouseOver, true);
+      document.removeEventListener('mouseout', handleMouseOut, true);
       stopRecorder(); // Ensure rrweb is stopped
     });
 

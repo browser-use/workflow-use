@@ -1,11 +1,26 @@
-import React from "react";
+import React, { useState } from "react";
 import { useWorkflow } from "../context/workflow-provider";
 import { Button } from "@/components/ui/button";
+import { ToggleButton } from "@/components/ui/button";
 import { EventViewer } from "./event-viewer"; // Import EventViewer
 
 export const RecordingView: React.FC = () => {
-  const { stopRecording, workflow } = useWorkflow();
+  const {
+    stopRecording,
+    workflow,
+    stopHighlighting,
+    startHighlighting,
+    highlightingStatus,
+  } = useWorkflow();
   const stepCount = workflow?.steps?.length || 0;
+
+  const toggleHighlighting = () => {
+    if (highlightingStatus === "highlighting_enabled") {
+      stopHighlighting();
+    } else {
+      startHighlighting();
+    }
+  };
 
   return (
     <div className="flex flex-col h-full">
@@ -19,6 +34,13 @@ export const RecordingView: React.FC = () => {
             Recording ({stepCount} steps)
           </span>
         </div>
+        <ToggleButton
+          checked={highlightingStatus === "highlighting_enabled"}
+          onCheckedChange={toggleHighlighting}
+          onLabel="Highlight On"
+          offLabel="Highlight Off"
+          aria-label="Toggle highlighting"
+        />
         <Button variant="destructive" size="sm" onClick={stopRecording}>
           Stop Recording
         </Button>

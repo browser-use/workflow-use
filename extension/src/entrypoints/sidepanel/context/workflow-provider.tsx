@@ -11,6 +11,7 @@ import { Workflow } from "../../../lib/workflow-types"; // Adjust path as needed
 type WorkflowState = {
   workflow: Workflow | null;
   recordingStatus: string; // e.g., 'idle', 'recording', 'stopped', 'error'
+  highlightingStatus: string; // e.g., 'highlighting_enabled', 'highlighting_disabled'
   currentEventIndex: number;
   isLoading: boolean;
   error: string | null;
@@ -22,6 +23,8 @@ type WorkflowContextType = WorkflowState & {
   discardAndStartNew: () => void;
   selectEvent: (index: number) => void;
   fetchWorkflowData: (isPolling?: boolean) => void; // Add optional flag
+  startHighlighting: () => void;
+  stopHighlighting: () => void;
 };
 
 const WorkflowContext = createContext<WorkflowContextType | undefined>(
@@ -39,6 +42,9 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
 }) => {
   const [workflow, setWorkflow] = useState<Workflow | null>(null);
   const [recordingStatus, setRecordingStatus] = useState<string>("idle"); // 'idle', 'recording', 'stopped', 'error'
+  const [highlightingStatus, setHighlightingStatus] = useState<string>(
+    "highlighting_disabled"
+  ); // 'highlighting_enabled', 'highlighting_disabled'
   const [currentEventIndex, setCurrentEventIndex] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -130,6 +136,16 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
           }
           return newStatus; // Return the new status to update the state
         });
+      } else if (message.type === "highlighting_status_updated") {
+        console.log(
+          "Highlighting status updated message received:",
+          message.payload
+        );
+        const newStatus = message.payload.status;
+        // Use functional update to get previous status reliably
+        setHighlightingStatus((prevStatus) => {
+          return newStatus; // Return the new status to update the state
+        });
       }
     };
     chrome.runtime.onMessage.addListener(messageListener);
@@ -200,6 +216,36 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
     });
   }, []); // No dependencies needed
 
+  const startHighlighting = useCallback(() => {
+    setError(null);
+    chrome.runtime.sendMessage({ type: "START_HIGHLIGHTING" }, (response) => {
+      if (chrome.runtime.lastError) {
+        console.error("Error starting highlighting:", chrome.runtime.lastError);
+        setError(
+          `Failed to start highlighting: ${chrome.runtime.lastError.message}`
+        );
+      } else {
+        console.log("Start highlighting acknowledged by background.");
+        // State updates happen via broadcast + fetch
+      }
+    });
+  }, []);
+
+  const stopHighlighting = useCallback(() => {
+    setError(null);
+    chrome.runtime.sendMessage({ type: "STOP_HIGHLIGHTING" }, (response) => {
+      if (chrome.runtime.lastError) {
+        console.error("Error stopping highlighting:", chrome.runtime.lastError);
+        setError(
+          `Failed to stop highlighting: ${chrome.runtime.lastError.message}`
+        );
+      } else {
+        console.log("Stop highlighting acknowledged by background.");
+        // State updates happen via broadcast + fetch
+      }
+    });
+  }, []);
+
   const discardAndStartNew = useCallback(() => {
     startRecording();
   }, [startRecording]);
@@ -211,6 +257,7 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
   const value = {
     workflow,
     recordingStatus,
+    highlightingStatus,
     currentEventIndex,
     isLoading,
     error,
@@ -219,6 +266,8 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
     discardAndStartNew,
     selectEvent,
     fetchWorkflowData,
+    startHighlighting,
+    stopHighlighting,
   };
 
   return (
