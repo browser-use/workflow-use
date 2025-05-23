@@ -34,6 +34,7 @@ Follow these rules when generating the output JSON:
        - Evaluating content to match user input (e.g., finding a specific item based on its name or attributes).
      - Break complex tasks into multiple specific agentic steps rather than one broad task.
      - **Use the user’s goal (if provided) or inferred intent from the recording** to identify where agentic steps are needed for dynamic content, even if the recording uses deterministic steps.
+   - **extract_page_content** - Use this type when you want to extract data from the page. If the task is simply extracting data from the page, use this instead of agentic steps (never create agentic step for simple data extraction).
    - **Deterministic events** → keep the original recorder event structure. The
      value of `"type"` MUST match **exactly** one of the available action
      names listed below; all additional keys are interpreted as parameters for

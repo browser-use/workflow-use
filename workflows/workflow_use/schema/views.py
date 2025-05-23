@@ -88,6 +88,13 @@ class ScrollStep(TimestampedWorkflowStep):
 	scrollY: int = Field(..., description='Vertical scroll pixels.')
 
 
+class PageExtractionStep(TimestampedWorkflowStep):
+	"""Extracts text from the page using 'page_extraction' (maps to workflow controller's page_extraction)."""
+
+	type: Literal['extract_page_content']  # Assumed type for workflow controller's page_extraction
+	goal: str = Field(..., description='The goal of the page extraction.')
+
+
 # --- Union of all possible step types ---
 # This Union defines what constitutes a valid step in the "steps" list.
 DeterministicWorkflowStep = Union[
@@ -97,6 +104,7 @@ DeterministicWorkflowStep = Union[
 	SelectChangeStep,
 	KeyPressStep,
 	ScrollStep,
+	PageExtractionStep,
 ]
 
 AgenticWorkflowStep = AgentTaskWorkflowStep
