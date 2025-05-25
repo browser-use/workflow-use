@@ -8,19 +8,10 @@ import React, {
   useRef,
   useEffect,
 } from 'react';
-
-import governmentFormSubmission from '@/data/workflows/government-form-submission.json';
-import loginFlow from '@/data/workflows/login-flow.json';
-import formSubmission from '@/data/workflows/form-submission.json';
-import dataExtraction from '@/data/workflows/data-extraction.json';
-import navigationTest from '@/data/workflows/navigation-test.json';
-
 import { Workflow, WorkflowMetadata } from '../types/workflow-layout.types';
-import { WorkflowServiceImpl } from '@/services/workflowService';
+import { workflowService } from '@/services/workflowService';
 import { fetchWorkflowLogs, cancelWorkflow } from '@/services/pollingService';
 import { InputField } from '@/types/play-button.types';
-
-const workflowService = new WorkflowServiceImpl();
 
 export type DisplayMode = 'canvas' | 'editor' | 'log';
 
@@ -30,12 +21,12 @@ interface AppContextType {
   workflowStatus: string;
   workflowError: string | null;
   isWorkflowRunning: boolean;
-  currentTaskId: string | null;
+  currentTaskId: number | null;
   currentLogPosition: number;
 
   currentWorkflowData: Workflow | null;
+  setCurrentWorkflowData: (workflow: Workflow | null) => void;
   workflows: Workflow[];
-  selectedWorkflow: string | null;
   addWorkflow: (workflow: Workflow) => void;
   deleteWorkflow: (workflowId: string) => void;
   selectWorkflow: (workflowName: string) => void;
@@ -49,7 +40,6 @@ interface AppContextType {
   searchWorkflows: (term: string) => Workflow[];
   executeWorkflow: (name: string, inputFields: InputField[]) => Promise<void>;
 
-  fetchWorkflowAndSet: (name: string) => Promise<void>;
   updateMetadata: (name: string, metadata: WorkflowMetadata) => Promise<void>;
   startPollingLogs: (taskId: string) => void;
   stopPollingLogs: () => void;
@@ -63,17 +53,8 @@ interface AppProviderProps {
   children: ReactNode;
 }
 
-const defaultWorkflows: Workflow[] = [
-  governmentFormSubmission as Workflow,
-  loginFlow as Workflow,
-  formSubmission as Workflow,
-  dataExtraction as Workflow,
-  navigationTest as Workflow,
-];
-
 export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
-  const [workflows, setWorkflows] = useState<Workflow[]>(defaultWorkflows);
-  const [selectedWorkflow, setSelectedWorkflow] = useState<string | null>(null);
+  const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [displayMode, setDisplayMode] = useState<DisplayMode>('canvas');
   const [currentWorkflowData, setCurrentWorkflowData] =
     useState<Workflow | null>(null);
@@ -84,12 +65,10 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
   const [workflowError, setWorkflowError] = useState<string | null>(null);
   const [isWorkflowRunning, setIsWorkflowRunning] = useState(false);
   const [logPosition, setLogPosition] = useState<number>(0);
-  const [currentTaskId, setCurrentTaskId] = useState<string | null>(null);
+  const [currentTaskId, setCurrentTaskId] = useState<number | null>(null);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
   const selectWorkflow = (workflowName: string) => {
-    setSelectedWorkflow(workflowName);
-
     const wf = workflows.find((w) => w.name === workflowName);
     if (wf) {
       setCurrentWorkflowData(wf);
@@ -116,16 +95,6 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         wf.description.toLowerCase().includes(lower)
     );
   };
-
-  const fetchWorkflowAndSet = useCallback(async (name: string) => {
-    try {
-      const workflow = await workflowService.getWorkflow(name);
-      setSelectedWorkflow(name);
-      setCurrentWorkflowData(workflow);
-    } catch (err) {
-      console.error(`Failed to load workflow: ${name}`, err);
-    }
-  }, []);
 
   const updateMetadata = useCallback(
     async (name: string, metadata: WorkflowMetadata) => {
@@ -219,7 +188,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
 
       try {
         const result = await workflowService.executeWorkflow(name, inputFields);
-        setCurrentTaskId(result.taskId);
+        setCurrentTaskId(parseInt(result.taskId));
         setLogPosition(result.logPosition);
         setIsWorkflowRunning(true);
         setWorkflowStatus('running');
@@ -245,10 +214,24 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     return () => clearInterval(logInterval);
   }, [workflows, currentWorkflowData]);
 
+  // Fetch workflows on mount
+  useEffect(() => {
+    const fetchWorkflows = async () => {
+      try {
+        console.log('Set here a loading state to sidebar');
+        const response = await workflowService.getWorkflows();
+        const parsedWorkflows = response.map((wf: string) => JSON.parse(wf));
+        setWorkflows(parsedWorkflows);
+      } catch (err) {
+        console.error('Failed to fetch workflows:', err);
+      }
+    };
+    fetchWorkflows();
+  }, []);
+
   return (
     <AppContext.Provider
       value={{
-        selectedWorkflow,
         selectWorkflow,
         displayMode,
         setDisplayMode,
@@ -258,6 +241,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         currentTaskId,
         currentLogPosition: logPosition,
         currentWorkflowData,
+        setCurrentWorkflowData,
         workflows,
         addWorkflow,
         deleteWorkflow,
@@ -267,7 +251,6 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         setShowRunAsToolDialog,
         searchWorkflows,
         executeWorkflow,
-        fetchWorkflowAndSet,
         updateMetadata,
         startPollingLogs,
         stopPollingLogs,

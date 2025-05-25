@@ -11,22 +11,21 @@ export function TopToolbar() {
     currentWorkflowData,
     setShowRunDialog,
     setShowRunAsToolDialog,
-    selectedWorkflow,
   } = useAppContext();
 
   const handleRunWithInputs = () => {
-    console.log('Running workflow with inputs:', selectedWorkflow);
+    console.log('Running workflow with inputs:', currentWorkflowData?.name);
     setShowRunDialog(true);
   };
 
   const handleRunAsTool = () => {
-    console.log('Running workflow as tool:', selectedWorkflow);
+    console.log('Running workflow as tool:', currentWorkflowData?.name);
     setShowRunAsToolDialog(true);
   };
 
   const handleToggleMode = () => {
     if (displayMode === 'canvas') {
-      console.log('Editing workflow:', selectedWorkflow);
+      console.log('Editing workflow:', currentWorkflowData?.name);
       setDisplayMode('editor');
     } else {
       setDisplayMode('canvas');
@@ -47,7 +46,7 @@ export function TopToolbar() {
             variant="outline"
             size="lg"
             onClick={handleRunWithInputs}
-            disabled={!selectedWorkflow || !currentWorkflowData}
+            disabled={!currentWorkflowData}
             className="flex items-center gap-2 text-base px-6 py-3"
           >
             <Play className="w-5 h-5" />
@@ -58,7 +57,7 @@ export function TopToolbar() {
             variant="outline"
             size="lg"
             onClick={handleRunAsTool}
-            disabled={!selectedWorkflow || !currentWorkflowData}
+            disabled={!currentWorkflowData}
             className="flex items-center gap-2 text-base px-6 py-3"
           >
             <Settings className="w-5 h-5" />
@@ -69,7 +68,7 @@ export function TopToolbar() {
             variant="default"
             size="lg"
             onClick={handleToggleMode}
-            disabled={!selectedWorkflow || !currentWorkflowData}
+            disabled={!currentWorkflowData}
             className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-base px-6 py-3"
           >
             <Edit3 className="w-5 h-5" />

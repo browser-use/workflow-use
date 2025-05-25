@@ -15,7 +15,7 @@ export function WorkflowItem({
   workflow,
   onDeleteWorkflow,
 }: WorkflowItemProps) {
-  const { selectedWorkflow, selectWorkflow } = useAppContext();
+  const { currentWorkflowData, selectWorkflow } = useAppContext();
 
   return (
     <SidebarMenuItem key={workflow.name}>
@@ -23,7 +23,7 @@ export function WorkflowItem({
         onClick={() => selectWorkflow(workflow.name)}
         className={cn(
           'w-full p-4 text-left hover:bg-gray-100 transition-colors rounded-md min-h-[80px] relative group',
-          selectedWorkflow === workflow.name &&
+          currentWorkflowData?.name === workflow.name &&
             'bg-purple-50 border-r-2 border-purple-500'
         )}
       >
@@ -39,7 +39,7 @@ export function WorkflowItem({
               {workflow.description}
             </p>
             <span className="text-xs text-purple-600 font-medium">
-              {workflow.steps.length} steps
+              {workflow.steps?.length ?? 0} steps
             </span>
           </div>
         </div>

@@ -11,7 +11,8 @@ import {
 } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Trash2, Plus, GripVertical } from 'lucide-react';
-import { useAppContext, WorkflowStep } from '@/contexts/AppContext';
+import { useAppContext } from '@/contexts/AppContext';
+import { WorkflowStep } from '@/types/workflow-layout.types';
 
 export function WorkflowEditor() {
   const { currentWorkflowData, setCurrentWorkflowData } = useAppContext();

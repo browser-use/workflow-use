@@ -21,10 +21,10 @@ const nodeTypes = {
 };
 
 export function WorkflowCanvas() {
-  const { currentWorkflowData, selectedWorkflow } = useAppContext();
+  const { currentWorkflowData } = useAppContext();
 
   const initialNodes: Node[] = useMemo(() => {
-    if (!currentWorkflowData || !selectedWorkflow) {
+    if (!currentWorkflowData) {
       return [
         {
           id: 'placeholder',
@@ -52,10 +52,10 @@ export function WorkflowCanvas() {
         stepNumber: index,
       },
     }));
-  }, [currentWorkflowData, selectedWorkflow]);
+  }, [currentWorkflowData]);
 
   const initialEdges: Edge[] = useMemo(() => {
-    if (!currentWorkflowData || !selectedWorkflow) return [];
+    if (!currentWorkflowData) return [];
 
     return currentWorkflowData.steps.slice(0, -1).map((_, index) => ({
       id: `e-step-${index}-step-${index + 1}`,
@@ -64,7 +64,7 @@ export function WorkflowCanvas() {
       type: 'smoothstep',
       markerEnd: { type: MarkerType.ArrowClosed },
     }));
-  }, [currentWorkflowData, selectedWorkflow]);
+  }, [currentWorkflowData]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);

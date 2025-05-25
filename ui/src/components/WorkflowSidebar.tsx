@@ -13,9 +13,10 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { DeleteWorkflowDialog } from '@/components/DeleteWorkflowDialog';
 import { WorkflowItem } from '@/components/WorkflowItem';
+import { WorkflowCategoryBlock } from '@/components/WorkflowCategoryBlock';
 import { useAppContext } from '@/contexts/AppContext';
 import { getUniqueWorkflowName } from '@/lib/utils';
-import { WorkflowServiceImpl } from '@/services/workflowService';
+import { workflowService } from '@/services/workflowService';
 
 export function WorkflowSidebar() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -33,7 +34,8 @@ export function WorkflowSidebar() {
   }, [searchTerm, workflows]);
 
   const workflowsByCategory = useMemo(() => {
-    const result: Record<string, typeof workflows> = {
+    type Category = 'today' | 'yesterday' | 'last-week' | 'older';
+    const result: Record<Category, typeof workflows> = {
       today: [],
       yesterday: [],
       'last-week': [],
@@ -41,10 +43,12 @@ export function WorkflowSidebar() {
     };
 
     filteredWorkflows.forEach((workflow) => {
-      const category = WorkflowServiceImpl.prototype.getWorkflowCategory(
+      const category = workflowService.getWorkflowCategory(
         workflow.name
-      );
-      result[category].push(workflow);
+      ) as Category;
+      if (category in result) {
+        result[category].push(workflow);
+      }
     });
 
     return result;
@@ -64,7 +68,7 @@ export function WorkflowSidebar() {
       ...random,
       id: `new-workflow-${Date.now()}`,
       name: getUniqueWorkflowName(
-        `${random.name} (New)`,
+        `${random?.name}`,
         workflows.map((wf) => wf.name)
       ),
       category: 'today',
@@ -119,7 +123,7 @@ export function WorkflowSidebar() {
           <Button
             onClick={handleRecordNewWorkflow}
             disabled={isRecording}
-            className="mt-4 w-full bg-red-600 hover:bg-red-700 text-white"
+            className="mt-4 w-full bg-purple-600 hover:bg-purple-700 text-white"
           >
             {isRecording ? (
               <>
@@ -139,7 +143,7 @@ export function WorkflowSidebar() {
           <SidebarGroup>
             <SidebarGroupContent>
               <SidebarMenu className="space-y-1">
-                {workflowsByCategory.today.length > 0 && (
+                {/* {workflowsByCategory.today.length > 0 && (
                   <>
                     <div className="flex items-center justify-center px-4 py-3">
                       <div className="flex items-center w-full">
@@ -221,7 +225,27 @@ export function WorkflowSidebar() {
                       />
                     ))}
                   </>
-                )}
+                )} */}
+                <WorkflowCategoryBlock
+                  label="Today"
+                  workflows={workflowsByCategory.today}
+                  onDeleteWorkflow={handleDeleteWorkflow}
+                />
+                <WorkflowCategoryBlock
+                  label="Yesterday"
+                  workflows={workflowsByCategory.yesterday}
+                  onDeleteWorkflow={handleDeleteWorkflow}
+                />
+                <WorkflowCategoryBlock
+                  label="Last Week"
+                  workflows={workflowsByCategory['last-week']}
+                  onDeleteWorkflow={handleDeleteWorkflow}
+                />
+                <WorkflowCategoryBlock
+                  label="Older"
+                  workflows={workflowsByCategory.older}
+                  onDeleteWorkflow={handleDeleteWorkflow}
+                />
 
                 {filteredWorkflows.length === 0 && (
                   <div className="p-4 text-center text-gray-500">

@@ -1,4 +1,4 @@
-import { $api } from '../lib/api';
+import { fetchClient } from '../lib/api';
 import { Workflow, WorkflowMetadata } from '../types/workflow-layout.types';
 import { InputField } from '../types/play-button.types';
 
@@ -6,8 +6,8 @@ import { InputField } from '../types/play-button.types';
 import runtimeJson from '@/data/runtimes/workflow-runtimes.json';
 
 export interface WorkflowService {
-  getWorkflows(): Promise<string[]>;
-  getWorkflow(name: string): Promise<any>; // Replace 'any' with proper type
+  getWorkflows(): Promise<Workflow[]>;
+  getWorkflowByName(name: string): Promise<any>;
   updateWorkflowMetadata(
     name: string,
     metadata: WorkflowMetadata
@@ -23,15 +23,26 @@ export interface WorkflowService {
   getWorkflowCategory(name: string): string;
 }
 
-export class WorkflowServiceImpl implements WorkflowService {
-  async getWorkflows(): Promise<string[]> {
-    const response = await $api.useQuery('get', '/api/workflows');
-    return response.data?.workflows ?? [];
+class WorkflowServiceImpl implements WorkflowService {
+  async getWorkflows(): Promise<Workflow[]> {
+    console.log('Fetching list of workflows...');
+    const response = await fetchClient.GET('/api/workflows');
+    console.log('Received response for workflows:', response.data);
+
+    const workflowNames = response.data?.workflows ?? [];
+    console.log('Workflow names extracted:', workflowNames);
+
+    // Fetch full workflow data for each workflow name
+    const workflows = await Promise.all(
+      workflowNames.map((name) => this.getWorkflowByName(name))
+    );
+
+    console.log('Fetched full workflow data:', workflows);
+    return workflows;
   }
 
-  async getWorkflow(name: string): Promise<any> {
-    // Replace 'any' with proper type
-    const response = await $api.useQuery('get', '/api/workflows/{name}', {
+  async getWorkflowByName(name: string): Promise<any> {
+    const response = await fetchClient.GET('/api/workflows/{name}', {
       params: { path: { name } },
     });
     return response.data;
@@ -41,11 +52,9 @@ export class WorkflowServiceImpl implements WorkflowService {
     name: string,
     metadata: WorkflowMetadata
   ): Promise<void> {
-    await $api
-      .useMutation('post', '/api/workflows/update-metadata')
-      .mutateAsync({
-        body: { name, metadata } as any, // Replace 'any' with proper type
-      });
+    await fetchClient.POST('/api/workflows/update-metadata', {
+      body: { name, metadata: metadata as any },
+    });
   }
 
   async executeWorkflow(
@@ -108,3 +117,5 @@ export class WorkflowServiceImpl implements WorkflowService {
     return 'older';
   }
 }
+
+export const workflowService = new WorkflowServiceImpl();
