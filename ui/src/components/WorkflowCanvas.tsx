@@ -43,7 +43,7 @@ export function WorkflowCanvas() {
     }
 
     return currentWorkflowData.steps.map((step, index) => ({
-      id: `step-${index}`,
+      id: `step-${index + 1}`,
       type: 'workflowStep',
       position: { x: 100, y: 100 + index * 150 },
       data: {
@@ -51,7 +51,7 @@ export function WorkflowCanvas() {
         action: step.type,
         target: step.cssSelector,
         value: step.value,
-        stepNumber: index,
+        stepNumber: index + 1,
       },
     }));
   }, [currentWorkflowData]);
@@ -60,9 +60,9 @@ export function WorkflowCanvas() {
     if (!currentWorkflowData) return [];
 
     return currentWorkflowData.steps.slice(0, -1).map((_, index) => ({
-      id: `e-step-${index}-step-${index + 1}`,
-      source: `step-${index}`,
-      target: `step-${index + 1}`,
+      id: `e-step-${index + 1}-step-${index + 2}`,
+      source: `step-${index + 1}`,
+      target: `step-${index + 2}`,
       type: 'smoothstep',
       markerEnd: { type: MarkerType.ArrowClosed },
     }));

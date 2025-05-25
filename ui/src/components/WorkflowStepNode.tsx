@@ -60,7 +60,7 @@ export const WorkflowStepNode = memo(
           'hover:shadow-md'
         )}
       >
-        {data.stepNumber > 0 && (
+        {data.stepNumber > 1 && (
           <Handle
             type="target"
             position={Position.Top}
@@ -80,7 +80,7 @@ export const WorkflowStepNode = memo(
                   Step {data.stepNumber}
                 </span>
               )}
-              <span className="text-xs font-medium text-gray-500 bg-purple-100 text-purple-700 px-2 py-1 rounded-full capitalize">
+              <span className="text-xs font-medium bg-purple-100 text-purple-700 px-2 py-1 rounded-full capitalize">
                 {data.action}
               </span>
             </div>
