@@ -1,0 +1,50 @@
+
+{
+  "id": "login-flow",
+  "workflow_analysis": "Simple user login workflow that navigates to a login page and enters credentials.",
+  "name": "User Login Flow",
+  "description": "Automated login process",
+  "version": "1.0",
+  "category": "today",
+  "lastRun": "2025-05-24T07:00:00Z",
+  "steps": [
+    {
+      "id": "1",
+      "label": "Navigate to Login",
+      "action": "navigate",
+      "target": "https://example.com/login",
+      "stepNumber": 1
+    },
+    {
+      "id": "2",
+      "label": "Enter Username",
+      "action": "type",
+      "target": "#username",
+      "value": "user@example.com",
+      "stepNumber": 2
+    },
+    {
+      "id": "3",
+      "label": "Enter Password",
+      "action": "type",
+      "target": "#password",
+      "value": "••••••••",
+      "stepNumber": 3
+    },
+    {
+      "id": "4",
+      "label": "Click Login Button",
+      "action": "click",
+      "target": "button[type=\"submit\"]",
+      "stepNumber": 4
+    },
+    {
+      "id": "5",
+      "label": "Verify Success",
+      "action": "wait",
+      "target": ".dashboard",
+      "stepNumber": 5
+    }
+  ],
+  "input_schema": []
+}
