@@ -18,7 +18,7 @@ const stepSchema = z.object({
   output: z.unknown().nullable(),
   timestamp: z.number().int().nullable(),
   tabId: z.number().int().nullable(),
-  type: z.enum(['navigation', 'click', 'select_change', 'input']),
+  type: z.enum(['navigation', 'click', 'select_change', 'input', 'agent']),
 
   /* optional fields (vary by step type) */
   url: z.string().url().optional(),
@@ -28,6 +28,7 @@ const stepSchema = z.object({
   elementText: z.string().optional(),
   selectedText: z.string().optional(),
   value: z.string().optional(),
+  task: z.string().optional(),
 });
 
 /* ── Workflow wrapper ──────────────────────────────────────────────── */

@@ -1,0 +1,104 @@
+
+{
+  "id": "government-form-submission",
+  "workflow_analysis": "This workflow is about automating the process of filling out a government-related form on a website. The form requires personal information such as first name, middle name, last name, social security number, gender, and marital status. Inputs are needed for dynamic form values such as names and social security number. The workflow involves navigation, data entry, and selection of options within the form.",
+  "name": "Government Form Submission",
+  "description": "Automated submission of a government-related form.",
+  "version": "1.0",
+  "category": "today",
+  "lastRun": "2025-05-24T08:00:00Z",
+  "steps": [
+    {
+      "id": "1",
+      "label": "Navigate to Form Homepage",
+      "action": "navigate",
+      "target": "https://v0-complex-form-example.vercel.app/",
+      "stepNumber": 1
+    },
+    {
+      "id": "2",
+      "label": "Click Start Application",
+      "action": "click",
+      "target": "button.inline-flex.items-center.justify-center.gap-2.whitespace-nowrap.text-sm.font-medium.ring-offset-background.transition-colors.bg-primary.text-primary-foreground.h-11.rounded-md.px-8",
+      "stepNumber": 2
+    },
+    {
+      "id": "3",
+      "label": "Enter First Name",
+      "action": "type",
+      "target": "#firstName",
+      "value": "{first_name}",
+      "stepNumber": 3
+    },
+    {
+      "id": "4",
+      "label": "Tab to Next Field",
+      "action": "key",
+      "target": "#firstName",
+      "value": "Tab",
+      "stepNumber": 4
+    },
+    {
+      "id": "5",
+      "label": "Tab Through Middle Name",
+      "action": "key",
+      "target": "#middleName",
+      "value": "Tab",
+      "stepNumber": 5
+    },
+    {
+      "id": "6",
+      "label": "Enter Last Name",
+      "action": "type",
+      "target": "#lastName",
+      "value": "{last_name}",
+      "stepNumber": 6
+    },
+    {
+      "id": "7",
+      "label": "Click Social Security Field",
+      "action": "click",
+      "target": "#socialSecurityLast4",
+      "stepNumber": 7
+    },
+    {
+      "id": "8",
+      "label": "Enter Social Security Last 4",
+      "action": "type",
+      "target": "#socialSecurityLast4",
+      "value": "{social_security_last4}",
+      "stepNumber": 8
+    },
+    {
+      "id": "9",
+      "label": "Select Male Gender",
+      "action": "click",
+      "target": "#male",
+      "stepNumber": 9
+    },
+    {
+      "id": "10",
+      "label": "Select Single Status",
+      "action": "click",
+      "target": "#single",
+      "stepNumber": 10
+    }
+  ],
+  "input_schema": [
+    {
+      "name": "first_name",
+      "type": "string",
+      "required": true
+    },
+    {
+      "name": "last_name",
+      "type": "string",
+      "required": true
+    },
+    {
+      "name": "social_security_last4",
+      "type": "string",
+      "required": true
+    }
+  ]
+}
