@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useRef } from 'react';
 import {
   ReactFlow,
   Background,
@@ -11,6 +11,7 @@ import {
   Edge,
   Node,
   MarkerType,
+  ReactFlowInstance,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { WorkflowStepNode } from './WorkflowStepNode';
@@ -22,6 +23,7 @@ const nodeTypes = {
 
 export function WorkflowCanvas() {
   const { currentWorkflowData } = useAppContext();
+  const reactFlowInstanceRef = useRef<ReactFlowInstance | null>(null);
 
   const initialNodes: Node[] = useMemo(() => {
     if (!currentWorkflowData) {
@@ -43,9 +45,9 @@ export function WorkflowCanvas() {
     return currentWorkflowData.steps.map((step, index) => ({
       id: `step-${index}`,
       type: 'workflowStep',
-      position: { x: 100, y: 100 + index * 200 },
+      position: { x: 100, y: 100 + index * 150 },
       data: {
-        label: step.description,
+        description: step.description,
         action: step.type,
         target: step.cssSelector,
         value: step.value,
@@ -78,7 +80,10 @@ export function WorkflowCanvas() {
   React.useEffect(() => {
     setNodes(initialNodes);
     setEdges(initialEdges);
-  }, [initialNodes, initialEdges, setNodes, setEdges]);
+    requestAnimationFrame(() => {
+      reactFlowInstanceRef.current?.fitView({ padding: 0.2 });
+    });
+  }, [currentWorkflowData, initialNodes, initialEdges, setNodes, setEdges]);
 
   return (
     <div className="w-full h-full bg-gray-50">
@@ -89,9 +94,12 @@ export function WorkflowCanvas() {
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         nodeTypes={nodeTypes}
+        onInit={(instance) => {
+          reactFlowInstanceRef.current = instance;
+        }}
         fitView
         style={{ backgroundColor: '#f9fafb' }}
-        defaultViewport={{ x: 0, y: 0, zoom: 1 }}
+        defaultViewport={{ x: 0, y: 0, zoom: 0 }}
       >
         <Background color="#e5e7eb" gap={20} />
         <Controls className="bg-white border border-gray-200 rounded-lg shadow-sm" />

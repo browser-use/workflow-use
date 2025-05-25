@@ -8,9 +8,10 @@ import { RunAsToolDialog } from '@/components/RunAsToolDialog';
 import { TopToolbar } from '@/components/TopToolbar';
 import { useAppContext } from '@/contexts/AppContext';
 import { LogViewer } from '@/components/LogViewer';
+import { Welcome } from '@/components/Welcome';
 
 const Index = () => {
-  const { displayMode, currentTaskId, setDisplayMode } = useAppContext();
+  const { displayMode, setDisplayMode } = useAppContext();
 
   return (
     <SidebarProvider>
@@ -19,15 +20,16 @@ const Index = () => {
         <main className="flex-1 flex flex-col">
           <TopToolbar />
           <div className="flex-1">
-            {displayMode === 'canvas' ? (
+            {displayMode === 'start' ? (
+              <Welcome />
+            ) : displayMode === 'canvas' ? (
               <WorkflowCanvas />
             ) : displayMode === 'log' ? (
-              <LogViewer
-                taskId={currentTaskId}
-                onClose={() => setDisplayMode('canvas')}
-              />
-            ) : (
+              <LogViewer onClose={() => setDisplayMode('canvas')} />
+            ) : displayMode === 'editor' ? (
               <WorkflowEditor />
+            ) : (
+              <WorkflowCanvas />
             )}
           </div>
         </main>

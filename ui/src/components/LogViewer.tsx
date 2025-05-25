@@ -2,11 +2,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useAppContext } from '@/contexts/AppContext';
 
 interface LogViewerProps {
-  taskId: string;
   onClose: () => void;
 }
 
-export const LogViewer: React.FC<LogViewerProps> = ({ taskId, onClose }) => {
+export const LogViewer: React.FC<LogViewerProps> = ({ onClose }) => {
   const {
     logData,
     workflowStatus,
@@ -14,17 +13,18 @@ export const LogViewer: React.FC<LogViewerProps> = ({ taskId, onClose }) => {
     startPollingLogs,
     stopPollingLogs,
     cancelWorkflowExecution,
+    currentTaskId,
   } = useAppContext();
 
   const [isCancelling, setIsCancelling] = useState(false);
   const logContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    startPollingLogs(taskId);
+    startPollingLogs(currentTaskId);
     return () => {
       stopPollingLogs();
     };
-  }, [taskId]);
+  }, [currentTaskId]);
 
   useEffect(() => {
     if (logContainerRef.current) {
@@ -36,7 +36,7 @@ export const LogViewer: React.FC<LogViewerProps> = ({ taskId, onClose }) => {
     if (workflowStatus !== 'running') return;
     setIsCancelling(true);
     try {
-      await cancelWorkflowExecution(taskId);
+      await cancelWorkflowExecution(currentTaskId);
     } finally {
       setIsCancelling(false);
     }
@@ -48,7 +48,7 @@ export const LogViewer: React.FC<LogViewerProps> = ({ taskId, onClose }) => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `workflow-logs-${taskId}.txt`;
+    link.download = `workflow-logs-${currentTaskId}.txt`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -75,78 +75,82 @@ export const LogViewer: React.FC<LogViewerProps> = ({ taskId, onClose }) => {
   };
 
   return (
-    <div className="w-full h-[350px] flex flex-col border border-[#ddd] rounded-md overflow-hidden my-4 bg-[#f8f9fa] font-mono">
-      <div className="flex justify-between p-2 bg-[#f0f2f5] border-b border-[#ddd]">
-        <div className="font-semibold text-[#333]">Workflow Execution Logs</div>
-        <div className="flex items-center gap-2.5">
-          <div className="flex items-center gap-2">
-            {workflowStatus === 'running' && (
-              <button
-                className={`flex items-center gap-1 py-1 px-2 bg-[#fff2f0] border border-[#ffccc7] rounded text-xs text-[#ff4d4f] transition hover:bg-[#fff1f0] hover:border-[#ffa39e] ${
-                  isCancelling ? 'opacity-60 cursor-not-allowed' : ''
-                }`}
-                onClick={handleCancel}
-                disabled={isCancelling}
-              >
-                Cancel
-              </button>
-            )}
-            {logData.length > 0 && (
-              <button
-                className="flex items-center gap-1 py-1 px-2 bg-[#f5f5f5] border border-[#ddd] rounded text-xs text-[#333] hover:bg-[#e6e6e6] hover:border-[#ccc]"
-                onClick={downloadLogs}
-              >
-                Download
-              </button>
-            )}
+    <div className="p-6 h-full">
+      <div className="max-w-6xl mx-auto h-full flex flex-col border border-[#ddd] rounded-md overflow-hidden bg-[#f8f9fa] font-mono">
+        <div className="flex justify-between p-2 bg-[#f0f2f5] border-b border-[#ddd]">
+          <div className="font-semibold text-[#333]">
+            Workflow Execution Logs
           </div>
-          <div
-            className={`py-0.5 px-2 rounded text-xs font-medium ${
-              workflowStatus === 'running'
-                ? 'bg-[#e6f7ff] text-[#1890ff] border border-[#91d5ff]'
-                : workflowStatus === 'completed'
-                ? 'bg-[#f6ffed] text-[#52c41a] border border-[#b7eb8f]'
-                : workflowStatus === 'cancelling'
-                ? 'bg-[#fff2f0] text-orange border border-[#ffccc7]'
-                : workflowStatus === 'cancelled'
-                ? 'bg-[#fff2f0] text-[#ff4d4f] border border-[#ffccc7]'
-                : workflowStatus === 'failed'
-                ? 'bg-[#fff2f0] text-[#ff4d4f] border border-[#ffccc7]'
-                : 'bg-[#fafafa] text-[#888] border border-[#ddd]'
-            }`}
-          >
-            Status:{' '}
-            {workflowStatus.charAt(0).toUpperCase() + workflowStatus.slice(1)}
+          <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-2">
+              {workflowStatus === 'running' && (
+                <button
+                  className={`flex items-center gap-1 py-1 px-2 bg-[#fff2f0] border border-[#ffccc7] rounded text-xs text-[#ff4d4f] transition hover:bg-[#fff1f0] hover:border-[#ffa39e] ${
+                    isCancelling ? 'opacity-60 cursor-not-allowed' : ''
+                  }`}
+                  onClick={handleCancel}
+                  disabled={isCancelling}
+                >
+                  Cancel
+                </button>
+              )}
+              {logData.length > 0 && (
+                <button
+                  className="flex items-center gap-1 py-1 px-2 bg-[#f5f5f5] border border-[#ddd] rounded text-xs text-[#333] hover:bg-[#e6e6e6] hover:border-[#ccc]"
+                  onClick={downloadLogs}
+                >
+                  Download
+                </button>
+              )}
+            </div>
+            <div
+              className={`py-0.5 px-2 rounded text-xs font-medium ${
+                workflowStatus === 'running'
+                  ? 'bg-[#e6f7ff] text-[#1890ff] border border-[#91d5ff]'
+                  : workflowStatus === 'completed'
+                  ? 'bg-[#f6ffed] text-[#52c41a] border border-[#b7eb8f]'
+                  : workflowStatus === 'cancelling'
+                  ? 'bg-[#fff2f0] text-orange border border-[#ffccc7]'
+                  : workflowStatus === 'cancelled'
+                  ? 'bg-[#fff2f0] text-[#ff4d4f] border border-[#ffccc7]'
+                  : workflowStatus === 'failed'
+                  ? 'bg-[#fff2f0] text-[#ff4d4f] border border-[#ffccc7]'
+                  : 'bg-[#fafafa] text-[#888] border border-[#ddd]'
+              }`}
+            >
+              Status:{' '}
+              {workflowStatus.charAt(0).toUpperCase() + workflowStatus.slice(1)}
+            </div>
           </div>
         </div>
-      </div>
 
-      <div
-        className="flex-1 overflow-y-auto p-3 text-xs leading-normal whitespace-pre-wrap break-words bg-white text-[#333]"
-        ref={logContainerRef}
-      >
-        {logData.length > 0 ? (
-          logData.map((log, index) => formatLog(log, index))
-        ) : (
-          <div className="text-[#999] italic py-5 text-center">
-            Waiting for logs...
-          </div>
-        )}
-
-        {workflowError && (
-          <div className="mt-2 p-2 rounded bg-[#fff2f0] text-[#ff4d4f] border border-[#ffccc7]">
-            <strong>Error:</strong> {workflowError}
-          </div>
-        )}
-      </div>
-
-      <div className="p-2.5 flex justify-center border-t border-[#ddd] bg-[#f0f2f5]">
-        <button
-          className="py-1.5 px-4 bg-[#f5f5f5] border border-[#ddd] rounded text-sm font-medium text-[#333] hover:bg-[#e6e6e6] hover:border-[#ccc]"
-          onClick={onClose}
+        <div
+          className="flex-1 overflow-y-auto p-3 text-xs leading-normal whitespace-pre-wrap break-words bg-white text-[#333] min-h-0 max-h-[calc(100vh-15rem)]"
+          ref={logContainerRef}
         >
-          Close
-        </button>
+          {logData.length > 0 ? (
+            logData.map((log, index) => formatLog(log, index))
+          ) : (
+            <div className="text-[#999] italic py-5 text-center">
+              Waiting for logs...
+            </div>
+          )}
+
+          {workflowError && (
+            <div className="mt-2 p-2 rounded bg-[#fff2f0] text-[#ff4d4f] border border-[#ffccc7]">
+              <strong>Error:</strong> {workflowError}
+            </div>
+          )}
+        </div>
+
+        <div className="p-2.5 flex justify-center border-t border-[#ddd] bg-[#f0f2f5]">
+          <button
+            className="py-1.5 px-4 bg-[#f5f5f5] border border-[#ddd] rounded text-sm font-medium text-[#333] hover:bg-[#e6e6e6] hover:border-[#ccc]"
+            onClick={onClose}
+          >
+            Close
+          </button>
+        </div>
       </div>
     </div>
   );

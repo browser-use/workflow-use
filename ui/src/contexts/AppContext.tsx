@@ -8,12 +8,12 @@ import React, {
   useRef,
   useEffect,
 } from 'react';
-import { Workflow, WorkflowMetadata } from '../types/workflow-layout.types';
+import { Workflow } from '../types/workflow-layout.types';
 import { workflowService } from '@/services/workflowService';
 import { fetchWorkflowLogs, cancelWorkflow } from '@/services/pollingService';
 import { InputField } from '@/types/play-button.types';
 
-export type DisplayMode = 'canvas' | 'editor' | 'log';
+export type DisplayMode = 'canvas' | 'editor' | 'log' | 'start';
 
 interface AppContextType {
   displayMode: DisplayMode;
@@ -23,9 +23,9 @@ interface AppContextType {
   isWorkflowRunning: boolean;
   currentTaskId: number | null;
   currentLogPosition: number;
+  isLoadingWorkflows: boolean;
 
   currentWorkflowData: Workflow | null;
-  setCurrentWorkflowData: (workflow: Workflow | null) => void;
   workflows: Workflow[];
   addWorkflow: (workflow: Workflow) => void;
   deleteWorkflow: (workflowId: string) => void;
@@ -37,10 +37,8 @@ interface AppContextType {
   showRunAsToolDialog: boolean;
   setShowRunAsToolDialog: (show: boolean) => void;
 
-  searchWorkflows: (term: string) => Workflow[];
   executeWorkflow: (name: string, inputFields: InputField[]) => Promise<void>;
 
-  updateMetadata: (name: string, metadata: WorkflowMetadata) => Promise<void>;
   updateWorkflow: (
     oldWorkflow: Workflow,
     newWorkflow: Workflow
@@ -59,7 +57,7 @@ interface AppProviderProps {
 
 export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
-  const [displayMode, setDisplayMode] = useState<DisplayMode>('canvas');
+  const [displayMode, setDisplayMode] = useState<DisplayMode>('start');
   const [currentWorkflowData, setCurrentWorkflowData] =
     useState<Workflow | null>(null);
   const [showRunDialog, setShowRunDialog] = useState(false);
@@ -70,6 +68,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
   const [isWorkflowRunning, setIsWorkflowRunning] = useState(false);
   const [logPosition, setLogPosition] = useState<number>(0);
   const [currentTaskId, setCurrentTaskId] = useState<number | null>(null);
+  const [isLoadingWorkflows, setIsLoadingWorkflows] = useState(false);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
   const selectWorkflow = (workflowName: string) => {
@@ -90,30 +89,6 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     // TODO: Implement delete workflow
     setWorkflows((prev) => prev.filter((wf) => wf.name !== workflowName));
   };
-
-  const searchWorkflows = (term: string) => {
-    const lower = term.toLowerCase();
-    return workflows.filter(
-      (wf) =>
-        wf.name.toLowerCase().includes(lower) ||
-        wf.description.toLowerCase().includes(lower)
-    );
-  };
-
-  const updateMetadata = useCallback(
-    async (name: string, metadata: WorkflowMetadata) => {
-      try {
-        await workflowService.updateWorkflowMetadata(name, metadata);
-
-        if (currentWorkflowData?.name === name) {
-          setCurrentWorkflowData({ ...currentWorkflowData, ...metadata });
-        }
-      } catch (err) {
-        console.error(`Failed to update metadata for ${name}`, err);
-      }
-    },
-    [currentWorkflowData]
-  );
 
   const updateWorkflow = useCallback(
     async (oldWorkflow: Workflow, newWorkflow: Workflow) => {
@@ -271,12 +246,14 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
   useEffect(() => {
     const fetchWorkflows = async () => {
       try {
-        console.log('Set here a loading state to sidebar');
+        setIsLoadingWorkflows(true);
         const response = await workflowService.getWorkflows();
-        const parsedWorkflows = response.map((wf: string) => JSON.parse(wf));
+        const parsedWorkflows = response.map((wf: any) => JSON.parse(wf));
         setWorkflows(parsedWorkflows);
       } catch (err) {
         console.error('Failed to fetch workflows:', err);
+      } finally {
+        setIsLoadingWorkflows(false);
       }
     };
     fetchWorkflows();
@@ -294,7 +271,6 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         currentTaskId,
         currentLogPosition: logPosition,
         currentWorkflowData,
-        setCurrentWorkflowData,
         workflows,
         addWorkflow,
         deleteWorkflow,
@@ -302,14 +278,13 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         setShowRunDialog,
         showRunAsToolDialog,
         setShowRunAsToolDialog,
-        searchWorkflows,
         executeWorkflow,
-        updateMetadata,
         updateWorkflow,
         startPollingLogs,
         stopPollingLogs,
         logData,
         cancelWorkflowExecution,
+        isLoadingWorkflows,
       }}
     >
       {children}

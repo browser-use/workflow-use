@@ -11,7 +11,7 @@ import {
 import { cn } from '@/lib/utils';
 
 interface WorkflowStepNodeData {
-  label: string;
+  description: string;
   action:
     | 'navigation'
     | 'click'
@@ -55,7 +55,7 @@ export const WorkflowStepNode = memo(
     return (
       <div
         className={cn(
-          'bg-white rounded-lg border-2 shadow-sm p-4 min-w-[280px] transition-all',
+          'bg-white rounded-lg border-2 shadow-sm p-4 w-[380px] h-[100px] transition-all',
           selected ? 'border-purple-500 shadow-md' : 'border-gray-200',
           'hover:shadow-md'
         )}
@@ -69,12 +69,12 @@ export const WorkflowStepNode = memo(
         )}
 
         <div className="flex items-start gap-3">
-          <div className={cn('p-2 rounded-lg text-white', colorClass)}>
-            <Icon className="w-4 h-4" />
+          <div className={cn('p-3 rounded-lg text-white shrink-0', colorClass)}>
+            <Icon className="w-8 h-8" />
           </div>
 
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-2">
+            <div className="flex items-center gap-2 mb-2 flex-wrap">
               {data.stepNumber > 0 && (
                 <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
                   Step {data.stepNumber}
@@ -85,27 +85,9 @@ export const WorkflowStepNode = memo(
               </span>
             </div>
 
-            <h3 className="font-medium text-gray-900 text-sm mb-2">
-              {data.label}
+            <h3 className="font-medium text-gray-900 text-sm mb-2 break-words line-clamp-2">
+              {data.description}
             </h3>
-
-            {data.target && (
-              <div className="space-y-1">
-                <p className="text-xs text-gray-500">Target:</p>
-                <code className="text-xs bg-gray-100 px-2 py-1 rounded text-gray-700 font-mono">
-                  {data.target}
-                </code>
-              </div>
-            )}
-
-            {data.value && (
-              <div className="mt-2">
-                <p className="text-xs text-gray-500">Value:</p>
-                <code className="text-xs bg-gray-100 px-2 py-1 rounded text-gray-700 font-mono">
-                  {data.value}
-                </code>
-              </div>
-            )}
           </div>
         </div>
 

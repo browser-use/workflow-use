@@ -20,7 +20,8 @@ export function WorkflowSidebar() {
   const [searchTerm, setSearchTerm] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [deleteWorkflowId, setDeleteWorkflowId] = useState<string | null>(null);
-  const { workflows, addWorkflow, deleteWorkflow } = useAppContext();
+  const { workflows, addWorkflow, deleteWorkflow, isLoadingWorkflows } =
+    useAppContext();
 
   const filteredWorkflows = useMemo(() => {
     if (!searchTerm) return workflows;
@@ -62,15 +63,23 @@ export function WorkflowSidebar() {
     // Add a random workflow from existing ones as a duplicate
     const random = workflows[Math.floor(Math.random() * workflows.length)];
 
+    if (!random) {
+      console.error('No workflows available to duplicate');
+      setIsRecording(false);
+      return;
+    }
+
     const newWorkflow = {
       ...random,
-      id: `new-workflow-${Date.now()}`,
       name: getUniqueWorkflowName(
-        `${random?.name}`,
+        `${random.name}`,
         workflows.map((wf) => wf.name)
       ),
-      category: 'today',
-      lastRun: new Date().toISOString(),
+      workflow_analysis: random.workflow_analysis,
+      description: random.description,
+      version: random.version,
+      steps: random.steps,
+      input_schema: random.input_schema,
     };
 
     addWorkflow(newWorkflow);
@@ -83,8 +92,9 @@ export function WorkflowSidebar() {
   };
 
   const confirmDeleteWorkflow = (workflowId: string) => {
+    if (!workflowId) return;
     console.log('Deleting workflow:', workflowId);
-    deleteWorkflow(deleteWorkflowId);
+    deleteWorkflow(workflowId);
     setDeleteWorkflowId(null);
   };
 
@@ -137,118 +147,43 @@ export function WorkflowSidebar() {
           </Button>
         </SidebarHeader>
 
-        <SidebarContent className="overflow-y-auto">
+        <SidebarContent>
           <SidebarGroup>
             <SidebarGroupContent>
               <SidebarMenu className="space-y-1">
-                {/* {workflowsByCategory.today.length > 0 && (
-                  <>
-                    <div className="flex items-center justify-center px-4 py-3">
-                      <div className="flex items-center w-full">
-                        <Separator className="flex-1" />
-                        <span className="px-3 text-xs font-medium text-gray-500 bg-white">
-                          Today
-                        </span>
-                        <Separator className="flex-1" />
-                      </div>
-                    </div>
-                    {workflowsByCategory.today.map((workflow) => (
-                      <WorkflowItem
-                        key={workflow.name}
-                        workflow={workflow}
-                        onDeleteWorkflow={handleDeleteWorkflow}
-                      />
-                    ))}
-                  </>
-                )}
-
-                {workflowsByCategory.yesterday.length > 0 && (
-                  <>
-                    <div className="flex items-center justify-center px-4 py-3">
-                      <div className="flex items-center w-full">
-                        <Separator className="flex-1" />
-                        <span className="px-3 text-xs font-medium text-gray-500 bg-white">
-                          Yesterday
-                        </span>
-                        <Separator className="flex-1" />
-                      </div>
-                    </div>
-                    {workflowsByCategory.yesterday.map((workflow) => (
-                      <WorkflowItem
-                        key={workflow.name}
-                        workflow={workflow}
-                        onDeleteWorkflow={handleDeleteWorkflow}
-                      />
-                    ))}
-                  </>
-                )}
-
-                {workflowsByCategory['last-week'].length > 0 && (
-                  <>
-                    <div className="flex items-center justify-center px-4 py-3">
-                      <div className="flex items-center w-full">
-                        <Separator className="flex-1" />
-                        <span className="px-3 text-xs font-medium text-gray-500 bg-white">
-                          Last Week
-                        </span>
-                        <Separator className="flex-1" />
-                      </div>
-                    </div>
-                    {workflowsByCategory['last-week'].map((workflow) => (
-                      <WorkflowItem
-                        key={workflow.name}
-                        workflow={workflow}
-                        onDeleteWorkflow={handleDeleteWorkflow}
-                      />
-                    ))}
-                  </>
-                )}
-
-                {workflowsByCategory.older.length > 0 && (
-                  <>
-                    <div className="flex items-center justify-center px-4 py-3">
-                      <div className="flex items-center w-full">
-                        <Separator className="flex-1" />
-                        <span className="px-3 text-xs font-medium text-gray-500 bg-white">
-                          Older
-                        </span>
-                        <Separator className="flex-1" />
-                      </div>
-                    </div>
-                    {workflowsByCategory.older.map((workflow) => (
-                      <WorkflowItem
-                        key={workflow.name}
-                        workflow={workflow}
-                        onDeleteWorkflow={handleDeleteWorkflow}
-                      />
-                    ))}
-                  </>
-                )} */}
-                <WorkflowCategoryBlock
-                  label="Today"
-                  workflows={workflowsByCategory.today}
-                  onDeleteWorkflow={handleDeleteWorkflow}
-                />
-                <WorkflowCategoryBlock
-                  label="Yesterday"
-                  workflows={workflowsByCategory.yesterday}
-                  onDeleteWorkflow={handleDeleteWorkflow}
-                />
-                <WorkflowCategoryBlock
-                  label="Last Week"
-                  workflows={workflowsByCategory['last-week']}
-                  onDeleteWorkflow={handleDeleteWorkflow}
-                />
-                <WorkflowCategoryBlock
-                  label="Older"
-                  workflows={workflowsByCategory.older}
-                  onDeleteWorkflow={handleDeleteWorkflow}
-                />
-
-                {filteredWorkflows.length === 0 && (
-                  <div className="p-4 text-center text-gray-500">
-                    No workflows found matching "{searchTerm}"
+                {isLoadingWorkflows ? (
+                  <div className="flex items-center justify-center p-8">
+                    <Loader className="w-6 h-6 animate-spin text-purple-600" />
                   </div>
+                ) : (
+                  <>
+                    <WorkflowCategoryBlock
+                      label="Today"
+                      workflows={workflowsByCategory.today}
+                      onDeleteWorkflow={handleDeleteWorkflow}
+                    />
+                    <WorkflowCategoryBlock
+                      label="Yesterday"
+                      workflows={workflowsByCategory.yesterday}
+                      onDeleteWorkflow={handleDeleteWorkflow}
+                    />
+                    <WorkflowCategoryBlock
+                      label="Last Week"
+                      workflows={workflowsByCategory['last-week']}
+                      onDeleteWorkflow={handleDeleteWorkflow}
+                    />
+                    <WorkflowCategoryBlock
+                      label="Older"
+                      workflows={workflowsByCategory.older}
+                      onDeleteWorkflow={handleDeleteWorkflow}
+                    />
+
+                    {filteredWorkflows.length === 0 && (
+                      <div className="p-4 text-center text-gray-500">
+                        No workflows found matching "{searchTerm}"
+                      </div>
+                    )}
+                  </>
                 )}
               </SidebarMenu>
             </SidebarGroupContent>

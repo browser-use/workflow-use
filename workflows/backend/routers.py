@@ -1,4 +1,5 @@
 import asyncio
+import json
 import uuid
 
 from fastapi import APIRouter, HTTPException
@@ -57,8 +58,23 @@ async def execute_workflow(request: WorkflowExecuteRequest):
 	if not workflow_name:
 		raise HTTPException(status_code=400, detail='Missing workflow name')
 
-	workflow_path = service.tmp_dir / workflow_name
-	if not workflow_path.exists():
+	# Ugly code to find the matching workflow
+	# Search through all files in tmp_dir to find the matching workflow
+	matching_file = None
+	for file_path in service.tmp_dir.iterdir():
+		if not file_path.is_file() or file_path.name.startswith('temp_recording'):
+			continue
+		try:
+			workflow_content = json.loads(file_path.read_text())
+			if workflow_content.get('name') == workflow_name:
+				matching_file = file_path
+				# Update the request with the actual filename
+				request.name = file_path.name
+				break
+		except (json.JSONDecodeError, KeyError):
+			continue
+
+	if not matching_file:
 		raise HTTPException(status_code=404, detail=f'Workflow {workflow_name} not found')
 
 	try:

@@ -14,12 +14,20 @@ export function WorkflowItem({
   workflow,
   onDeleteWorkflow,
 }: WorkflowItemProps) {
-  const { currentWorkflowData, selectWorkflow } = useAppContext();
+  const { currentWorkflowData, selectWorkflow, displayMode, setDisplayMode } =
+    useAppContext();
+
+  const handleClick = () => {
+    selectWorkflow(workflow.name);
+    if (displayMode === 'start') {
+      setDisplayMode('canvas');
+    }
+  };
 
   return (
     <SidebarMenuItem key={workflow.name}>
       <SidebarMenuButton
-        onClick={() => selectWorkflow(workflow.name)}
+        onClick={handleClick}
         className={cn(
           'w-full p-4 text-left hover:bg-gray-100 transition-colors rounded-md min-h-[80px] relative group',
           currentWorkflowData?.name === workflow.name &&
