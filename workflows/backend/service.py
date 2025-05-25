@@ -95,16 +95,28 @@ class WorkflowService:
 		if not (workflow_filename and node_id is not None and updated_step_data):
 			return WorkflowResponse(success=False, error='Missing required fields')
 
-		wf_file = self.tmp_dir / workflow_filename
-		if not wf_file.exists():
-			return WorkflowResponse(success=False, error=f"Workflow file '{workflow_filename}' not found")
+		# Search through all files in tmp_dir to find the matching workflow
+		matching_file = None
+		for file_path in self.tmp_dir.iterdir():
+			if not file_path.is_file() or file_path.name.startswith('temp_recording'):
+				continue
+			try:
+				workflow_content = json.loads(file_path.read_text())
+				if workflow_content.get('name') == workflow_filename:
+					matching_file = file_path
+					break
+			except (json.JSONDecodeError, KeyError):
+				continue
 
-		workflow_content = json.loads(wf_file.read_text())
+		if not matching_file:
+			return WorkflowResponse(success=False, error=f"Workflow with name '{workflow_filename}' not found")
+
+		workflow_content = json.loads(matching_file.read_text())
 		steps = workflow_content.get('steps', [])
 
 		if 0 <= int(node_id) < len(steps):
 			steps[int(node_id)] = updated_step_data
-			wf_file.write_text(json.dumps(workflow_content, indent=2))
+			matching_file.write_text(json.dumps(workflow_content, indent=2))
 			return WorkflowResponse(success=True)
 
 		return WorkflowResponse(success=False, error='Node not found in workflow')

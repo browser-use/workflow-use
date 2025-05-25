@@ -21,6 +21,11 @@ export interface WorkflowService {
   }>;
   updateWorkflowRuntime(name: string, timestamp: Date): void;
   getWorkflowCategory(name: string): string;
+  updateWorkflow(
+    filename: string,
+    nodeId: number,
+    stepData: any
+  ): Promise<void>;
 }
 
 class WorkflowServiceImpl implements WorkflowService {
@@ -51,10 +56,24 @@ class WorkflowServiceImpl implements WorkflowService {
   async updateWorkflowMetadata(
     name: string,
     metadata: WorkflowMetadata
-  ): Promise<void> {
-    await fetchClient.POST('/api/workflows/update-metadata', {
+  ): Promise<any> {
+    const response = await fetchClient.POST('/api/workflows/update-metadata', {
       body: { name, metadata: metadata as any },
     });
+    console.log('Response from updateWorkflowMetadata:', response);
+    return response.data;
+  }
+
+  async updateWorkflow(
+    filename: string,
+    nodeId: number,
+    stepData: any
+  ): Promise<any> {
+    const response = await fetchClient.POST('/api/workflows/update', {
+      body: { filename, nodeId, stepData },
+    });
+    console.log('Response from updateWorkflow:', response);
+    return response.data;
   }
 
   async executeWorkflow(

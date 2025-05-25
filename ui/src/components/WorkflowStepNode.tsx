@@ -12,7 +12,13 @@ import { cn } from '@/lib/utils';
 
 interface WorkflowStepNodeData {
   label: string;
-  action: 'click' | 'type' | 'navigate' | 'wait' | 'info' | 'extract';
+  action:
+    | 'navigation'
+    | 'click'
+    | 'select_change'
+    | 'input'
+    | 'agent'
+    | 'key_press';
   target: string;
   value?: string;
   stepNumber: number;
@@ -25,20 +31,20 @@ interface WorkflowStepNodeProps {
 
 const actionIcons = {
   click: MousePointer,
-  type: Type,
-  navigate: Navigation,
-  wait: Clock,
-  info: Info,
-  extract: FileSearch,
+  input: Type,
+  navigation: Navigation,
+  key_press: Clock,
+  agent: Info,
+  select_change: FileSearch,
 };
 
 const actionColors = {
   click: 'bg-green-500',
-  type: 'bg-amber-500',
-  navigate: 'bg-blue-500',
-  wait: 'bg-purple-500',
-  info: 'bg-gray-500',
-  extract: 'bg-cyan-500',
+  input: 'bg-amber-500',
+  navigation: 'bg-blue-500',
+  key_press: 'bg-purple-500',
+  agent: 'bg-gray-500',
+  select_change: 'bg-cyan-500',
 };
 
 export const WorkflowStepNode = memo(

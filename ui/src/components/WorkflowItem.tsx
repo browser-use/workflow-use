@@ -1,9 +1,8 @@
-import React from 'react';
 import { Workflow as WorkflowIcon, Trash2 } from 'lucide-react';
 import { SidebarMenuItem, SidebarMenuButton } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { Workflow, WorkflowMetadata } from '../types/workflow-layout.types';
+import { Workflow } from '../types/workflow-layout.types';
 import { useAppContext } from '@/contexts/AppContext';
 
 interface WorkflowItemProps {

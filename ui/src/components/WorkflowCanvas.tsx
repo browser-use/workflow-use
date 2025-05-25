@@ -98,10 +98,12 @@ export function WorkflowCanvas() {
         <MiniMap
           className="bg-white border border-gray-200 rounded-lg shadow-sm"
           nodeColor={(node) => {
-            if (node.data?.action === 'navigate') return '#3b82f6';
+            if (node.data?.action === 'navigation') return '#3b82f6';
             if (node.data?.action === 'click') return '#10b981';
-            if (node.data?.action === 'type') return '#f59e0b';
-            if (node.data?.action === 'wait') return '#8b5cf6';
+            if (node.data?.action === 'input') return '#f59e0b';
+            if (node.data?.action === 'key_press') return '#8b5cf6';
+            if (node.data?.action === 'agent') return '#6b7280';
+            if (node.data?.action === 'select_change') return '#06b6d4';
             return '#6b7280';
           }}
         />

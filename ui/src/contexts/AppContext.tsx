@@ -41,6 +41,10 @@ interface AppContextType {
   executeWorkflow: (name: string, inputFields: InputField[]) => Promise<void>;
 
   updateMetadata: (name: string, metadata: WorkflowMetadata) => Promise<void>;
+  updateWorkflow: (
+    oldWorkflow: Workflow,
+    newWorkflow: Workflow
+  ) => Promise<void>;
   startPollingLogs: (taskId: string) => void;
   stopPollingLogs: () => void;
   logData: string[];
@@ -106,6 +110,55 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         }
       } catch (err) {
         console.error(`Failed to update metadata for ${name}`, err);
+      }
+    },
+    [currentWorkflowData]
+  );
+
+  const updateWorkflow = useCallback(
+    async (oldWorkflow: Workflow, newWorkflow: Workflow) => {
+      try {
+        // Update metadata if it changed
+        if (
+          oldWorkflow.name !== newWorkflow.name ||
+          oldWorkflow.description !== newWorkflow.description ||
+          oldWorkflow.version !== newWorkflow.version ||
+          JSON.stringify(oldWorkflow.input_schema) !==
+            JSON.stringify(newWorkflow.input_schema)
+        ) {
+          await workflowService.updateWorkflowMetadata(newWorkflow.name, {
+            name: newWorkflow.name,
+            description: newWorkflow.description,
+            version: newWorkflow.version,
+            input_schema: newWorkflow.input_schema,
+          });
+        }
+
+        // Update steps if they changed
+        if (
+          JSON.stringify(oldWorkflow.steps) !==
+          JSON.stringify(newWorkflow.steps)
+        ) {
+          // Find changed steps
+          newWorkflow.steps.forEach((newStep, index) => {
+            const oldStep = oldWorkflow.steps[index];
+            if (JSON.stringify(oldStep) !== JSON.stringify(newStep)) {
+              workflowService.updateWorkflow(newWorkflow.name, index, newStep);
+            }
+          });
+        }
+
+        // Update local state
+        setWorkflows((prev) =>
+          prev.map((wf) => (wf.name === oldWorkflow.name ? newWorkflow : wf))
+        );
+
+        if (currentWorkflowData?.name === oldWorkflow.name) {
+          setCurrentWorkflowData(newWorkflow);
+        }
+      } catch (err) {
+        console.error(`Failed to update workflow ${oldWorkflow.name}`, err);
+        throw err;
       }
     },
     [currentWorkflowData]
@@ -252,6 +305,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         searchWorkflows,
         executeWorkflow,
         updateMetadata,
+        updateWorkflow,
         startPollingLogs,
         stopPollingLogs,
         logData,

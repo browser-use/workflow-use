@@ -1,209 +1,189 @@
-import React, { useState, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
+import React, { useEffect, useState } from 'react';
+import { z } from 'zod';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
-  SelectContent,
-  SelectItem,
   SelectTrigger,
   SelectValue,
+  SelectContent,
+  SelectItem,
 } from '@/components/ui/select';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Trash2, Plus, GripVertical } from 'lucide-react';
+import { Plus, Trash2, GripVertical } from 'lucide-react';
 import { useAppContext } from '@/contexts/AppContext';
-import { WorkflowStep } from '@/types/workflow-layout.types';
+import { workflowSchema, stepSchema } from '@/types/workflow-layout.types';
+
+type Workflow = z.infer<typeof workflowSchema>;
+type Step = z.infer<typeof stepSchema>;
 
 export function WorkflowEditor() {
-  const { currentWorkflowData, setCurrentWorkflowData } = useAppContext();
-  const [steps, setSteps] = useState<WorkflowStep[]>([]);
+  const { currentWorkflowData, updateWorkflow } = useAppContext();
+  const [workflow, setWorkflow] = useState<Workflow | null>(null);
+  const [oldWorkflow, setOldWorkflow] = useState<Workflow | null>(null);
 
   useEffect(() => {
     if (currentWorkflowData) {
-      setSteps(currentWorkflowData.steps);
+      const safeWorkflow = workflowSchema.safeParse(currentWorkflowData);
+      if (safeWorkflow.success) {
+        setWorkflow(safeWorkflow.data);
+        setOldWorkflow(safeWorkflow.data);
+      } else console.error('Invalid workflow data', safeWorkflow.error);
     }
   }, [currentWorkflowData]);
 
-  const updateStep = (
-    index: number,
-    field: keyof WorkflowStep,
-    value: string
-  ) => {
-    const updatedSteps = steps.map((step, i) =>
-      i === index ? { ...step, [field]: value } : step
-    );
-    setSteps(updatedSteps);
+  const updateField = (key: keyof Workflow, value: any) => {
+    setWorkflow((prev) => (prev ? { ...prev, [key]: value } : prev));
+  };
 
-    if (currentWorkflowData) {
-      setCurrentWorkflowData({
-        ...currentWorkflowData,
-        steps: updatedSteps,
-      });
-    }
+  const updateStepField = (index: number, key: keyof Step, value: any) => {
+    if (!workflow) return;
+    const newSteps = [...workflow.steps];
+    newSteps[index] = { ...newSteps[index], [key]: value };
+    setWorkflow({ ...workflow, steps: newSteps });
+    console.log('updateStepField', index, key, value);
   };
 
   const addStep = () => {
-    const newStep: WorkflowStep = {
-      id: `step-${Date.now()}`,
-      label: 'New Step',
-      action: 'click',
-      target: '',
-      value: '',
-      stepNumber: steps.length + 1,
-    };
-    const updatedSteps = [...steps, newStep];
-    setSteps(updatedSteps);
-
-    if (currentWorkflowData) {
-      setCurrentWorkflowData({
-        ...currentWorkflowData,
-        steps: updatedSteps,
-      });
-    }
+    if (!workflow) return;
+    const newStep: Step = stepSchema.parse({
+      description: 'New step',
+      type: 'click',
+      timestamp: null,
+      tabId: null,
+    });
+    setWorkflow({ ...workflow, steps: [...workflow.steps, newStep] });
+    console.log('addStep');
   };
 
-  const removeStep = (index: number) => {
-    const updatedSteps = steps
-      .filter((_, i) => i !== index)
-      .map((step, i) => ({ ...step, stepNumber: i + 1 }));
-    setSteps(updatedSteps);
-
-    if (currentWorkflowData) {
-      setCurrentWorkflowData({
-        ...currentWorkflowData,
-        steps: updatedSteps,
-      });
-    }
+  const deleteStep = (index: number) => {
+    if (!workflow) return;
+    const updated = workflow.steps.filter((_, i) => i !== index);
+    setWorkflow({ ...workflow, steps: updated });
+    console.log('deleteStep', index);
   };
 
-  const moveStep = (fromIndex: number, toIndex: number) => {
-    const updatedSteps = [...steps];
-    const [movedStep] = updatedSteps.splice(fromIndex, 1);
-    updatedSteps.splice(toIndex, 0, movedStep);
-
-    // Update step numbers
-    const reorderedSteps = updatedSteps.map((step, i) => ({
-      ...step,
-      stepNumber: i + 1,
-    }));
-    setSteps(reorderedSteps);
-
-    if (currentWorkflowData) {
-      setCurrentWorkflowData({
-        ...currentWorkflowData,
-        steps: reorderedSteps,
-      });
-    }
+  const saveChanges = async () => {
+    if (!workflow || !oldWorkflow) return;
+    const validation = workflowSchema.safeParse(workflow);
+    if (!validation.success)
+      return console.error('Invalid workflow', validation.error);
+    await updateWorkflow(oldWorkflow, validation.data);
+    console.log('saveChanges', validation.data);
   };
 
-  if (!currentWorkflowData) {
-    return (
-      <div className="flex items-center justify-center h-full text-gray-500">
-        No workflow selected for editing
-      </div>
-    );
-  }
+  if (!workflow)
+    return <div className="p-8 text-gray-500">No workflow loaded</div>;
 
   return (
-    <div className="p-6 h-full overflow-y-auto bg-gray-50">
-      <div className="max-w-4xl mx-auto space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">
-              {currentWorkflowData.name}
-            </h1>
-            <p className="text-gray-600">{currentWorkflowData.description}</p>
-          </div>
-          <Button onClick={addStep} className="flex items-center gap-2">
-            <Plus className="w-4 h-4" />
-            Add Step
-          </Button>
-        </div>
+    <div className="p-6 max-w-4xl mx-auto space-y-6">
+      <div className="space-y-2">
+        <h2 className="text-xl font-semibold mb-3">Workflow Details</h2>
+        <Label>Workflow Name</Label>
+        <Input
+          value={workflow.name}
+          onChange={(e) => updateField('name', e.target.value)}
+        />
+        <Label>Description</Label>
+        <Textarea
+          value={workflow.description}
+          onChange={(e) => updateField('description', e.target.value)}
+          className="min-h-[100px] resize-y"
+        />
+        <Label>Analysis</Label>
+        <Textarea
+          value={workflow.workflow_analysis}
+          onChange={(e) => updateField('workflow_analysis', e.target.value)}
+          className="min-h-[150px] resize-y"
+        />
+      </div>
 
-        <div className="space-y-4">
-          {steps.map((step, index) => (
-            <Card key={step.id} className="bg-white">
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center justify-between text-lg">
-                  <div className="flex items-center gap-3">
-                    <GripVertical className="w-5 h-5 text-gray-400 cursor-move" />
-                    <span>Step {step.stepNumber}</span>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => removeStep(index)}
-                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor={`label-${index}`}>Label</Label>
-                    <Input
-                      id={`label-${index}`}
-                      value={step.label}
-                      onChange={(e) =>
-                        updateStep(index, 'label', e.target.value)
-                      }
-                      placeholder="Step description"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor={`action-${index}`}>Action</Label>
+      <div className="flex justify-between items-center">
+        <h2 className="text-xl font-semibold">Steps</h2>
+        <Button onClick={addStep}>
+          <Plus className="w-4 h-4 mr-1" />
+          Add Step
+        </Button>
+      </div>
+
+      {workflow.steps.map((step, index) => (
+        <Card key={index} className="bg-white">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex justify-between items-center">
+              <span className="flex gap-2 items-center">
+                <GripVertical className="w-4 h-4 text-gray-400" />
+                Step {index + 1}
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => deleteStep(index)}
+                className="text-red-600 hover:text-red-700"
+              >
+                <Trash2 className="w-4 h-4" />
+              </Button>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {Object.keys(step).map((key) => {
+              const value = step[key as keyof Step];
+
+              // Handle the "type" field with Select dropdown
+              if (key === 'type') {
+                return (
+                  <div key={key}>
+                    <Label className="capitalize">{key}</Label>
                     <Select
-                      value={step.action}
-                      onValueChange={(value) =>
-                        updateStep(index, 'action', value)
+                      value={value as string}
+                      onValueChange={(val) =>
+                        updateStepField(index, key as keyof Step, val)
                       }
                     >
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="navigate">Navigate</SelectItem>
-                        <SelectItem value="click">Click</SelectItem>
-                        <SelectItem value="type">Type</SelectItem>
-                        <SelectItem value="wait">Wait</SelectItem>
-                        <SelectItem value="extract">Extract</SelectItem>
+                        {[
+                          'navigation',
+                          'click',
+                          'select_change',
+                          'input',
+                          'agent',
+                          'key_press',
+                        ].map((t) => (
+                          <SelectItem key={t} value={t}>
+                            {t}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
+                );
+              }
+
+              // Skip these fields for editing
+              if (['output', 'timestamp', 'tabId'].includes(key)) return null;
+              return (
+                <div key={key}>
+                  <Label className="capitalize">{key}</Label>
+                  <Input
+                    value={(value as string) ?? ''}
+                    onChange={(e) =>
+                      updateStepField(index, key as keyof Step, e.target.value)
+                    }
+                  />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor={`target-${index}`}>Target</Label>
-                    <Input
-                      id={`target-${index}`}
-                      value={step.target}
-                      onChange={(e) =>
-                        updateStep(index, 'target', e.target.value)
-                      }
-                      placeholder="CSS selector or URL"
-                    />
-                  </div>
-                  {(step.action === 'type' || step.action === 'navigate') && (
-                    <div>
-                      <Label htmlFor={`value-${index}`}>Value</Label>
-                      <Input
-                        id={`value-${index}`}
-                        value={step.value || ''}
-                        onChange={(e) =>
-                          updateStep(index, 'value', e.target.value)
-                        }
-                        placeholder="Text to type or URL"
-                      />
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      ))}
+
+      <Button className="w-full bg-purple-600 text-white" onClick={saveChanges}>
+        Confirm Changes
+      </Button>
     </div>
   );
 }

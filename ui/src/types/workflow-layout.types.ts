@@ -12,23 +12,30 @@ const inputFieldSchema = z.object({
 });
 
 /* ── Step definition ───────────────────────────────────────────────── */
-const stepSchema = z.object({
+export const stepSchema = z.object({
   /* core fields */
   description: z.string(),
   output: z.unknown().nullable(),
   timestamp: z.number().int().nullable(),
   tabId: z.number().int().nullable(),
-  type: z.enum(['navigation', 'click', 'select_change', 'input', 'agent']),
+  type: z.enum([
+    'navigation',
+    'click',
+    'select_change',
+    'input',
+    'agent',
+    'key_press',
+  ]),
 
   /* optional fields (vary by step type) */
-  url: z.string().url().optional(),
-  cssSelector: z.string().optional(),
-  xpath: z.string().optional(),
-  elementTag: z.string().optional(),
-  elementText: z.string().optional(),
-  selectedText: z.string().optional(),
-  value: z.string().optional(),
-  task: z.string().optional(),
+  url: z.string().url().nullable().optional(),
+  cssSelector: z.string().nullable().optional(),
+  xpath: z.string().nullable().optional(),
+  elementTag: z.string().nullable().optional(),
+  elementText: z.string().nullable().optional(),
+  selectedText: z.string().nullable().optional(),
+  value: z.string().nullable().optional(),
+  task: z.string().nullable().optional(),
 });
 
 /* ── Workflow wrapper ──────────────────────────────────────────────── */
@@ -56,12 +63,4 @@ export interface WorkflowMetadata {
   version: string;
   input_schema: any[];
   workflow_analysis?: string;
-}
-
-export interface WorkflowItemProps {
-  id: string;
-  selected: boolean;
-  metadata?: WorkflowMetadata;
-  onSelect: (id: string) => void;
-  onUpdateMetadata: (m: WorkflowMetadata) => Promise<void>;
 }
