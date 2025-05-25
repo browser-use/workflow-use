@@ -8,7 +8,11 @@
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "get-openapi": "curl http://localhost:${BACKEND_PORT:-8000}/openapi.json -o ./src/lib/api/openapi.json",
+    "type-gen": "npx openapi-typescript ./src/lib/api/openapi.json -o ./src/lib/api/apigen.d.ts",
+    "type-gen-update": "rm -rf ./src/lib/api/apigen.d.ts && npm run get-openapi && npm run type-gen",
+    "postinstall": "test -n \"$NOYARNPOSTINSTALL\" || npm run type-gen"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
