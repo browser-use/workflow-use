@@ -128,11 +128,23 @@ class WorkflowService:
 		if not (workflow_name and updated_metadata):
 			return WorkflowResponse(success=False, error='Missing required fields')
 
-		wf_file = self.tmp_dir / workflow_name
-		if not wf_file.exists():
-			return WorkflowResponse(success=False, error='Workflow not found')
+		# Search through all files in tmp_dir to find the matching workflow
+		matching_file = None
+		for file_path in self.tmp_dir.iterdir():
+			if not file_path.is_file() or file_path.name.startswith('temp_recording'):
+				continue
+			try:
+				workflow_content = json.loads(file_path.read_text())
+				if workflow_content.get('name') == workflow_name:
+					matching_file = file_path
+					break
+			except (json.JSONDecodeError, KeyError):
+				continue
 
-		workflow_content = json.loads(wf_file.read_text())
+		if not matching_file:
+			return WorkflowResponse(success=False, error=f"Workflow with name '{workflow_name}' not found")
+
+		workflow_content = json.loads(matching_file.read_text())
 		workflow_content['name'] = updated_metadata.get('name', workflow_content.get('name', ''))
 		workflow_content['description'] = updated_metadata.get('description', workflow_content.get('description', ''))
 		workflow_content['version'] = updated_metadata.get('version', workflow_content.get('version', ''))
@@ -140,7 +152,7 @@ class WorkflowService:
 		if 'input_schema' in updated_metadata:
 			workflow_content['input_schema'] = updated_metadata['input_schema']
 
-		wf_file.write_text(json.dumps(workflow_content, indent=2))
+		matching_file.write_text(json.dumps(workflow_content, indent=2))
 		return WorkflowResponse(success=True)
 
 	async def run_workflow_in_background(
