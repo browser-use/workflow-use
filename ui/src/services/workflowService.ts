@@ -1,9 +1,15 @@
 import { fetchClient } from '../lib/api';
-import { Workflow, WorkflowMetadata } from '../types/workflow-layout.types';
-import { InputField } from '../types/play-button.types';
+import {
+  Workflow,
+  WorkflowMetadata,
+  inputFieldSchema,
+} from '../types/workflow-layout.types';
+import { z } from 'zod';
 
-// Local file simulating persistent storage
-import runtimeJson from '@/data/runtimes/workflow-runtimes.json';
+interface WorkflowResponse {
+  success: boolean;
+  error?: string;
+}
 
 export interface WorkflowService {
   getWorkflows(): Promise<Workflow[]>;
@@ -14,18 +20,14 @@ export interface WorkflowService {
   ): Promise<void>;
   executeWorkflow(
     name: string,
-    inputFields: InputField[]
+    inputFields: z.infer<typeof inputFieldSchema>[]
   ): Promise<{
     taskId: string;
     logPosition: number;
   }>;
-  updateWorkflowRuntime(name: string, timestamp: Date): void;
-  getWorkflowCategory(name: string): string;
-  updateWorkflow(
-    filename: string,
-    nodeId: number,
-    stepData: any
-  ): Promise<void>;
+  getWorkflowCategory(timestamp: number): string;
+  addWorkflow(name: string, content: string): Promise<void>;
+  deleteWorkflow(name: string): Promise<void>;
 }
 
 class WorkflowServiceImpl implements WorkflowService {
@@ -78,7 +80,7 @@ class WorkflowServiceImpl implements WorkflowService {
 
   async executeWorkflow(
     name: string,
-    inputFields: InputField[]
+    inputFields: z.infer<typeof inputFieldSchema>[]
   ): Promise<{
     taskId: string;
     logPosition: number;
@@ -102,30 +104,47 @@ class WorkflowServiceImpl implements WorkflowService {
     }
 
     const data = await response.json();
-    // Update runtime immediately after execution
-    this.updateWorkflowRuntime(name, new Date());
-
     return data;
   }
 
-  updateWorkflowRuntime(name: string, timestamp: Date) {
-    const runtimes = { ...runtimeJson };
-    runtimes[name] = { lastRun: timestamp.toISOString() };
+  async addWorkflow(name: string, content: string): Promise<void> {
+    const response = await fetch('http://localhost:8000/api/workflows/add', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, content }),
+    });
 
-    try {
-      // Store in localStorage instead of file system
-      localStorage.setItem('workflow-runtimes', JSON.stringify(runtimes));
-    } catch (err) {
-      console.error('Failed to update workflow runtime', err);
+    if (!response.ok) {
+      throw new Error('Failed to add workflow');
+    }
+
+    const data = (await response.json()) as WorkflowResponse;
+    if (!data.success) {
+      throw new Error(data.error || 'Failed to add workflow');
     }
   }
 
-  getWorkflowCategory(name: string): string {
-    const runtimeData = runtimeJson[name];
-    if (!runtimeData?.lastRun) return 'older';
+  async deleteWorkflow(name: string): Promise<void> {
+    const response = await fetch(
+      `http://localhost:8000/api/workflows/${name}`,
+      {
+        method: 'DELETE',
+      }
+    );
 
-    const lastRun = new Date(runtimeData.lastRun);
+    if (!response.ok) {
+      throw new Error('Failed to delete workflow');
+    }
+
+    const data = (await response.json()) as WorkflowResponse;
+    if (!data.success) {
+      throw new Error(data.error || 'Failed to delete workflow');
+    }
+  }
+
+  getWorkflowCategory(timestamp: number): string {
     const now = new Date();
+    const lastRun = new Date(timestamp);
 
     const diff = now.getTime() - lastRun.getTime();
     const diffInDays = diff / (1000 * 60 * 60 * 24);
@@ -133,6 +152,7 @@ class WorkflowServiceImpl implements WorkflowService {
     if (diffInDays < 1 && lastRun.getDate() === now.getDate()) return 'today';
     if (diffInDays < 2) return 'yesterday';
     if (diffInDays < 7) return 'last-week';
+    if (diffInDays < 30) return 'last-month';
     return 'older';
   }
 }

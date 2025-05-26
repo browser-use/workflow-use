@@ -5,10 +5,11 @@ export type PositionLoggerNode = Node<{ label: string }, 'position-logger'>;
 export type AppNode = BuiltInNode | PositionLoggerNode;
 
 /* ── Input field definition ────────────────────────────────────────── */
-const inputFieldSchema = z.object({
+export const inputFieldSchema = z.object({
   name: z.string(),
   type: z.enum(['string', 'number', 'boolean']),
   required: z.boolean(),
+  value: z.any(),
 });
 
 /* ── Step definition ───────────────────────────────────────────────── */

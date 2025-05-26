@@ -11,7 +11,8 @@ import React, {
 import { Workflow } from '../types/workflow-layout.types';
 import { workflowService } from '@/services/workflowService';
 import { fetchWorkflowLogs, cancelWorkflow } from '@/services/pollingService';
-import { InputField } from '@/types/play-button.types';
+import { inputFieldSchema } from '../types/workflow-layout.types';
+import { z } from 'zod';
 
 export type DisplayMode = 'canvas' | 'editor' | 'log' | 'start';
 
@@ -37,7 +38,10 @@ interface AppContextType {
   showRunAsToolDialog: boolean;
   setShowRunAsToolDialog: (show: boolean) => void;
 
-  executeWorkflow: (name: string, inputFields: InputField[]) => Promise<void>;
+  executeWorkflow: (
+    name: string,
+    inputFields: z.infer<typeof inputFieldSchema>[]
+  ) => Promise<void>;
 
   updateWorkflow: (
     oldWorkflow: Workflow,
@@ -80,14 +84,25 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     }
   };
 
-  const addWorkflow = (workflow: Workflow) => {
-    // TODO: Implement add workflow
-    setWorkflows((prev) => [workflow, ...prev]);
+  const addWorkflow = async (workflow: Workflow) => {
+    try {
+      await workflowService.addWorkflow(
+        workflow.name,
+        JSON.stringify(workflow)
+      );
+      setWorkflows((prev) => [workflow, ...prev]);
+    } catch (err) {
+      console.error('Failed to add workflow:', err);
+    }
   };
 
-  const deleteWorkflow = (workflowName: string) => {
-    // TODO: Implement delete workflow
-    setWorkflows((prev) => prev.filter((wf) => wf.name !== workflowName));
+  const deleteWorkflow = async (workflowName: string) => {
+    try {
+      await workflowService.deleteWorkflow(workflowName);
+      setWorkflows((prev) => prev.filter((wf) => wf.name !== workflowName));
+    } catch (err) {
+      console.error('Failed to delete workflow:', err);
+    }
   };
 
   const updateWorkflow = useCallback(
@@ -191,7 +206,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
   };
 
   const executeWorkflow = useCallback(
-    async (name: string, inputFields: InputField[]) => {
+    async (name: string, inputFields: z.infer<typeof inputFieldSchema>[]) => {
       if (!name) return;
 
       // Validate required inputs

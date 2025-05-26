@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException
 
 from .service import WorkflowService
 from .views import (
+	WorkflowAddRequest,
 	WorkflowCancelResponse,
 	WorkflowExecuteRequest,
 	WorkflowExecuteResponse,
@@ -132,4 +133,32 @@ async def cancel_workflow(task_id: str):
 	result = await service.cancel_workflow(task_id)
 	if not result.success and result.message == 'Task not found':
 		raise HTTPException(status_code=404, detail=f'Task {task_id} not found')
+	return result
+
+
+@router.post('/add', response_model=WorkflowResponse)
+async def add_workflow(request: WorkflowAddRequest):
+	service = get_service()
+	if not request.name:
+		raise HTTPException(status_code=400, detail='Missing workflow name')
+	if not request.content:
+		raise HTTPException(status_code=400, detail='Missing workflow content')
+	
+	try:
+		# Validate that the content is valid JSON
+		json.loads(request.content)
+		return service.add_workflow(request)
+	except json.JSONDecodeError:
+		raise HTTPException(status_code=400, detail='Invalid JSON content')
+
+
+@router.delete('/{name}', response_model=WorkflowResponse)
+async def delete_workflow(name: str):
+	service = get_service()
+	if not name:
+		raise HTTPException(status_code=400, detail='Missing workflow name')
+	
+	result = service.delete_workflow(name)
+	if not result:
+		raise HTTPException(status_code=404, detail=f'Workflow {name} not found')
 	return result

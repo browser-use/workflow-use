@@ -13,6 +13,7 @@ from workflow_use.workflow.service import Workflow
 
 from .views import (
 	TaskInfo,
+	WorkflowAddRequest,
 	WorkflowCancelResponse,
 	WorkflowExecuteRequest,
 	WorkflowMetadataUpdateRequest,
@@ -257,3 +258,46 @@ class WorkflowService:
 
 		self.active_tasks[task_id].status = 'cancelling'
 		return WorkflowCancelResponse(success=True, message='Workflow cancellation requested')
+
+	def add_workflow(self, request: WorkflowAddRequest) -> WorkflowResponse:
+		"""Add a new workflow file."""
+		if not request.name or not request.content:
+			return WorkflowResponse(success=False, error='Missing required fields')
+
+		# Check if workflow with same name already exists
+		for file_path in self.tmp_dir.iterdir():
+			if not file_path.is_file() or file_path.name.startswith('temp_recording'):
+				continue
+			try:
+				workflow_content = json.loads(file_path.read_text())
+				if workflow_content.get('name') == request.name:
+					return WorkflowResponse(success=False, error=f"Workflow with name '{request.name}' already exists")
+			except (json.JSONDecodeError, KeyError):
+				continue
+
+		# Create new workflow file
+		try:
+			workflow_file = self.tmp_dir / f"{request.name}.json"
+			workflow_file.write_text(request.content)
+			return WorkflowResponse(success=True)
+		except Exception as e:
+			return WorkflowResponse(success=False, error=f"Error creating workflow: {str(e)}")
+
+	def delete_workflow(self, name: str) -> WorkflowResponse:
+		"""Delete a workflow file."""
+		if not name:
+			return WorkflowResponse(success=False, error='Missing workflow name')
+
+		# Find and delete the workflow file
+		for file_path in self.tmp_dir.iterdir():
+			if not file_path.is_file() or file_path.name.startswith('temp_recording'):
+				continue
+			try:
+				workflow_content = json.loads(file_path.read_text())
+				if workflow_content.get('name') == name:
+					file_path.unlink()
+					return WorkflowResponse(success=True)
+			except (json.JSONDecodeError, KeyError):
+				continue
+
+		return WorkflowResponse(success=False, error=f"Workflow '{name}' not found")

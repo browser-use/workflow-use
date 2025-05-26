@@ -33,17 +33,31 @@ export function WorkflowSidebar() {
   }, [searchTerm, workflows]);
 
   const workflowsByCategory = useMemo(() => {
-    type Category = 'today' | 'yesterday' | 'last-week' | 'older';
+    type Category =
+      | 'today'
+      | 'yesterday'
+      | 'last-week'
+      | 'last-month'
+      | 'older';
     const result: Record<Category, typeof workflows> = {
       today: [],
       yesterday: [],
       'last-week': [],
+      'last-month': [],
       older: [],
     };
 
     filteredWorkflows.forEach((workflow) => {
+      // Find the most recent timestamp from workflow steps
+      const timestamps = workflow.steps
+        .map((step) => step.timestamp)
+        .filter((timestamp) => timestamp !== null);
+
+      const mostRecentTimestamp =
+        timestamps.length > 0 ? Math.max(...timestamps) : 0; // Use 0 if no timestamps found
+
       const category = workflowService.getWorkflowCategory(
-        workflow.name
+        mostRecentTimestamp
       ) as Category;
       if (category in result) {
         result[category].push(workflow);
@@ -170,6 +184,11 @@ export function WorkflowSidebar() {
                     <WorkflowCategoryBlock
                       label="Last Week"
                       workflows={workflowsByCategory['last-week']}
+                      onDeleteWorkflow={handleDeleteWorkflow}
+                    />
+                    <WorkflowCategoryBlock
+                      label="Last Month"
+                      workflows={workflowsByCategory['last-month']}
                       onDeleteWorkflow={handleDeleteWorkflow}
                     />
                     <WorkflowCategoryBlock

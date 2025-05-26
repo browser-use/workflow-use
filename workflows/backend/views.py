@@ -28,6 +28,11 @@ class WorkflowExecuteRequest(BaseModel):
 	inputs: Dict[str, Any]
 
 
+class WorkflowAddRequest(BaseModel):
+	name: str
+	content: str  # JSON string containing the workflow definition
+
+
 # Response Models
 class WorkflowResponse(BaseModel):
 	success: bool
