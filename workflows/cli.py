@@ -314,6 +314,15 @@ def run_workflow_command(
 		help='Path to the .workflow.json file.',
 		show_default=False,
 	),
+	screenshot_path: Path | None = typer.Option(
+		None,
+		exists=False,
+		file_okay=True,
+		dir_okay=False,
+		writable=True,
+		resolve_path=True,
+		help='Optional path to save the screenshot. If not provided, no screenshot will be taken.',
+	),
 ):
 	"""
 	Loads and executes a workflow, prompting the user for required inputs.
@@ -389,7 +398,7 @@ def run_workflow_command(
 	try:
 		# Call run on the Workflow instance
 		# close_browser_at_end=True is the default for Workflow.run, but explicit for clarity
-		result = asyncio.run(workflow_obj.run(inputs=inputs, close_browser_at_end=True))
+		result = asyncio.run(workflow_obj.run(inputs=inputs, close_browser_at_end=True, screenshot_path=screenshot_path))
 
 		typer.secho('\nWorkflow execution completed!', fg=typer.colors.GREEN, bold=True)
 		typer.echo(typer.style('Result:', bold=True))
