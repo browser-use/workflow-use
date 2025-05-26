@@ -1,8 +1,15 @@
+import asyncio
+import sys
+
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .routers import router
+from backend.routers import router
+
+# Set event loop policy for Windows
+if sys.platform == "win32":
+	asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 app = FastAPI(title='Workflow Execution Service')
 

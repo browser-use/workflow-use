@@ -528,6 +528,7 @@ class Workflow:
 
 		results: List[ActionResult | AgentHistoryList] = []
 
+		logger.debug(f"Current event loop type: {type(asyncio.get_event_loop())}")
 		await self.browser_context.__aenter__()
 		try:
 			for step_index, step_dict in enumerate(self.steps):  # self.steps now holds dictionaries
