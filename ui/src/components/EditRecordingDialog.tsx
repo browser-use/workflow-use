@@ -12,6 +12,7 @@ import { workflowService } from '@/services/workflowService';
 import { Trash2 } from 'lucide-react';
 import { Workflow } from '@/types/workflow-layout.types';
 import { useAppContext } from '@/contexts/AppContext';
+import { toast } from './ui/use-toast';
 
 interface WorkflowRecordResponse {
   success: boolean;
@@ -29,6 +30,18 @@ interface ConfirmCloseDialogProps {
   isOpen: boolean;
   onConfirm: () => void;
   onCancel: () => void;
+}
+
+function formatStepAttributes(step: Record<string, any>, maxLen = 40) {
+  return Object.entries(step)
+    .map(([key, value]) => {
+      let strValue = typeof value === 'string' ? value : JSON.stringify(value);
+      if (strValue.length > maxLen) {
+        strValue = strValue.slice(0, maxLen) + '...';
+      }
+      return `${key}: ${strValue}`;
+    })
+    .join(', ');
 }
 
 const ConfirmCloseDialog: React.FC<ConfirmCloseDialogProps> = ({
@@ -75,7 +88,8 @@ export function EditRecordingDialog({
   const [isBuilding, setIsBuilding] = useState(false);
   const [userPrompt, setUserPrompt] = useState('');
   const [showConfirmClose, setShowConfirmClose] = useState(false);
-  const { recordingStatus, setRecordingStatus } = useAppContext();
+  const { recordingStatus, setRecordingStatus, fetchWorkflows } =
+    useAppContext();
 
   // Update editedData when recordingData changes
   useEffect(() => {
@@ -101,15 +115,29 @@ export function EditRecordingDialog({
           ...editedData,
         }
       );
-      console.log('BUILD WORKFLOW RESPONSE', response);
       if (response.success) {
+        await fetchWorkflows();
         onClose();
         setRecordingStatus('idle');
+        toast({
+          title: '✨ Workflow Built Successfully',
+          description: 'Your workflow has been created and is ready to use.',
+        });
       } else {
         console.error('Failed to build workflow:', response.error);
+        toast({
+          title: '❌ Failed to Build Workflow',
+          description:
+            response.error || 'An error occurred while building the workflow.',
+        });
       }
     } catch (error) {
       console.error('Error building workflow:', error);
+      toast({
+        title: '❌ Failed to Build Workflow',
+        description:
+          'An unexpected error occurred while building the workflow.',
+      });
     } finally {
       setIsBuilding(false);
       setRecordingStatus('idle');
@@ -149,16 +177,16 @@ export function EditRecordingDialog({
           }
         }}
       >
-        <DialogContent className="sm:max-w-[90vw] h-[90vh]">
+        <DialogContent className="sm:max-w-7xl max-h-[90vh] p-10">
           <DialogHeader>
             <DialogTitle className="text-2xl font-bold">
               Edit Recorded Workflow
             </DialogTitle>
           </DialogHeader>
-          <div className="grid grid-cols-2 gap-6 h-full overflow-hidden">
+          <div className="grid grid-cols-2 gap-8 h-full overflow-hidden">
             {/* Left side - Prompt and Workflow Info */}
-            <div className="flex flex-col gap-6 h-full overflow-y-auto pr-4">
-              <div className="grid gap-4">
+            <div className="flex flex-col gap-4 h-full overflow-y-auto flex-1 min-h-0">
+              <div className="grid gap-4 p-4">
                 <div className="grid gap-2">
                   <label htmlFor="name" className="text-sm font-medium">
                     Workflow Name
@@ -169,7 +197,7 @@ export function EditRecordingDialog({
                     onChange={(e) =>
                       setEditedData({ ...editedData, name: e.target.value })
                     }
-                    className="border rounded-md p-2 text-lg"
+                    className="border rounded-md p-5 text-lg"
                   />
                 </div>
 
@@ -185,25 +213,37 @@ export function EditRecordingDialog({
                     value={userPrompt}
                     onChange={(e) => setUserPrompt(e.target.value)}
                     placeholder="Describe the purpose and behavior of this workflow. The AI will use this to optimize the steps..."
-                    className="min-h-[200px] text-lg"
+                    className="min-h-[300px] text-lg ml-1 focus:outline-black focus:outline-2 p-5"
                   />
                 </div>
               </div>
             </div>
 
             {/* Right side - Steps List */}
-            <div className="flex flex-col gap-4 h-full overflow-y-auto">
-              <h3 className="text-lg font-semibold">Recorded Steps</h3>
-              <div className="space-y-4">
+            <div className="flex flex-col gap-2 h-full overflow-y-auto flex-1 min-h-0">
+              <h3 className="text-lg font-semibold">Steps Recorded</h3>
+              <p className="text-md text-gray-700">
+                Remove any steps that are not needed if you want to optimize
+                token usage.
+              </p>
+              <div className="space-y-2">
                 {editedData.steps?.map((step: any, index: number) => (
                   <div
                     key={index}
-                    className="flex items-start gap-4 p-4 border rounded-lg bg-gray-50"
+                    className="flex items-start gap-4 p-6 border rounded-lg bg-gray-50 text-lg"
                   >
                     <div className="flex-1">
                       <div className="font-medium">{step.type}</div>
-                      <div className="text-sm text-gray-600 mt-1">
-                        {step.description || JSON.stringify(step, null, 2)}
+                      <div
+                        className="text-lg text-gray-600 mt-1 overflow-hidden max-h-[3em] leading-tight"
+                        style={{
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                          whiteSpace: 'normal',
+                        }}
+                      >
+                        {step.description || formatStepAttributes(step)}
                       </div>
                     </div>
                     <Button

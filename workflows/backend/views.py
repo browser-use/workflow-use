@@ -1,11 +1,12 @@
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from workflow_use.schema.views import WorkflowDefinitionSchema
 
 # Task Models
 class TaskInfo(BaseModel):
+	model_config = ConfigDict(extra='ignore')
 	status: str
 	workflow: str
 	result: Optional[List[Dict[str, Any]]] = None

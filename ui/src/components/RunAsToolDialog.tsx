@@ -37,6 +37,13 @@ export function RunAsToolDialog() {
       onOpenChange={(open) => setActiveDialog(open ? 'runAsTool' : null)}
     >
       <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <div className="text-center p-6 bg-gradient-to-r from-purple-500 to-indigo-500 rounded-lg shadow-lg">
+          <p className="text-2xl font-bold text-white">🚀 Coming Soon!</p>
+          <p className="text-md text-white mt-2">
+            This feature is currently under development. Stay tuned for updates!
+          </p>
+        </div>
+        <br />
         <DialogHeader>
           <DialogTitle className="text-xl font-semibold">
             Run as Tool: {currentWorkflowData.name}
@@ -44,17 +51,6 @@ export function RunAsToolDialog() {
         </DialogHeader>
 
         <div className="space-y-6 py-4">
-          <div className="text-center p-4 bg-gray-100 rounded-lg">
-            <p className="text-lg font-semibold text-gray-700">Coming Soon</p>
-            <p className="text-sm text-gray-600 mt-1">
-              This feature is currently under development
-            </p>
-          </div>
-          <p className="text-gray-600">
-            Provide a prompt for the LLM to generate the inputs for this
-            workflow:
-          </p>
-
           <div className="space-y-2">
             <Label htmlFor="llm-prompt" className="text-sm font-medium">
               LLM Prompt

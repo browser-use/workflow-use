@@ -22,8 +22,8 @@ export interface WorkflowService {
     name: string,
     inputFields: z.infer<typeof inputFieldSchema>[]
   ): Promise<{
-    taskId: string;
-    logPosition: number;
+    task_id: string;
+    log_position: number;
   }>;
   getWorkflowCategory(timestamp: number): string;
   addWorkflow(name: string, content: string): Promise<void>;
@@ -83,8 +83,8 @@ class WorkflowServiceImpl implements WorkflowService {
     name: string,
     inputFields: z.infer<typeof inputFieldSchema>[]
   ): Promise<{
-    taskId: string;
-    logPosition: number;
+    task_id: string;
+    log_position: number;
   }> {
     const inputs: Record<string, any> = {};
     inputFields.forEach((field) => {

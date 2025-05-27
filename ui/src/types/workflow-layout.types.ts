@@ -51,3 +51,11 @@ export const workflowSchema = z.object({
 
 /* ── Inferred TypeScript type ───────────────────────────────────────– */
 export type Workflow = z.infer<typeof workflowSchema>;
+
+export interface WorkflowMetadata {
+  name: string;
+  description: string;
+  version: string;
+  workflow_analysis: string;
+  input_schema: any[];
+}

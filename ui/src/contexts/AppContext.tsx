@@ -2,7 +2,6 @@ import React, {
   createContext,
   useContext,
   useState,
-  useMemo,
   ReactNode,
   useCallback,
   useRef,
@@ -33,7 +32,7 @@ interface AppContextType {
   setDisplayMode: (mode: DisplayMode) => void;
   workflowStatus: WorkflowStatus;
   workflowError: string | null;
-  currentTaskId: number | null;
+  currentTaskId: string | null;
   currentLogPosition: number;
   sidebarStatus: SidebarStatus;
   editorStatus: EditorStatus;
@@ -62,6 +61,7 @@ interface AppContextType {
   setRecordingStatus: (status: RecordingStatus) => void;
   recordingData: any;
   setRecordingData: (data: any) => void;
+  fetchWorkflows: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -83,7 +83,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
   const [editorStatus, setEditorStatus] = useState<EditorStatus>('saved');
   const [logData, setLogData] = useState<string[]>([]);
   const [logPosition, setLogPosition] = useState<number>(0);
-  const [currentTaskId, setCurrentTaskId] = useState<number | null>(null);
+  const [currentTaskId, setCurrentTaskId] = useState<string | null>(null);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
   const [recordingStatus, setRecordingStatus] =
     useState<RecordingStatus>('idle');
@@ -128,7 +128,6 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         description: 'The workflow has been successfully added!',
       });
     } catch (err) {
-      console.error('Failed to add workflow:', err);
       toast({
         title: 'Error ❌',
         description: 'Failed to add the workflow. Please try again! 🔄',
@@ -145,7 +144,6 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         description: 'The workflow has been successfully deleted!',
       });
     } catch (err) {
-      console.error('Failed to delete workflow:', err);
       toast({
         title: 'Error ❌',
         description: 'Failed to delete the workflow. Please try again! 🔄',
@@ -168,6 +166,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
             description: newWorkflow.description,
             version: newWorkflow.version,
             input_schema: newWorkflow.input_schema,
+            workflow_analysis: newWorkflow.workflow_analysis,
           });
         }
         if (
@@ -204,13 +203,16 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
 
   const startPollingLogs = useCallback(
     (taskId: string) => {
-      stopPollingLogs(); // clear any existing polling
+      stopPollingLogs();
 
       const poll = async () => {
         try {
           const data = await fetchWorkflowLogs(taskId, logPosition);
           if (data.logs?.length) {
-            setLogData((prev) => [...prev, ...data.logs]);
+            setLogData((prev) => {
+              const newLogs = data.logs.filter((log) => !prev.includes(log));
+              return [...prev, ...newLogs];
+            });
           }
           setLogPosition(data.log_position);
 
@@ -226,10 +228,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       };
 
       poll();
-
-      pollingRef.current = setInterval(() => {
-        poll();
-      }, 2000);
+      pollingRef.current = setInterval(poll, 2000);
     },
     [logPosition, workflowStatus, stopPollingLogs]
   );
@@ -266,16 +265,15 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
 
       try {
         const result = await workflowService.executeWorkflow(name, inputFields);
-        setCurrentTaskId(parseInt(result.taskId));
-        setLogPosition(result.logPosition);
+        setCurrentTaskId(result.task_id);
+        setLogPosition(result.log_position);
         setWorkflowStatus('running');
         setDisplayMode('log');
-
-        startPollingLogs(result.taskId);
+        startPollingLogs(result.task_id);
       } catch (err) {
-        console.error('Failed to execute workflow:', err);
         setWorkflowError('An error occurred while executing the workflow');
         setWorkflowStatus('failed');
+        stopPollingLogs();
       }
     },
     [startPollingLogs, checkForUnsavedChanges]
@@ -291,19 +289,20 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
   }, [workflows, currentWorkflowData]);
 
   // Fetch workflows on mount
+  const fetchWorkflows = async () => {
+    try {
+      setSidebarStatus('loading');
+      const response = await workflowService.getWorkflows();
+      const parsedWorkflows = response.map((wf: any) => JSON.parse(wf));
+      setWorkflows(parsedWorkflows);
+      setSidebarStatus('ready');
+    } catch (err) {
+      console.error('Failed to fetch workflows:', err);
+      setSidebarStatus('error');
+    }
+  };
+
   useEffect(() => {
-    const fetchWorkflows = async () => {
-      try {
-        setSidebarStatus('loading');
-        const response = await workflowService.getWorkflows();
-        const parsedWorkflows = response.map((wf: any) => JSON.parse(wf));
-        setWorkflows(parsedWorkflows);
-        setSidebarStatus('ready');
-      } catch (err) {
-        console.error('Failed to fetch workflows:', err);
-        setSidebarStatus('error');
-      }
-    };
     fetchWorkflows();
   }, []);
 
@@ -347,6 +346,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         setRecordingStatus,
         recordingData,
         setRecordingData,
+        fetchWorkflows,
       }}
     >
       {children}

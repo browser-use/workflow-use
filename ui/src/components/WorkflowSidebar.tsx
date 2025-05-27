@@ -13,7 +13,6 @@ import { Button } from '@/components/ui/button';
 import { DeleteWorkflowDialog } from '@/components/DeleteWorkflowDialog';
 import { WorkflowCategoryBlock } from '@/components/WorkflowCategoryBlock';
 import { useAppContext } from '@/contexts/AppContext';
-import { getUniqueWorkflowName } from '@/lib/utils';
 import { workflowService } from '@/services/workflowService';
 import { useToast } from '@/hooks/use-toast';
 import { EditRecordingDialog } from './EditRecordingDialog';

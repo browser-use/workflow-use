@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import aiofiles
+from browser_use.agent.views import ActionResult
 from browser_use.browser.browser import Browser
 from langchain_openai import ChatOpenAI
 
@@ -53,6 +54,10 @@ class WorkflowService:
 		self.workflow_tasks: Dict[str, asyncio.Task] = {}
 		self.cancel_events: Dict[str, asyncio.Event] = {}
 
+	def _get_timestamp(self) -> str:
+		"""Get current timestamp in the format used for logging."""
+		return time.strftime('%Y-%m-%d %H:%M:%S') + f'.{int(time.time() * 1000) % 1000:03d}'
+
 	async def _log_file_position(self) -> int:
 		log_file = self.log_dir / 'backend.log'
 		if not log_file.exists():
@@ -70,7 +75,7 @@ class WorkflowService:
 		if position >= current_size:
 			return [], position
 
-		async with aiofiles.open(log_file, 'r') as f:
+		async with aiofiles.open(log_file, 'r', encoding='utf-8') as f:
 			await f.seek(position)
 			all_logs = await f.readlines()
 			new_logs = [
@@ -84,7 +89,7 @@ class WorkflowService:
 		return new_logs, current_size
 
 	async def _write_log(self, log_file: Path, message: str) -> None:
-		async with aiofiles.open(log_file, 'a') as f:
+		async with aiofiles.open(log_file, 'a', encoding='utf-8') as f:
 			await f.write(message)
 
 	def list_workflows(self) -> List[str]:
@@ -173,12 +178,11 @@ class WorkflowService:
 		log_file = self.log_dir / 'backend.log'
 		try:
 			self.active_tasks[task_id] = TaskInfo(status='running', workflow=workflow_name)
-			ts = time.strftime('%Y-%m-%d %H:%M:%S')
-			await self._write_log(log_file, f"[{ts}] Starting workflow '{workflow_name}'\n")
-			await self._write_log(log_file, f'[{ts}] Input parameters: {json.dumps(inputs)}\n')
+			await self._write_log(log_file, f"[{self._get_timestamp()}] Starting workflow '{workflow_name}'\n")
+			await self._write_log(log_file, f'[{self._get_timestamp()}] Input parameters: {json.dumps(inputs)}\n')
 
 			if cancel_event.is_set():
-				await self._write_log(log_file, f'[{ts}] Workflow cancelled before execution\n')
+				await self._write_log(log_file, f'[{self._get_timestamp()}] Workflow cancelled before execution\n')
 				self.active_tasks[task_id].status = 'cancelled'
 				return
 
@@ -191,41 +195,54 @@ class WorkflowService:
 				print(f'Error loading workflow: {e}')
 				return
 
-			await self._write_log(log_file, f'[{ts}] Executing workflow...\n')
+			await self._write_log(log_file, f'[{self._get_timestamp()}] Executing workflow...\n')
 
 			if cancel_event.is_set():
-				await self._write_log(log_file, f'[{ts}] Workflow cancelled before execution\n')
+				await self._write_log(log_file, f'[{self._get_timestamp()}] Workflow cancelled before execution\n')
 				self.active_tasks[task_id].status = 'cancelled'
 				return
 
 			result = await self.workflow_obj.run(inputs, close_browser_at_end=True, cancel_event=cancel_event)
 
 			if cancel_event.is_set():
-				await self._write_log(log_file, f'[{ts}] Workflow execution was cancelled\n')
+				await self._write_log(log_file, f'[{self._get_timestamp()}] Workflow execution was cancelled\n')
 				self.active_tasks[task_id].status = 'cancelled'
 				return
 
-			formatted_result = [
-				{
+			formatted_result = []
+			for i, s in enumerate(result.step_results):
+				content = None
+				if isinstance(s, ActionResult): # Handle agentic steps and agent fallback
+					content = s.extracted_content
+				elif hasattr(s, 'history') and s.history:  # AgentHistoryList
+					# For AgentHistoryList, get the last successful result
+					last_item = s.history[-1]
+					last_action_result = next(
+						(r for r in reversed(last_item.result) if r.extracted_content is not None),
+						None,
+					)
+					if last_action_result:
+						content = last_action_result.extracted_content
+
+				formatted_result.append({
 					'step_id': i,
-					'extracted_content': s.extracted_content,
+					'extracted_content': content,
 					'status': 'completed',
-				}
-				for i, s in enumerate(result.step_results)
-			]
+				})
+
 			for step in formatted_result:
-				await self._write_log(log_file, f'[{ts}] Completed step {step["step_id"]}: {step["extracted_content"]}\n')
+				await self._write_log(log_file, f'[{self._get_timestamp()}] Completed step {step["step_id"]}: {step["extracted_content"]}\n')
 
 			self.active_tasks[task_id].status = 'completed'
 			self.active_tasks[task_id].result = formatted_result
-			await self._write_log(log_file, f'[{ts}] Workflow completed successfully with {len(result.step_results)} steps\n')
+			await self._write_log(log_file, f'[{self._get_timestamp()}] Workflow completed successfully with {len(result.step_results)} steps\n')
 
 		except asyncio.CancelledError:
-			await self._write_log(log_file, f'[{time.strftime("%Y-%m-%d %H:%M:%S")}] Workflow force‑cancelled\n')
+			await self._write_log(log_file, f'[{self._get_timestamp()}] Workflow force‑cancelled\n')
 			self.active_tasks[task_id].status = 'cancelled'
 			raise
 		except Exception as exc:
-			await self._write_log(log_file, f'[{time.strftime("%Y-%m-%d %H:%M:%S")}] Error: {exc}\n')
+			await self._write_log(log_file, f'[{self._get_timestamp()}] Error: {exc}\n')
 			self.active_tasks[task_id].status = 'failed'
 			self.active_tasks[task_id].error = str(exc)
 
@@ -259,7 +276,7 @@ class WorkflowService:
 
 		await self._write_log(
 			self.log_dir / 'backend.log',
-			f'[{time.strftime("%Y-%m-%d %H:%M:%S")}] Workflow execution for task {task_id} cancelled by user\n',
+			f'[{self._get_timestamp()}] Workflow execution for task {task_id} cancelled by user\n',
 		)
 
 		self.active_tasks[task_id].status = 'cancelling'
@@ -301,8 +318,6 @@ class WorkflowService:
 		"""Record a new workflow using the recording service."""
 		try:
 			workflow_data = await self.recording_service.record_workflow_using_main_server()
-			print('RECORDING SERVICE')
-			print(workflow_data)
 			return WorkflowRecordResponse(success=True, workflow=workflow_data)
 		except Exception as e:
 			print(f'Error recording workflow: {e}')
@@ -336,8 +351,6 @@ class WorkflowService:
 				user_goal=request.prompt,
 				use_screenshots=False  # We don't need screenshots for now
 			)
-			print('BUILT WORKFLOW')
-			print(built_workflow)
 
 			# Set timestamps for steps that don't have them
 			current_time = int(time.time() * 1000)  # Current time in milliseconds
