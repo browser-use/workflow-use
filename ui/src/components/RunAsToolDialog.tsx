@@ -12,7 +12,7 @@ import { useAppContext } from '@/contexts/AppContext';
 import { Settings, Loader2 } from 'lucide-react';
 
 export function RunAsToolDialog() {
-  const { showRunAsToolDialog, setShowRunAsToolDialog, currentWorkflowData } =
+  const { activeDialog, setActiveDialog, currentWorkflowData } =
     useAppContext();
   const [prompt, setPrompt] = useState('');
   const [isExecuting, setIsExecuting] = useState(false);
@@ -25,14 +25,17 @@ export function RunAsToolDialog() {
     await new Promise((resolve) => setTimeout(resolve, 5000));
 
     setIsExecuting(false);
-    setShowRunAsToolDialog(false);
+    setActiveDialog(null);
     setPrompt(''); // Reset prompt
   };
 
   if (!currentWorkflowData) return null;
 
   return (
-    <Dialog open={showRunAsToolDialog} onOpenChange={setShowRunAsToolDialog}>
+    <Dialog
+      open={activeDialog === 'runAsTool'}
+      onOpenChange={(open) => setActiveDialog(open ? 'runAsTool' : null)}
+    >
       <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-xl font-semibold">
@@ -71,7 +74,7 @@ export function RunAsToolDialog() {
           <Button
             variant="outline"
             onClick={() => {
-              setShowRunAsToolDialog(false);
+              setActiveDialog(null);
               setPrompt('');
             }}
             disabled={isExecuting}

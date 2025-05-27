@@ -16,12 +16,19 @@ import { useAppContext } from '@/contexts/AppContext';
 import { getUniqueWorkflowName } from '@/lib/utils';
 import { workflowService } from '@/services/workflowService';
 
+type Category = 'today' | 'yesterday' | 'last-week' | 'last-month' | 'older';
+
 export function WorkflowSidebar() {
   const [searchTerm, setSearchTerm] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [deleteWorkflowId, setDeleteWorkflowId] = useState<string | null>(null);
-  const { workflows, addWorkflow, deleteWorkflow, isLoadingWorkflows } =
-    useAppContext();
+  const {
+    workflows,
+    addWorkflow,
+    deleteWorkflow,
+    sidebarStatus,
+    checkForUnsavedChanges,
+  } = useAppContext();
 
   const filteredWorkflows = useMemo(() => {
     if (!searchTerm) return workflows;
@@ -33,12 +40,6 @@ export function WorkflowSidebar() {
   }, [searchTerm, workflows]);
 
   const workflowsByCategory = useMemo(() => {
-    type Category =
-      | 'today'
-      | 'yesterday'
-      | 'last-week'
-      | 'last-month'
-      | 'older';
     const result: Record<Category, typeof workflows> = {
       today: [],
       yesterday: [],
@@ -48,7 +49,6 @@ export function WorkflowSidebar() {
     };
 
     filteredWorkflows.forEach((workflow) => {
-      // Find the most recent timestamp from workflow steps
       const timestamps = workflow.steps
         .map((step) => step.timestamp)
         .filter((timestamp) => timestamp !== null);
@@ -59,6 +59,7 @@ export function WorkflowSidebar() {
       const category = workflowService.getWorkflowCategory(
         mostRecentTimestamp
       ) as Category;
+
       if (category in result) {
         result[category].push(workflow);
       }
@@ -68,52 +69,110 @@ export function WorkflowSidebar() {
   }, [filteredWorkflows]);
 
   const handleRecordNewWorkflow = async () => {
-    setIsRecording(true);
-    console.log('Recording new workflow...');
-
-    // Simulate recording time
-    await new Promise((resolve) => setTimeout(resolve, 3000));
-
-    // Add a random workflow from existing ones as a duplicate
-    const random = workflows[Math.floor(Math.random() * workflows.length)];
-
-    if (!random) {
-      console.error('No workflows available to duplicate');
-      setIsRecording(false);
+    if (checkForUnsavedChanges()) {
       return;
     }
+    setIsRecording(true);
+    try {
+      // Simulate recording time
+      await new Promise((resolve) => setTimeout(resolve, 3000));
 
-    const newWorkflow = {
-      ...random,
-      name: getUniqueWorkflowName(
-        `${random.name}`,
-        workflows.map((wf) => wf.name)
-      ),
-      workflow_analysis: random.workflow_analysis,
-      description: random.description,
-      version: random.version,
-      steps: random.steps,
-      input_schema: random.input_schema,
-    };
+      const random = workflows[Math.floor(Math.random() * workflows.length)];
+      if (!random) {
+        throw new Error('No workflows available to duplicate');
+      }
 
-    addWorkflow(newWorkflow);
-    console.log('Workflow recording completed!');
-    setIsRecording(false);
+      const newWorkflow = {
+        ...random,
+        name: getUniqueWorkflowName(
+          `${random.name}`,
+          workflows.map((wf) => wf.name)
+        ),
+        workflow_analysis: random.workflow_analysis,
+        description: random.description,
+        version: random.version,
+        steps: random.steps,
+        input_schema: random.input_schema,
+      };
+
+      await addWorkflow(newWorkflow);
+      console.log('Workflow recording completed!');
+    } catch (error) {
+      console.error('Failed to record workflow:', error);
+    } finally {
+      setIsRecording(false);
+    }
   };
 
   const handleDeleteWorkflow = (workflowId: string) => {
     setDeleteWorkflowId(workflowId);
   };
 
-  const confirmDeleteWorkflow = (workflowId: string) => {
+  const confirmDeleteWorkflow = async (workflowId: string) => {
     if (!workflowId) return;
-    console.log('Deleting workflow:', workflowId);
-    deleteWorkflow(workflowId);
-    setDeleteWorkflowId(null);
+    try {
+      await deleteWorkflow(workflowId);
+      console.log('Workflow deleted:', workflowId);
+    } catch (error) {
+      console.error('Failed to delete workflow:', error);
+    } finally {
+      setDeleteWorkflowId(null);
+    }
   };
 
-  const cancelDeleteWorkflow = () => {
-    setDeleteWorkflowId(null);
+  const renderSidebarContent = () => {
+    if (sidebarStatus === 'loading') {
+      return (
+        <div className="flex flex-col items-center justify-center p-8 space-y-4">
+          <Globe className="w-8 h-8 text-purple-600 animate-bounce" />
+          <p className="text-gray-600 animate-pulse">Loading workflows...</p>
+        </div>
+      );
+    }
+
+    if (sidebarStatus === 'error') {
+      return (
+        <div className="p-4 text-center text-red-500">
+          Failed to load workflows. Try again by refreshing the page.
+        </div>
+      );
+    }
+
+    return (
+      <>
+        <WorkflowCategoryBlock
+          label="Today"
+          workflows={workflowsByCategory.today}
+          onDeleteWorkflow={handleDeleteWorkflow}
+        />
+        <WorkflowCategoryBlock
+          label="Yesterday"
+          workflows={workflowsByCategory.yesterday}
+          onDeleteWorkflow={handleDeleteWorkflow}
+        />
+        <WorkflowCategoryBlock
+          label="Last Week"
+          workflows={workflowsByCategory['last-week']}
+          onDeleteWorkflow={handleDeleteWorkflow}
+        />
+        <WorkflowCategoryBlock
+          label="Last Month"
+          workflows={workflowsByCategory['last-month']}
+          onDeleteWorkflow={handleDeleteWorkflow}
+        />
+        <WorkflowCategoryBlock
+          label="Older"
+          workflows={workflowsByCategory.older}
+          onDeleteWorkflow={handleDeleteWorkflow}
+        />
+
+        {filteredWorkflows.length === 0 && (
+          <div className="p-4 text-center text-gray-500">
+            No workflows found matching "{searchTerm}"
+          </div>
+        )}
+      </>
+    );
   };
 
   return (
@@ -165,45 +224,7 @@ export function WorkflowSidebar() {
           <SidebarGroup>
             <SidebarGroupContent>
               <SidebarMenu className="space-y-1">
-                {isLoadingWorkflows ? (
-                  <div className="flex items-center justify-center p-8">
-                    <Loader className="w-6 h-6 animate-spin text-purple-600" />
-                  </div>
-                ) : (
-                  <>
-                    <WorkflowCategoryBlock
-                      label="Today"
-                      workflows={workflowsByCategory.today}
-                      onDeleteWorkflow={handleDeleteWorkflow}
-                    />
-                    <WorkflowCategoryBlock
-                      label="Yesterday"
-                      workflows={workflowsByCategory.yesterday}
-                      onDeleteWorkflow={handleDeleteWorkflow}
-                    />
-                    <WorkflowCategoryBlock
-                      label="Last Week"
-                      workflows={workflowsByCategory['last-week']}
-                      onDeleteWorkflow={handleDeleteWorkflow}
-                    />
-                    <WorkflowCategoryBlock
-                      label="Last Month"
-                      workflows={workflowsByCategory['last-month']}
-                      onDeleteWorkflow={handleDeleteWorkflow}
-                    />
-                    <WorkflowCategoryBlock
-                      label="Older"
-                      workflows={workflowsByCategory.older}
-                      onDeleteWorkflow={handleDeleteWorkflow}
-                    />
-
-                    {filteredWorkflows.length === 0 && (
-                      <div className="p-4 text-center text-gray-500">
-                        No workflows found matching "{searchTerm}"
-                      </div>
-                    )}
-                  </>
-                )}
+                {renderSidebarContent()}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
@@ -213,7 +234,7 @@ export function WorkflowSidebar() {
       <DeleteWorkflowDialog
         workflowId={deleteWorkflowId}
         onConfirm={confirmDeleteWorkflow}
-        onCancel={cancelDeleteWorkflow}
+        onCancel={() => setDeleteWorkflowId(null)}
       />
     </>
   );

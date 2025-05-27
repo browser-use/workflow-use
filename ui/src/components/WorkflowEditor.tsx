@@ -24,12 +24,21 @@ import {
 } from '@dnd-kit/sortable';
 import { toast } from 'sonner';
 import { SortableStep } from './SortableStep';
+import { UnsavedChangesDialog } from './UnsavedChangesDialog';
 
 type Workflow = z.infer<typeof workflowSchema>;
 type Step = z.infer<typeof stepSchema>;
 
 export function WorkflowEditor() {
-  const { currentWorkflowData, updateWorkflow } = useAppContext();
+  const {
+    currentWorkflowData,
+    updateWorkflow,
+    setEditorStatus,
+    editorStatus,
+    activeDialog,
+    setActiveDialog,
+    setDisplayMode,
+  } = useAppContext();
   const [workflow, setWorkflow] = useState<Workflow | null>(null);
   const [oldWorkflow, setOldWorkflow] = useState<Workflow | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -48,9 +57,19 @@ export function WorkflowEditor() {
       if (safeWorkflow.success) {
         setWorkflow(safeWorkflow.data);
         setOldWorkflow(safeWorkflow.data);
+        setEditorStatus('saved');
       } else console.error('Invalid workflow data', safeWorkflow.error);
     }
-  }, [currentWorkflowData]);
+  }, [currentWorkflowData, setEditorStatus]);
+
+  // Track changes and update editor status
+  useEffect(() => {
+    if (workflow && oldWorkflow) {
+      const hasChanges =
+        JSON.stringify(workflow) !== JSON.stringify(oldWorkflow);
+      setEditorStatus(hasChanges ? 'unsaved' : 'saved');
+    }
+  }, [workflow, oldWorkflow, setEditorStatus]);
 
   const updateField = (key: keyof Workflow, value: any) => {
     setWorkflow((prev) => (prev ? { ...prev, [key]: value } : prev));
@@ -59,17 +78,28 @@ export function WorkflowEditor() {
   const updateStepField = (index: number, key: keyof Step, value: any) => {
     if (!workflow) return;
     const newSteps = [...workflow.steps];
-    newSteps[index] = { ...newSteps[index], [key]: value };
+    const updatedStep = { ...newSteps[index], [key]: value } as Step;
+    newSteps[index] = updatedStep;
     setWorkflow({ ...workflow, steps: newSteps });
+    console.log(`Step at index ${index} updated:`, updatedStep);
   };
 
   const addStep = () => {
     if (!workflow) return;
-    const newStep: Step = stepSchema.parse({
+    const newStep = stepSchema.parse({
       description: 'New step',
       type: 'click',
       timestamp: null,
       tabId: null,
+      output: null,
+      url: null,
+      cssSelector: null,
+      xpath: null,
+      elementTag: null,
+      elementText: null,
+      selectedText: null,
+      value: null,
+      task: null,
     });
     setWorkflow({ ...workflow, steps: [...workflow.steps, newStep] });
   };
@@ -105,6 +135,8 @@ export function WorkflowEditor() {
     setSaveError(null);
     try {
       await updateWorkflow(oldWorkflow, validation.data);
+      setOldWorkflow(validation.data); // Update old workflow after successful save
+      setEditorStatus('saved');
       setSaveError(null);
       toast.success('Changes saved successfully', {
         icon: <CheckCircle2 className="w-4 h-4 text-green-500" />,
@@ -119,7 +151,26 @@ export function WorkflowEditor() {
       });
     } finally {
       setIsSaving(false);
+      // Ensure dialog is closed after logging
+      setActiveDialog(null);
     }
+  };
+
+  const handleDiscardChanges = () => {
+    if (oldWorkflow) {
+      setWorkflow(oldWorkflow);
+      setEditorStatus('saved');
+      setDisplayMode('editor');
+      // Ensure dialog is closed after logging
+      setActiveDialog(null);
+    }
+  };
+
+  const handleCancel = () => {
+    // Simply close the dialog and return to editor
+    setDisplayMode('editor');
+    // Ensure dialog is closed after logging
+    setActiveDialog(null);
   };
 
   if (!workflow)
@@ -127,6 +178,14 @@ export function WorkflowEditor() {
 
   return (
     <div className="relative min-h-screen">
+      {activeDialog === 'unsavedChanges' && (
+        <UnsavedChangesDialog
+          onSave={saveChanges}
+          onDiscard={handleDiscardChanges}
+          onCancel={handleCancel}
+          isSaving={isSaving}
+        />
+      )}
       <div className="p-6 max-w-4xl mx-auto space-y-6 pb-24">
         <div className="space-y-2">
           <h2 className="text-xl font-semibold mb-3">Workflow Details</h2>
@@ -181,15 +240,15 @@ export function WorkflowEditor() {
         </DndContext>
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t p-4 shadow-lg">
+      <div className="fixed bottom-0 left-0 right-0 ml-40 bg-white border-t border-gray-200 p-4">
         <div className="max-w-4xl mx-auto space-y-2">
           {saveError && (
             <div className="text-red-600 text-sm text-center">{saveError}</div>
           )}
           <Button
-            className="w-full bg-purple-600 text-white disabled:opacity-50"
+            className="w-full ml-10 bg-purple-600 text-white disabled:opacity-50"
             onClick={saveChanges}
-            disabled={isSaving}
+            disabled={isSaving || editorStatus === 'saved'}
           >
             {isSaving ? (
               <>

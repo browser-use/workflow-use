@@ -15,34 +15,32 @@ import { inputFieldSchema } from '../types/workflow-layout.types';
 import { z } from 'zod';
 
 export type DisplayMode = 'canvas' | 'editor' | 'log' | 'start';
+export type DialogType = 'run' | 'runAsTool' | 'unsavedChanges' | null;
+export type SidebarStatus = 'loading' | 'ready' | 'error';
+export type EditorStatus = 'saved' | 'unsaved';
+export type WorkflowStatus = 'idle' | 'running' | 'failed' | 'cancelling';
 
 interface AppContextType {
   displayMode: DisplayMode;
   setDisplayMode: (mode: DisplayMode) => void;
-  workflowStatus: string;
+  workflowStatus: WorkflowStatus;
   workflowError: string | null;
-  isWorkflowRunning: boolean;
   currentTaskId: number | null;
   currentLogPosition: number;
-  isLoadingWorkflows: boolean;
-
+  sidebarStatus: SidebarStatus;
+  editorStatus: EditorStatus;
+  setEditorStatus: (status: EditorStatus) => void;
   currentWorkflowData: Workflow | null;
   workflows: Workflow[];
   addWorkflow: (workflow: Workflow) => void;
   deleteWorkflow: (workflowId: string) => void;
   selectWorkflow: (workflowName: string) => void;
-
-  showRunDialog: boolean;
-  setShowRunDialog: (show: boolean) => void;
-
-  showRunAsToolDialog: boolean;
-  setShowRunAsToolDialog: (show: boolean) => void;
-
+  activeDialog: DialogType;
+  setActiveDialog: (dialog: DialogType) => void;
   executeWorkflow: (
     name: string,
     inputFields: z.infer<typeof inputFieldSchema>[]
   ) => Promise<void>;
-
   updateWorkflow: (
     oldWorkflow: Workflow,
     newWorkflow: Workflow
@@ -51,6 +49,7 @@ interface AppContextType {
   stopPollingLogs: () => void;
   logData: string[];
   cancelWorkflowExecution: (taskId: string) => Promise<void>;
+  checkForUnsavedChanges: () => boolean;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -61,28 +60,41 @@ interface AppProviderProps {
 
 export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
-  const [displayMode, setDisplayMode] = useState<DisplayMode>('start');
+  const [displayMode, setDisplay] = useState<DisplayMode>('start');
   const [currentWorkflowData, setCurrentWorkflowData] =
     useState<Workflow | null>(null);
-  const [showRunDialog, setShowRunDialog] = useState(false);
-  const [showRunAsToolDialog, setShowRunAsToolDialog] = useState(false);
-  const [logData, setLogData] = useState<string[]>([]);
-  const [workflowStatus, setWorkflowStatus] = useState<string>('idle');
+  const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus>('idle');
   const [workflowError, setWorkflowError] = useState<string | null>(null);
-  const [isWorkflowRunning, setIsWorkflowRunning] = useState(false);
+  const [activeDialog, setActiveDialog] = useState<DialogType>(null);
+  const [sidebarStatus, setSidebarStatus] = useState<SidebarStatus>('loading');
+  const [editorStatus, setEditorStatus] = useState<EditorStatus>('saved');
+  const [logData, setLogData] = useState<string[]>([]);
   const [logPosition, setLogPosition] = useState<number>(0);
   const [currentTaskId, setCurrentTaskId] = useState<number | null>(null);
-  const [isLoadingWorkflows, setIsLoadingWorkflows] = useState(false);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
-  const selectWorkflow = (workflowName: string) => {
-    const wf = workflows.find((w) => w.name === workflowName);
-    if (wf) {
-      setCurrentWorkflowData(wf);
-    } else {
-      setCurrentWorkflowData(null); // fallback
+  const checkForUnsavedChanges = useCallback(() => {
+    if (editorStatus === 'unsaved') {
+      setActiveDialog('unsavedChanges');
+      return true;
     }
-  };
+    return false;
+  }, [editorStatus]);
+
+  const selectWorkflow = useCallback(
+    (workflowName: string) => {
+      if (checkForUnsavedChanges()) {
+        return;
+      }
+      const wf = workflows.find((w) => w.name === workflowName);
+      if (wf) {
+        setCurrentWorkflowData(wf);
+      } else {
+        setCurrentWorkflowData(null); // fallback
+      }
+    },
+    [workflows, checkForUnsavedChanges]
+  );
 
   const addWorkflow = async (workflow: Workflow) => {
     try {
@@ -176,7 +188,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
           setLogPosition(data.log_position);
 
           if (data.status && data.status !== workflowStatus) {
-            setWorkflowStatus(data.status);
+            setWorkflowStatus(data.status as WorkflowStatus);
             if (data.status === 'failed' && data.error) {
               setWorkflowError(data.error);
             }
@@ -223,7 +235,6 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       }
 
       // Reset state
-      setIsWorkflowRunning(true);
       setWorkflowError(null);
       setCurrentTaskId(null);
       setLogPosition(0);
@@ -233,7 +244,6 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         const result = await workflowService.executeWorkflow(name, inputFields);
         setCurrentTaskId(parseInt(result.taskId));
         setLogPosition(result.logPosition);
-        setIsWorkflowRunning(true);
         setWorkflowStatus('running');
         setDisplayMode('log');
 
@@ -245,7 +255,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         setWorkflowStatus('failed');
       }
     },
-    [startPollingLogs]
+    [startPollingLogs, checkForUnsavedChanges]
   );
 
   useEffect(() => {
@@ -261,18 +271,28 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
   useEffect(() => {
     const fetchWorkflows = async () => {
       try {
-        setIsLoadingWorkflows(true);
+        setSidebarStatus('loading');
         const response = await workflowService.getWorkflows();
         const parsedWorkflows = response.map((wf: any) => JSON.parse(wf));
         setWorkflows(parsedWorkflows);
+        setSidebarStatus('ready');
       } catch (err) {
         console.error('Failed to fetch workflows:', err);
-      } finally {
-        setIsLoadingWorkflows(false);
+        setSidebarStatus('error');
       }
     };
     fetchWorkflows();
   }, []);
+
+  const setDisplayMode = useCallback(
+    (mode: DisplayMode) => {
+      if (checkForUnsavedChanges()) {
+        return;
+      }
+      setDisplay(mode);
+    },
+    [checkForUnsavedChanges]
+  );
 
   return (
     <AppContext.Provider
@@ -282,24 +302,24 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         setDisplayMode,
         workflowStatus,
         workflowError,
-        isWorkflowRunning,
         currentTaskId,
         currentLogPosition: logPosition,
         currentWorkflowData,
         workflows,
         addWorkflow,
         deleteWorkflow,
-        showRunDialog,
-        setShowRunDialog,
-        showRunAsToolDialog,
-        setShowRunAsToolDialog,
+        activeDialog,
+        setActiveDialog,
         executeWorkflow,
         updateWorkflow,
         startPollingLogs,
         stopPollingLogs,
         logData,
         cancelWorkflowExecution,
-        isLoadingWorkflows,
+        sidebarStatus,
+        editorStatus,
+        setEditorStatus,
+        checkForUnsavedChanges,
       }}
     >
       {children}

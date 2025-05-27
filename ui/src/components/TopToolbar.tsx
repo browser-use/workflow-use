@@ -1,4 +1,3 @@
-import React from 'react';
 import { Play, Settings, Edit3, SidebarOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { SidebarTrigger } from '@/components/ui/sidebar';
@@ -9,18 +8,24 @@ export function TopToolbar() {
     setDisplayMode,
     displayMode,
     currentWorkflowData,
-    setShowRunDialog,
-    setShowRunAsToolDialog,
+    setActiveDialog,
+    checkForUnsavedChanges,
   } = useAppContext();
 
   const handleRunWithInputs = () => {
+    if (checkForUnsavedChanges()) {
+      return;
+    }
     console.log('Running workflow with inputs:', currentWorkflowData?.name);
-    setShowRunDialog(true);
+    setActiveDialog('run');
   };
 
   const handleRunAsTool = () => {
+    if (checkForUnsavedChanges()) {
+      return;
+    }
     console.log('Running workflow as tool:', currentWorkflowData?.name);
-    setShowRunAsToolDialog(true);
+    setActiveDialog('runAsTool');
   };
 
   const handleToggleMode = () => {

@@ -23,15 +23,15 @@ interface WorkflowInput {
 export function RunWorkflowDialog() {
   const {
     executeWorkflow,
-    showRunDialog,
-    setShowRunDialog,
+    activeDialog,
+    setActiveDialog,
     currentWorkflowData,
   } = useAppContext();
   const [inputs, setInputs] = useState<WorkflowInput[]>([]);
   const [isExecuting, setIsExecuting] = useState(false);
 
   useEffect(() => {
-    if (currentWorkflowData && showRunDialog) {
+    if (currentWorkflowData && activeDialog === 'run') {
       // Extract dynamic inputs from workflow steps - only fields with {} around them
       const dynamicInputs: WorkflowInput[] = [];
 
@@ -82,7 +82,7 @@ export function RunWorkflowDialog() {
 
       setInputs(dynamicInputs);
     }
-  }, [currentWorkflowData, showRunDialog]);
+  }, [currentWorkflowData, activeDialog]);
 
   const updateInput = (id: string, value: string) => {
     setInputs(
@@ -104,13 +104,16 @@ export function RunWorkflowDialog() {
     await executeWorkflow(currentWorkflowData.name, inputFields);
 
     setIsExecuting(false);
-    setShowRunDialog(false);
+    setActiveDialog(null);
   };
 
   if (!currentWorkflowData) return null;
 
   return (
-    <Dialog open={showRunDialog} onOpenChange={setShowRunDialog}>
+    <Dialog
+      open={activeDialog === 'run'}
+      onOpenChange={(open) => setActiveDialog(open ? 'run' : null)}
+    >
       <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-xl font-semibold">
@@ -150,7 +153,7 @@ export function RunWorkflowDialog() {
         <DialogFooter>
           <Button
             variant="outline"
-            onClick={() => setShowRunDialog(false)}
+            onClick={() => setActiveDialog(null)}
             disabled={isExecuting}
           >
             Cancel
