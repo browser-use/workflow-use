@@ -2,6 +2,7 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel
 
+from workflow_use.schema.views import WorkflowDefinitionSchema
 
 # Task Models
 class TaskInfo(BaseModel):
@@ -33,6 +34,12 @@ class WorkflowAddRequest(BaseModel):
 	content: str  # JSON string containing the workflow definition
 
 
+class WorkflowBuildRequest(BaseModel):
+	workflow: WorkflowDefinitionSchema
+	prompt: str
+	name: str
+
+
 # Response Models
 class WorkflowResponse(BaseModel):
 	success: bool
@@ -59,6 +66,10 @@ class WorkflowLogsResponse(BaseModel):
 	result: Optional[List[Dict[str, Any]]] = None
 	error: Optional[str] = None
 
+class WorkflowRecordResponse(BaseModel):
+	success: bool
+	workflow: Optional[WorkflowDefinitionSchema] = None
+	error: Optional[str] = None
 
 class WorkflowStatusResponse(BaseModel):
 	task_id: str
@@ -71,3 +82,9 @@ class WorkflowStatusResponse(BaseModel):
 class WorkflowCancelResponse(BaseModel):
 	success: bool
 	message: str
+
+
+class WorkflowBuildResponse(BaseModel):
+	success: bool
+	message: str
+	error: Optional[str] = None

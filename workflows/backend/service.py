@@ -8,15 +8,20 @@ import aiofiles
 from browser_use.browser.browser import Browser
 from langchain_openai import ChatOpenAI
 
+from workflow_use.builder.service import BuilderService
 from workflow_use.controller.service import WorkflowController
+from workflow_use.recorder.service import RecordingService
 from workflow_use.workflow.service import Workflow
 
 from .views import (
 	TaskInfo,
 	WorkflowAddRequest,
+	WorkflowBuildRequest,
+	WorkflowBuildResponse,
 	WorkflowCancelResponse,
 	WorkflowExecuteRequest,
 	WorkflowMetadataUpdateRequest,
+	WorkflowRecordResponse,
 	WorkflowResponse,
 	WorkflowStatusResponse,
 	WorkflowUpdateRequest,
@@ -26,7 +31,7 @@ from .views import (
 class WorkflowService:
 	"""Workflow execution service."""
 
-	def __init__(self) -> None:
+	def __init__(self, app=None) -> None:
 		# ---------- Core resources ----------
 		self.tmp_dir: Path = Path('./tmp')
 		self.log_dir: Path = self.tmp_dir / 'logs'
@@ -41,6 +46,7 @@ class WorkflowService:
 
 		self.browser_instance = Browser()
 		self.controller_instance = WorkflowController()
+		self.recording_service = RecordingService(app=app)
 
 		# In‑memory task tracking
 		self.active_tasks: Dict[str, TaskInfo] = {}
@@ -301,3 +307,50 @@ class WorkflowService:
 				continue
 
 		return WorkflowResponse(success=False, error=f"Workflow '{name}' not found")
+
+	async def record_workflow(self) -> WorkflowRecordResponse:
+		"""Record a new workflow using the recording service."""
+		try:
+			workflow_data = await self.recording_service.record_workflow_using_main_server()
+			print('RECORDING SERVICE')
+			print(workflow_data)
+			return WorkflowRecordResponse(success=True, workflow=workflow_data)
+		except Exception as e:
+			print(f'Error recording workflow: {e}')
+			return WorkflowRecordResponse(success=False, workflow=None, error=str(e))
+
+	async def build_workflow(self, request: WorkflowBuildRequest) -> WorkflowBuildResponse:
+		"""Build a workflow from the edited recording."""
+		try:
+			if not self.llm_instance:
+				return WorkflowBuildResponse(
+					success=False,
+					message="Failed to build workflow",
+					error="LLM instance not available. Please ensure OPENAI_API_KEY is set."
+				)
+			
+			# Initialize the builder service with the LLM instance
+			builder_service = BuilderService(llm=self.llm_instance)
+			
+			# Build the workflow using the builder service
+			built_workflow = await builder_service.build_workflow(
+				input_workflow=request.workflow,
+				user_goal=request.prompt,
+				use_screenshots=False  # We don't need screenshots for building
+			)
+			
+			# Save the built workflow to the final location
+			final_file = self.tmp_dir / f"{request.name}.json"
+			final_file.write_text(built_workflow.model_dump_json(indent=2))
+			
+			return WorkflowBuildResponse(
+				success=True,
+				message=f"Workflow '{request.name}' built successfully"
+			)
+		except Exception as e:
+			print(f'Error building workflow: {e}')
+			return WorkflowBuildResponse(
+				success=False,
+				message="Failed to build workflow",
+				error=str(e)
+			)

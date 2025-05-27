@@ -28,6 +28,7 @@ export interface WorkflowService {
   getWorkflowCategory(timestamp: number): string;
   addWorkflow(name: string, content: string): Promise<void>;
   deleteWorkflow(name: string): Promise<void>;
+  buildWorkflow(name: string, prompt: string, workflow: any): Promise<any>;
 }
 
 class WorkflowServiceImpl implements WorkflowService {
@@ -105,6 +106,31 @@ class WorkflowServiceImpl implements WorkflowService {
 
     const data = await response.json();
     return data;
+  }
+
+  async recordWorkflow(): Promise<any> {
+    const response = await fetch('http://localhost:8000/api/workflows/record', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    return response.json();
+  }
+
+  async buildWorkflow(
+    name: string,
+    prompt: string,
+    workflow: any
+  ): Promise<any> {
+    const response = await fetch(
+      'http://localhost:8000/api/workflows/build-from-recording',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, prompt, workflow }),
+      }
+    );
+    return response.json();
   }
 
   async addWorkflow(name: string, content: string): Promise<void> {

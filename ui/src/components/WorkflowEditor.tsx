@@ -151,7 +151,6 @@ export function WorkflowEditor() {
       });
     } finally {
       setIsSaving(false);
-      // Ensure dialog is closed after logging
       setActiveDialog(null);
     }
   };
@@ -161,15 +160,12 @@ export function WorkflowEditor() {
       setWorkflow(oldWorkflow);
       setEditorStatus('saved');
       setDisplayMode('editor');
-      // Ensure dialog is closed after logging
       setActiveDialog(null);
     }
   };
 
   const handleCancel = () => {
-    // Simply close the dialog and return to editor
     setDisplayMode('editor');
-    // Ensure dialog is closed after logging
     setActiveDialog(null);
   };
 

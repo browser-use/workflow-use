@@ -1,5 +1,4 @@
-
-import React from 'react';
+import React, { useState } from 'react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -9,34 +8,59 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+} from '@/components/ui/alert-dialog';
 
 interface DeleteWorkflowDialogProps {
   workflowId: string | null;
-  onConfirm: (workflowId: string) => void;
+  onConfirm: (workflowId: string) => Promise<void>;
   onCancel: () => void;
 }
 
-export function DeleteWorkflowDialog({ workflowId, onConfirm, onCancel }: DeleteWorkflowDialogProps) {
-  const handleConfirm = () => {
+export function DeleteWorkflowDialog({
+  workflowId,
+  onConfirm,
+  onCancel,
+}: DeleteWorkflowDialogProps) {
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleConfirm = async () => {
     if (workflowId) {
-      onConfirm(workflowId);
+      setIsDeleting(true);
+      try {
+        await onConfirm(workflowId);
+      } finally {
+        setIsDeleting(false);
+      }
     }
   };
 
   return (
-    <AlertDialog open={!!workflowId} onOpenChange={() => onCancel()}>
+    <AlertDialog
+      open={!!workflowId}
+      onOpenChange={(open) => {
+        if (!open && !isDeleting) {
+          onCancel();
+        }
+      }}
+    >
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Delete Workflow</AlertDialogTitle>
           <AlertDialogDescription>
-            Are you sure you want to delete this workflow? This action cannot be undone.
+            Are you sure you want to delete this workflow? This action cannot be
+            undone.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel onClick={onCancel}>Cancel</AlertDialogCancel>
-          <AlertDialogAction onClick={handleConfirm} className="bg-red-600 hover:bg-red-700">
-            Delete
+          <AlertDialogCancel onClick={onCancel} disabled={isDeleting}>
+            Cancel
+          </AlertDialogCancel>
+          <AlertDialogAction
+            onClick={handleConfirm}
+            className="bg-red-600 hover:bg-red-700"
+            disabled={isDeleting}
+          >
+            {isDeleting ? 'Deleting...' : 'Delete'}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

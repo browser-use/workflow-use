@@ -15,10 +15,17 @@ import { inputFieldSchema } from '../types/workflow-layout.types';
 import { z } from 'zod';
 
 export type DisplayMode = 'canvas' | 'editor' | 'log' | 'start';
-export type DialogType = 'run' | 'runAsTool' | 'unsavedChanges' | null;
+export type DialogType =
+  | 'run'
+  | 'runAsTool'
+  | 'unsavedChanges'
+  | 'editRecording'
+  | 'recordingInProgress'
+  | null;
 export type SidebarStatus = 'loading' | 'ready' | 'error';
 export type EditorStatus = 'saved' | 'unsaved';
 export type WorkflowStatus = 'idle' | 'running' | 'failed' | 'cancelling';
+export type RecordingStatus = 'idle' | 'recording' | 'building' | 'failed';
 
 interface AppContextType {
   displayMode: DisplayMode;
@@ -50,6 +57,10 @@ interface AppContextType {
   logData: string[];
   cancelWorkflowExecution: (taskId: string) => Promise<void>;
   checkForUnsavedChanges: () => boolean;
+  recordingStatus: RecordingStatus;
+  setRecordingStatus: (status: RecordingStatus) => void;
+  recordingData: any;
+  setRecordingData: (data: any) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -72,14 +83,21 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
   const [logPosition, setLogPosition] = useState<number>(0);
   const [currentTaskId, setCurrentTaskId] = useState<number | null>(null);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
+  const [recordingStatus, setRecordingStatus] =
+    useState<RecordingStatus>('idle');
+  const [recordingData, setRecordingData] = useState<any>(null);
 
   const checkForUnsavedChanges = useCallback(() => {
+    if (recordingStatus === 'recording') {
+      setActiveDialog('recordingInProgress');
+      return true;
+    }
     if (editorStatus === 'unsaved') {
       setActiveDialog('unsavedChanges');
       return true;
     }
     return false;
-  }, [editorStatus]);
+  }, [editorStatus, recordingStatus, setActiveDialog]);
 
   const selectWorkflow = useCallback(
     (workflowName: string) => {
@@ -120,7 +138,6 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
   const updateWorkflow = useCallback(
     async (oldWorkflow: Workflow, newWorkflow: Workflow) => {
       try {
-        // Update metadata if it changed
         if (
           oldWorkflow.name !== newWorkflow.name ||
           oldWorkflow.description !== newWorkflow.description ||
@@ -135,13 +152,10 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
             input_schema: newWorkflow.input_schema,
           });
         }
-
-        // Update steps if they changed
         if (
           JSON.stringify(oldWorkflow.steps) !==
           JSON.stringify(newWorkflow.steps)
         ) {
-          // Find changed steps
           newWorkflow.steps.forEach((newStep, index) => {
             const oldStep = oldWorkflow.steps[index];
             if (JSON.stringify(oldStep) !== JSON.stringify(newStep)) {
@@ -149,12 +163,9 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
             }
           });
         }
-
-        // Update local state
         setWorkflows((prev) =>
           prev.map((wf) => (wf.name === oldWorkflow.name ? newWorkflow : wf))
         );
-
         if (currentWorkflowData?.name === oldWorkflow.name) {
           setCurrentWorkflowData(newWorkflow);
         }
@@ -180,11 +191,9 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       const poll = async () => {
         try {
           const data = await fetchWorkflowLogs(taskId, logPosition);
-
           if (data.logs?.length) {
             setLogData((prev) => [...prev, ...data.logs]);
           }
-
           setLogPosition(data.log_position);
 
           if (data.status && data.status !== workflowStatus) {
@@ -220,8 +229,6 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
   const executeWorkflow = useCallback(
     async (name: string, inputFields: z.infer<typeof inputFieldSchema>[]) => {
       if (!name) return;
-
-      // Validate required inputs
       const missingInputs = inputFields.filter(
         (field) => field.required && !field.value
       );
@@ -234,7 +241,6 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         return;
       }
 
-      // Reset state
       setWorkflowError(null);
       setCurrentTaskId(null);
       setLogPosition(0);
@@ -247,7 +253,6 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         setWorkflowStatus('running');
         setDisplayMode('log');
 
-        // Start polling for logs
         startPollingLogs(result.taskId);
       } catch (err) {
         console.error('Failed to execute workflow:', err);
@@ -262,7 +267,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     const logInterval = setInterval(() => {
       console.log('Current workflows:', workflows);
       console.log('Current workflow data:', currentWorkflowData);
-    }, 10000); // Log every 10 seconds
+    }, 2000); // Log every 10 seconds
 
     return () => clearInterval(logInterval);
   }, [workflows, currentWorkflowData]);
@@ -320,6 +325,10 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         editorStatus,
         setEditorStatus,
         checkForUnsavedChanges,
+        recordingStatus,
+        setRecordingStatus,
+        recordingData,
+        setRecordingData,
       }}
     >
       {children}

@@ -5,7 +5,7 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.routers import router
+from backend.routers import get_service, router
 
 # Set event loop policy for Windows
 if sys.platform == "win32":
@@ -21,6 +21,9 @@ app.add_middleware(
 	allow_methods=['*'],
 	allow_headers=['*'],
 )
+
+# Initialize service with app instance
+service = get_service(app=app)
 
 # Include routers
 app.include_router(router)

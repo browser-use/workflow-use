@@ -15,19 +15,28 @@ import { WorkflowCategoryBlock } from '@/components/WorkflowCategoryBlock';
 import { useAppContext } from '@/contexts/AppContext';
 import { getUniqueWorkflowName } from '@/lib/utils';
 import { workflowService } from '@/services/workflowService';
+import { useToast } from '@/hooks/use-toast';
+import { EditRecordingDialog } from './EditRecordingDialog';
+import { RecordingInProgressDialog } from './RecordingInProgressDialog';
 
 type Category = 'today' | 'yesterday' | 'last-week' | 'last-month' | 'older';
 
 export function WorkflowSidebar() {
   const [searchTerm, setSearchTerm] = useState('');
-  const [isRecording, setIsRecording] = useState(false);
   const [deleteWorkflowId, setDeleteWorkflowId] = useState<string | null>(null);
+  const { toast } = useToast();
   const {
     workflows,
     addWorkflow,
     deleteWorkflow,
     sidebarStatus,
     checkForUnsavedChanges,
+    recordingStatus,
+    setRecordingStatus,
+    recordingData,
+    setRecordingData,
+    activeDialog,
+    setActiveDialog,
   } = useAppContext();
 
   const filteredWorkflows = useMemo(() => {
@@ -72,35 +81,24 @@ export function WorkflowSidebar() {
     if (checkForUnsavedChanges()) {
       return;
     }
-    setIsRecording(true);
+    setRecordingStatus('recording');
     try {
-      // Simulate recording time
-      await new Promise((resolve) => setTimeout(resolve, 3000));
-
-      const random = workflows[Math.floor(Math.random() * workflows.length)];
-      if (!random) {
-        throw new Error('No workflows available to duplicate');
+      const response = await workflowService.recordWorkflow();
+      if (response) {
+        setRecordingData(response);
+        setRecordingStatus('building');
+        setActiveDialog('editRecording');
+      } else {
+        throw new Error('Recording failed');
       }
-
-      const newWorkflow = {
-        ...random,
-        name: getUniqueWorkflowName(
-          `${random.name}`,
-          workflows.map((wf) => wf.name)
-        ),
-        workflow_analysis: random.workflow_analysis,
-        description: random.description,
-        version: random.version,
-        steps: random.steps,
-        input_schema: random.input_schema,
-      };
-
-      await addWorkflow(newWorkflow);
-      console.log('Workflow recording completed!');
     } catch (error) {
       console.error('Failed to record workflow:', error);
-    } finally {
-      setIsRecording(false);
+      setRecordingStatus('failed');
+      toast({
+        title: 'Recording Failed',
+        description: 'Failed to record workflow. Please try again.',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -112,12 +110,44 @@ export function WorkflowSidebar() {
     if (!workflowId) return;
     try {
       await deleteWorkflow(workflowId);
-      console.log('Workflow deleted:', workflowId);
+      toast({
+        title: 'Workflow deleted!',
+        description: 'The workflow has been successfully deleted! ✅',
+      });
     } catch (error) {
       console.error('Failed to delete workflow:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Error ❌',
+        description: 'Failed to delete the workflow. Please try again! 🔄',
+      });
     } finally {
       setDeleteWorkflowId(null);
     }
+  };
+
+  const handleCancelRecording = async () => {
+    try {
+      await workflowService.stopRecording();
+      setRecordingStatus('idle');
+      setRecordingData(null);
+      setActiveDialog(null);
+      toast({
+        title: 'Recording Cancelled',
+        description: 'The workflow recording has been cancelled.',
+      });
+    } catch (error) {
+      console.error('Failed to cancel recording:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Failed to cancel the recording. Please try again.',
+      });
+    }
+  };
+
+  const handleContinueRecording = () => {
+    setActiveDialog(null);
   };
 
   const renderSidebarContent = () => {
@@ -132,8 +162,13 @@ export function WorkflowSidebar() {
 
     if (sidebarStatus === 'error') {
       return (
-        <div className="p-4 text-center text-red-500">
-          Failed to load workflows. Try again by refreshing the page.
+        <div className="p-6 text-center text-red-500 bg-white shadow-md rounded-lg">
+          <p className="text-base font-semibold text-black">
+            Failed to load workflows. Try again by refreshing the page.
+          </p>
+          <p className="text-base font-semibold text-black">
+            Make sure the server is running.
+          </p>
         </div>
       );
     }
@@ -203,10 +238,10 @@ export function WorkflowSidebar() {
 
           <Button
             onClick={handleRecordNewWorkflow}
-            disabled={isRecording}
+            disabled={recordingStatus === 'recording'}
             className="mt-4 w-full bg-purple-600 hover:bg-purple-700 text-white"
           >
-            {isRecording ? (
+            {recordingStatus === 'recording' ? (
               <>
                 <Loader className="w-4 h-4 mr-2 animate-spin" />
                 Recording...
@@ -236,6 +271,25 @@ export function WorkflowSidebar() {
         onConfirm={confirmDeleteWorkflow}
         onCancel={() => setDeleteWorkflowId(null)}
       />
+
+      {activeDialog === 'editRecording' && recordingData && (
+        <EditRecordingDialog
+          isOpen={true}
+          onClose={() => {
+            setActiveDialog(null);
+            setRecordingStatus('idle');
+            setRecordingData(null);
+          }}
+          recordingData={recordingData}
+        />
+      )}
+
+      {activeDialog === 'recordingInProgress' && (
+        <RecordingInProgressDialog
+          onCancel={handleCancelRecording}
+          onContinue={handleContinueRecording}
+        />
+      )}
     </>
   );
 }

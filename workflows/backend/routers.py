@@ -7,12 +7,15 @@ from fastapi import APIRouter, HTTPException
 from .service import WorkflowService
 from .views import (
 	WorkflowAddRequest,
+	WorkflowBuildRequest,
+	WorkflowBuildResponse,
 	WorkflowCancelResponse,
 	WorkflowExecuteRequest,
 	WorkflowExecuteResponse,
 	WorkflowListResponse,
 	WorkflowLogsResponse,
 	WorkflowMetadataUpdateRequest,
+	WorkflowRecordResponse,
 	WorkflowResponse,
 	WorkflowStatusResponse,
 	WorkflowUpdateRequest,
@@ -20,9 +23,14 @@ from .views import (
 
 router = APIRouter(prefix='/api/workflows')
 
+# Global service instance
+_service = None
 
-def get_service() -> WorkflowService:
-	return WorkflowService()
+def get_service(app=None) -> WorkflowService:
+	global _service
+	if _service is None:
+		_service = WorkflowService(app=app)
+	return _service
 
 
 @router.get('', response_model=WorkflowListResponse)
@@ -156,9 +164,20 @@ async def add_workflow(request: WorkflowAddRequest):
 async def delete_workflow(name: str):
 	service = get_service()
 	if not name:
-		raise HTTPException(status_code=400, detail='Missing workflow name')
-	
+		raise HTTPException(status_code=400, detail='Missing workflow name')	
 	result = service.delete_workflow(name)
 	if not result:
 		raise HTTPException(status_code=404, detail=f'Workflow {name} not found')
 	return result
+
+@router.post('/record', response_model=WorkflowRecordResponse)
+async def record_workflow():
+	service = get_service()
+	return await service.record_workflow()
+
+
+@router.post('/build-from-recording', response_model=WorkflowBuildResponse)
+async def build_workflow(request: WorkflowBuildRequest):
+	service = get_service()
+	return await service.build_workflow(request)
+
