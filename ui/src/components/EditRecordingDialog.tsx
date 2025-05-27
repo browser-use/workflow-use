@@ -9,10 +9,10 @@ import {
 import { Button } from './ui/button';
 import { Textarea } from './ui/textarea';
 import { workflowService } from '@/services/workflowService';
-import { Trash2 } from 'lucide-react';
 import { Workflow } from '@/types/workflow-layout.types';
 import { useAppContext } from '@/contexts/AppContext';
 import { toast } from './ui/use-toast';
+import { Clock, ListChecks, Activity } from 'lucide-react';
 
 interface WorkflowRecordResponse {
   success: boolean;
@@ -30,18 +30,6 @@ interface ConfirmCloseDialogProps {
   isOpen: boolean;
   onConfirm: () => void;
   onCancel: () => void;
-}
-
-function formatStepAttributes(step: Record<string, any>, maxLen = 40) {
-  return Object.entries(step)
-    .map(([key, value]) => {
-      let strValue = typeof value === 'string' ? value : JSON.stringify(value);
-      if (strValue.length > maxLen) {
-        strValue = strValue.slice(0, maxLen) + '...';
-      }
-      return `${key}: ${strValue}`;
-    })
-    .join(', ');
 }
 
 const ConfirmCloseDialog: React.FC<ConfirmCloseDialogProps> = ({
@@ -144,12 +132,6 @@ export function EditRecordingDialog({
     }
   };
 
-  const handleDeleteStep = (index: number) => {
-    const newSteps = [...editedData.steps];
-    newSteps.splice(index, 1);
-    setEditedData({ ...editedData, steps: newSteps });
-  };
-
   const handleCloseAttempt = () => {
     if (recordingStatus === 'building') {
       return; // Prevent closing while building
@@ -165,6 +147,14 @@ export function EditRecordingDialog({
 
   const handleCancelClose = () => {
     setShowConfirmClose(false);
+  };
+
+  const getStepTypeCount = () => {
+    const counts: Record<string, number> = {};
+    editedData.steps?.forEach((step: any) => {
+      counts[step.type] = (counts[step.type] || 0) + 1;
+    });
+    return counts;
   };
 
   return (
@@ -188,9 +178,7 @@ export function EditRecordingDialog({
             <div className="flex flex-col gap-4 h-full overflow-y-auto flex-1 min-h-0">
               <div className="grid gap-4 p-4">
                 <div className="grid gap-2">
-                  <label htmlFor="name" className="text-sm font-medium">
-                    Workflow Name
-                  </label>
+                  <h3 className="text-lg font-semibold">Workflow Name</h3>
                   <input
                     id="name"
                     value={editedData.name}
@@ -202,12 +190,9 @@ export function EditRecordingDialog({
                 </div>
 
                 <div className="grid gap-2">
-                  <label
-                    htmlFor="prompt"
-                    className="text-sm font-medium z-10000"
-                  >
+                  <h3 className="text-lg font-semibold">
                     Describe what this workflow should do
-                  </label>
+                  </h3>
                   <Textarea
                     id="prompt"
                     value={userPrompt}
@@ -219,43 +204,65 @@ export function EditRecordingDialog({
               </div>
             </div>
 
-            {/* Right side - Steps List */}
-            <div className="flex flex-col gap-2 h-full overflow-y-auto flex-1 min-h-0">
-              <h3 className="text-lg font-semibold">Steps Recorded</h3>
-              <p className="text-md text-gray-700">
-                Remove any steps that are not needed if you want to optimize
-                token usage.
-              </p>
-              <div className="space-y-2">
-                {editedData.steps?.map((step: any, index: number) => (
-                  <div
-                    key={index}
-                    className="flex items-start gap-4 p-6 border rounded-lg bg-gray-50 text-lg"
-                  >
-                    <div className="flex-1">
-                      <div className="font-medium">{step.type}</div>
-                      <div
-                        className="text-lg text-gray-600 mt-1 overflow-hidden max-h-[3em] leading-tight"
-                        style={{
-                          display: '-webkit-box',
-                          WebkitLineClamp: 2,
-                          WebkitBoxOrient: 'vertical',
-                          whiteSpace: 'normal',
-                        }}
-                      >
-                        {step.description || formatStepAttributes(step)}
-                      </div>
+            {/* Right side - Statistics Summary */}
+            <div className="flex flex-col gap-6">
+              <div className="grid grid-cols-3 gap-4">
+                <div className="bg-purple-50 p-6 rounded-xl border border-purple-100">
+                  <div className="flex items-center gap-3">
+                    <ListChecks className="h-6 w-6 text-purple-600" />
+                    <div>
+                      <p className="text-sm text-purple-600 font-medium">
+                        Total Steps
+                      </p>
+                      <p className="text-2xl font-bold">
+                        {editedData.steps?.length || 0}
+                      </p>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleDeleteStep(index)}
-                      className="text-red-500 hover:text-red-700 hover:bg-red-50"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
                   </div>
-                ))}
+                </div>
+                <div className="bg-blue-50 p-6 rounded-xl border border-blue-100">
+                  <div className="flex items-center gap-3">
+                    <Activity className="h-6 w-6 text-blue-600" />
+                    <div>
+                      <p className="text-sm text-blue-600 font-medium">
+                        Step Types
+                      </p>
+                      <p className="text-2xl font-bold">
+                        {Object.keys(getStepTypeCount()).length}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-green-50 p-6 rounded-xl border border-green-100">
+                  <div className="flex items-center gap-3">
+                    <Clock className="h-6 w-6 text-green-600" />
+                    <div>
+                      <p className="text-sm text-green-600 font-medium">
+                        Recording Time
+                      </p>
+                      <p className="text-2xl font-bold">
+                        {new Date().toLocaleTimeString()}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white p-6 rounded-xl border">
+                <h3 className="text-lg font-semibold mb-4">
+                  Step Type Distribution
+                </h3>
+                <div className="space-y-3">
+                  {Object.entries(getStepTypeCount()).map(([type, count]) => (
+                    <div
+                      key={type}
+                      className="flex items-center justify-between"
+                    >
+                      <span className="text-gray-600">{type}</span>
+                      <span className="font-medium">{count}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           </div>

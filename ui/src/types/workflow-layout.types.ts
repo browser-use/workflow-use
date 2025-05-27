@@ -28,8 +28,8 @@ export const stepSchema = z.object({
     'key_press',
   ]),
 
-  /* optional fields (vary by step type) */
-  url: z.string().url().nullable().optional(),
+  /* optional fields (vary by step type) */
+  url: z.string().nullable().optional(),
   cssSelector: z.string().nullable().optional(),
   xpath: z.string().nullable().optional(),
   elementTag: z.string().nullable().optional(),
