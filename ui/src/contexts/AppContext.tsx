@@ -13,6 +13,7 @@ import { workflowService } from '@/services/workflowService';
 import { fetchWorkflowLogs, cancelWorkflow } from '@/services/pollingService';
 import { inputFieldSchema } from '../types/workflow-layout.types';
 import { z } from 'zod';
+import { useToast } from '@/hooks/use-toast';
 
 export type DisplayMode = 'canvas' | 'editor' | 'log' | 'start';
 export type DialogType =
@@ -70,6 +71,7 @@ interface AppProviderProps {
 }
 
 export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
+  const { toast } = useToast();
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [displayMode, setDisplay] = useState<DisplayMode>('start');
   const [currentWorkflowData, setCurrentWorkflowData] =
@@ -121,8 +123,16 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         JSON.stringify(workflow)
       );
       setWorkflows((prev) => [workflow, ...prev]);
+      toast({
+        title: 'Workflow added! ✅',
+        description: 'The workflow has been successfully added!',
+      });
     } catch (err) {
       console.error('Failed to add workflow:', err);
+      toast({
+        title: 'Error ❌',
+        description: 'Failed to add the workflow. Please try again! 🔄',
+      });
     }
   };
 
@@ -130,8 +140,16 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     try {
       await workflowService.deleteWorkflow(workflowName);
       setWorkflows((prev) => prev.filter((wf) => wf.name !== workflowName));
+      toast({
+        title: 'Workflow deleted! ✅',
+        description: 'The workflow has been successfully deleted!',
+      });
     } catch (err) {
       console.error('Failed to delete workflow:', err);
+      toast({
+        title: 'Error ❌',
+        description: 'Failed to delete the workflow. Please try again! 🔄',
+      });
     }
   };
 

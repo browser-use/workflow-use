@@ -86,7 +86,7 @@ export const WorkflowStepNode = memo(
             </div>
 
             <h3 className="font-medium text-gray-900 text-sm mb-2 break-words line-clamp-2">
-              {data.description}
+              {data.description || 'No description provided for this step'}
             </h3>
           </div>
         </div>

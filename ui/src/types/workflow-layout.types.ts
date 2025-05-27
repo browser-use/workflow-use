@@ -15,7 +15,7 @@ export const inputFieldSchema = z.object({
 /* ── Step definition ───────────────────────────────────────────────── */
 export const stepSchema = z.object({
   /* core fields */
-  description: z.string(),
+  description: z.string().nullable(),
   output: z.unknown().nullable(),
   timestamp: z.number().int().nullable(),
   tabId: z.number().int().nullable(),
@@ -51,17 +51,3 @@ export const workflowSchema = z.object({
 
 /* ── Inferred TypeScript type ───────────────────────────────────────– */
 export type Workflow = z.infer<typeof workflowSchema>;
-
-export interface WorkflowStep {
-  description: string;
-  type: string;
-  [key: string]: any;
-}
-
-export interface WorkflowMetadata {
-  name: string;
-  description: string;
-  version: string;
-  input_schema: any[];
-  workflow_analysis?: string;
-}

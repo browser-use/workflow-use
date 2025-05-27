@@ -27,7 +27,6 @@ export function WorkflowSidebar() {
   const { toast } = useToast();
   const {
     workflows,
-    addWorkflow,
     deleteWorkflow,
     sidebarStatus,
     checkForUnsavedChanges,
@@ -85,6 +84,7 @@ export function WorkflowSidebar() {
     try {
       const response = await workflowService.recordWorkflow();
       if (response) {
+        console.log('RECORDING SERVICE RESPONSE', response);
         setRecordingData(response);
         setRecordingStatus('building');
         setActiveDialog('editRecording');
@@ -103,6 +103,9 @@ export function WorkflowSidebar() {
   };
 
   const handleDeleteWorkflow = (workflowId: string) => {
+    if (checkForUnsavedChanges()) {
+      return;
+    }
     setDeleteWorkflowId(workflowId);
   };
 
@@ -110,17 +113,8 @@ export function WorkflowSidebar() {
     if (!workflowId) return;
     try {
       await deleteWorkflow(workflowId);
-      toast({
-        title: 'Workflow deleted!',
-        description: 'The workflow has been successfully deleted! ✅',
-      });
     } catch (error) {
       console.error('Failed to delete workflow:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Error ❌',
-        description: 'Failed to delete the workflow. Please try again! 🔄',
-      });
     } finally {
       setDeleteWorkflowId(null);
     }

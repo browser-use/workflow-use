@@ -14,9 +14,9 @@ import { Play, Loader2 } from 'lucide-react';
 
 interface WorkflowInput {
   id: string;
-  label: string;
-  type: 'text' | 'url' | 'selector';
-  placeholder: string;
+  name: string;
+  type: string;
+  required: boolean;
   value: string;
 }
 
@@ -32,55 +32,16 @@ export function RunWorkflowDialog() {
 
   useEffect(() => {
     if (currentWorkflowData && activeDialog === 'run') {
-      // Extract dynamic inputs from workflow steps - only fields with {} around them
-      const dynamicInputs: WorkflowInput[] = [];
-
-      currentWorkflowData.steps.forEach((step, index) => {
-        if (
-          step.type === 'navigation' &&
-          step.url &&
-          step.url.includes('{') &&
-          step.url.includes('}')
-        ) {
-          dynamicInputs.push({
-            id: `navigate-${index}`,
-            label: `URL for "${step.description}"`,
-            type: 'url',
-            placeholder: step.url,
-            value: '', // Empty by default
-          });
-        }
-        if (
-          step.type === 'input' &&
-          step.value &&
-          step.value.includes('{') &&
-          step.value.includes('}')
-        ) {
-          dynamicInputs.push({
-            id: `input-${index}`,
-            label: `Input for "${step.description}"`,
-            type: 'text',
-            placeholder: step.value,
-            value: '', // Empty by default
-          });
-        }
-        if (
-          step.type === 'agent' &&
-          step.task &&
-          step.task.includes('{') &&
-          step.task.includes('}')
-        ) {
-          dynamicInputs.push({
-            id: `selector-${index}`,
-            label: `Task for "${step.description}"`,
-            type: 'selector',
-            placeholder: step.task,
-            value: '', // Empty by default
-          });
-        }
-      });
-
-      setInputs(dynamicInputs);
+      // Use input_schema from the workflow
+      const schemaInputs: WorkflowInput[] =
+        currentWorkflowData.input_schema.map((input) => ({
+          id: input.name,
+          name: input.name,
+          type: input.type,
+          required: input.required,
+          value: '',
+        }));
+      setInputs(schemaInputs);
     }
   }, [currentWorkflowData, activeDialog]);
 
@@ -94,10 +55,11 @@ export function RunWorkflowDialog() {
     setIsExecuting(true);
     console.log('Executing workflow with inputs:', inputs);
 
+    // Map the input values to their corresponding places in the workflow
     const inputFields = inputs.map((input) => ({
-      name: input.placeholder.replace(/[{}]/g, ''),
+      name: input.name,
       type: input.type,
-      required: true, // all dynamic inputs assumed required
+      required: input.required,
       value: input.value,
     }));
 
@@ -114,7 +76,7 @@ export function RunWorkflowDialog() {
       open={activeDialog === 'run'}
       onOpenChange={(open) => setActiveDialog(open ? 'run' : null)}
     >
-      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+      <DialogContent>
         <DialogHeader>
           <DialogTitle className="text-xl font-semibold">
             Run Workflow: {currentWorkflowData.name}
@@ -130,14 +92,16 @@ export function RunWorkflowDialog() {
             {inputs.map((input) => (
               <div key={input.id} className="space-y-2">
                 <Label htmlFor={input.id} className="text-sm font-medium">
-                  {input.label}
+                  {input.name}{' '}
+                  {input.required && <span className="text-red-500">*</span>}
                 </Label>
                 <Input
                   id={input.id}
                   value={input.value}
                   onChange={(e) => updateInput(input.id, e.target.value)}
-                  placeholder={input.placeholder}
+                  placeholder={`Enter ${input.name}`}
                   className="w-full"
+                  required={input.required}
                 />
               </div>
             ))}
@@ -148,6 +112,10 @@ export function RunWorkflowDialog() {
               </p>
             )}
           </div>
+          <p className="text-gray-500 text-sm">
+            Fields marked with <span className="text-red-500">*</span> are
+            required.
+          </p>
         </div>
 
         <DialogFooter>
@@ -160,7 +128,10 @@ export function RunWorkflowDialog() {
           </Button>
           <Button
             onClick={execute}
-            disabled={isExecuting}
+            disabled={
+              isExecuting ||
+              inputs.some((input) => input.required && !input.value)
+            }
             className="bg-purple-600 hover:bg-purple-700 text-white flex items-center gap-2"
           >
             {isExecuting ? (

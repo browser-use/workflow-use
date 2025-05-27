@@ -42,7 +42,7 @@ export function WorkflowItem({
             <h3 className="font-medium text-gray-900 text-sm leading-tight mb-1">
               {workflow.name}
             </h3>
-            <p className="text-xs text-gray-500 leading-tight mb-2">
+            <p className="text-xs text-gray-500 leading-tight mb-2 truncate whitespace-nowrap overflow-hidden">
               {workflow.description}
             </p>
             <span className="text-xs text-purple-600 font-medium">

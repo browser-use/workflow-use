@@ -1,6 +1,6 @@
 from typing import Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 # Shared config allowing extra fields so recorder payloads pass through
@@ -13,9 +13,8 @@ class _BaseExtra(BaseModel):
 
 # Mixin for shared step metadata (timestamp and tab context)
 class StepMeta(_BaseExtra):
-	timestamp: int
-	tabId: int
-
+    timestamp: Optional[int] = Field(None, description='Timestamp from recording (informational).')
+    tabId: Optional[int] = Field(None, description='Browser tab ID from recording (informational).')
 
 # Common optional fields present in recorder events
 class RecorderBase(StepMeta):

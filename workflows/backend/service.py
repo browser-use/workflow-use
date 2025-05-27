@@ -270,20 +270,9 @@ class WorkflowService:
 		if not request.name or not request.content:
 			return WorkflowResponse(success=False, error='Missing required fields')
 
-		# Check if workflow with same name already exists
-		for file_path in self.tmp_dir.iterdir():
-			if not file_path.is_file() or file_path.name.startswith('temp_recording'):
-				continue
-			try:
-				workflow_content = json.loads(file_path.read_text())
-				if workflow_content.get('name') == request.name:
-					return WorkflowResponse(success=False, error=f"Workflow with name '{request.name}' already exists")
-			except (json.JSONDecodeError, KeyError):
-				continue
-
-		# Create new workflow file
+		# Create new workflow file with collision handling
 		try:
-			workflow_file = self.tmp_dir / f"{request.name}.json"
+			workflow_file = self.tmp_dir / self._get_next_available_filename(request.name)
 			workflow_file.write_text(request.content)
 			return WorkflowResponse(success=True)
 		except Exception as e:
@@ -319,6 +308,15 @@ class WorkflowService:
 			print(f'Error recording workflow: {e}')
 			return WorkflowRecordResponse(success=False, workflow=None, error=str(e))
 
+	def _get_next_available_filename(self, base_name: str) -> str:
+		"""Get the next available filename by adding incremental numbers."""
+		counter = 1
+		file_name = f"{base_name}.json"
+		while (self.tmp_dir / file_name).exists():
+			file_name = f"{base_name}{counter}.json"
+			counter += 1
+		return file_name
+
 	async def build_workflow(self, request: WorkflowBuildRequest) -> WorkflowBuildResponse:
 		"""Build a workflow from the edited recording."""
 		try:
@@ -336,16 +334,30 @@ class WorkflowService:
 			built_workflow = await builder_service.build_workflow(
 				input_workflow=request.workflow,
 				user_goal=request.prompt,
-				use_screenshots=False  # We don't need screenshots for building
+				use_screenshots=False  # We don't need screenshots for now
 			)
-			
-			# Save the built workflow to the final location
-			final_file = self.tmp_dir / f"{request.name}.json"
+			print('BUILT WORKFLOW')
+			print(built_workflow)
+
+			# Set timestamps for steps that don't have them
+			current_time = int(time.time() * 1000)  # Current time in milliseconds
+			has_timestamp = False
+			for step in built_workflow.steps:
+				if hasattr(step, 'type') and step.type != 'agent' and hasattr(step, 'timestamp') and step.timestamp is not None:
+					has_timestamp = True
+					break
+			if not has_timestamp:
+				for step in built_workflow.steps:
+					if hasattr(step, 'type') and step.type != 'agent' and hasattr(step, 'timestamp'):
+						step.timestamp = current_time
+
+			# Save the built workflow to the final location with collision handling
+			final_file = self.tmp_dir / self._get_next_available_filename(request.name)
 			final_file.write_text(built_workflow.model_dump_json(indent=2))
 			
 			return WorkflowBuildResponse(
 				success=True,
-				message=f"Workflow '{request.name}' built successfully"
+				message=f"Workflow '{final_file.stem}' built successfully"
 			)
 		except Exception as e:
 			print(f'Error building workflow: {e}')
