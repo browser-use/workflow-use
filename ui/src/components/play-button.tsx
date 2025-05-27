@@ -4,7 +4,7 @@ import { PlayButtonProps, InputField } from "../types/play-button.types";
 
 export const PlayButton: React.FC<PlayButtonProps> = ({
   workflowName,
-  workflowMetadata,
+  workflowData
 }) => {
   const [showModal, setShowModal] = useState<boolean>(false);
   const [showLogViewer, setShowLogViewer] = useState<boolean>(false);
@@ -15,14 +15,15 @@ export const PlayButton: React.FC<PlayButtonProps> = ({
   const [logPosition, setLogPosition] = useState<number>(0);
   const [workflowStatus, setWorkflowStatus] = useState<string>("idle");
 
+  const inputSchema = workflowData?.input_schema;
   const openModal = () => {
     if (!workflowName) return;
 
     setShowModal(true);
     setError(null);
 
-    if (workflowMetadata && workflowMetadata.input_schema) {
-      const fields = workflowMetadata.input_schema.map((input: any) => ({
+    if (inputSchema) {
+      const fields = inputSchema.map((input: any) => ({
         name: input.name,
         type: input.type,
         required: input.required,
@@ -157,7 +158,7 @@ export const PlayButton: React.FC<PlayButtonProps> = ({
             {/* header */}
             <div className="flex items-center justify-between border-b border-gray-700 p-4">
               <h3 className="m-0 text-lg">
-                Execute Workflow: {workflowMetadata?.name || workflowName}
+                Execute Workflow: {workflowName}
               </h3>
               <button
                 onClick={closeModal}

@@ -1,56 +1,52 @@
 import React, { useState, ChangeEvent } from "react";
 import {
-  WorkflowMetadata,
+  Workflow,
   WorkflowItemProps,
 } from "../types/workflow-layout.types";
 
 const WorkflowItem: React.FC<WorkflowItemProps> = ({
   id,
   selected,
-  metadata,
+  workflow,
   onSelect,
-  onUpdateMetadata,
+  onUpdateWorkflow,
 }) => {
   const [isEditing, setIsEditing] = useState(false);
-  const [edited, setEdited] = useState<WorkflowMetadata | null>(null);
+  const [edited, setEdited] = useState<Workflow | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const displayName = () => {
-    if (metadata)
+    if (workflow)
       return (
         <>
-          <span className="text-md">{metadata.name}</span>
-          {metadata.version && (
+          <span className="text-md">{workflow.name}</span>
+          {workflow.version && (
             <span className="text-xs text-[#888] ml-1.5">
-              v{metadata.version}
+              v{workflow.version}
             </span>
           )}
         </>
       );
-
-    return (
-      <span className="text-[#ccc]">
-        <span className="opacity-70">Loading workflow…</span>
-        <span className="hidden">{id}</span>
-      </span>
-    );
+    return <span className="text-md">{id}</span>;
   };
 
-  const change =
-    (field: keyof WorkflowMetadata) =>
-    (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
-      edited && setEdited({ ...edited, [field]: e.target.value });
+  const change = 
+    (field: keyof Workflow) => 
+    (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      if (!edited) return;
+      setEdited({ ...edited, [field]: e.target.value });
+    };
 
   const save = async () => {
     if (!edited) return;
     setSubmitting(true);
-    await onUpdateMetadata(edited).finally(() => setSubmitting(false));
+    await onUpdateWorkflow(edited).finally(() => setSubmitting(false));
     setIsEditing(false);
   };
 
-  const editForm = metadata && (
+  const editForm = workflow && (
     <div>
-      {(["name", "version"] as (keyof WorkflowMetadata)[]).map((f) => (
+      {(["name", "version"] as const).map((f) => (
         <label key={f} className="block text-xs mb-2">
           <span className="block text-[#aaa] mb-1">
             {f[0]?.toUpperCase() + f.slice(1)}
@@ -58,7 +54,7 @@ const WorkflowItem: React.FC<WorkflowItemProps> = ({
           <input
             className="w-full bg-[#333] border border-[#555] text-white p-1.5 rounded text-xs"
             value={edited?.[f] ?? ""}
-            onChange={change(f)}
+            onChange={change(f as keyof Workflow)}
           />
         </label>
       ))}
@@ -92,18 +88,18 @@ const WorkflowItem: React.FC<WorkflowItemProps> = ({
     </div>
   );
 
-  const readOnly = metadata && (
+  const readOnly = workflow && (
     <>
       <div className="mb-2">
         <div className="text-xs text-[#aaa] mb-1">Description</div>
-        <div className="text-xs">{metadata.description}</div>
+        <div className="text-xs">{workflow.description}</div>
       </div>
 
-      {metadata.input_schema?.length && (
+      {Array.isArray(workflow.input_schema) && workflow.input_schema.length > 0 && (
         <>
           <div className="text-xs text-[#aaa] mb-1">Input Parameters</div>
           <ul className="pl-4 text-xs list-disc marker:text-[#7ac5ff]">
-            {metadata.input_schema.map((p) => (
+            {workflow.input_schema.map((p) => (
               <li key={p.name} className="mb-1">
                 <span className="text-[#7ac5ff]">{p.name}</span>
                 <span className="text-[#aaa]"> ({p.type})</span>
@@ -131,14 +127,14 @@ const WorkflowItem: React.FC<WorkflowItemProps> = ({
       </li>
 
       {/* details panel */}
-      {selected && metadata && (
+      {selected && workflow && (
         <li className="py-2 pl-4 border-l border-[#444] my-1 ml-1">
           <div className="flex justify-between items-center mb-2">
             <h4 className="m-0 text-sm text-[#ddd]">Details</h4>
             {!isEditing && (
               <button
                 onClick={() => {
-                  setEdited({ ...metadata });
+                  setEdited({ ...workflow });
                   setIsEditing(true);
                 }}
                 className="bg-[#444] text-white py-1 px-2 rounded text-xs"
