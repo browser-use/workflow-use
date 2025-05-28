@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { Workflow } from '../types/workflow-layout.types';
 import { useAppContext } from '@/contexts/AppContext';
+import { useState } from 'react';
 
 interface WorkflowItemProps {
   workflow: Workflow;
@@ -14,6 +15,7 @@ export function WorkflowItem({
   workflow,
   onDeleteWorkflow,
 }: WorkflowItemProps) {
+  const [isHovered, setIsHovered] = useState(false);
   const { currentWorkflowData, selectWorkflow, displayMode, setDisplayMode } =
     useAppContext();
 
@@ -54,8 +56,10 @@ export function WorkflowItem({
     <SidebarMenuItem key={workflow.name}>
       <SidebarMenuButton
         onClick={handleClick}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
         className={cn(
-          'w-full p-4 text-left hover:bg-gray-100 transition-colors rounded-md min-h-[80px] relative group',
+          'w-full p-4 text-left hover:bg-gray-100 transition-colors rounded-md min-h-[80px] relative',
           currentWorkflowData?.name === workflow.name &&
             'bg-purple-50 border-r-2 border-purple-500'
         )}
@@ -90,17 +94,19 @@ export function WorkflowItem({
             </div>
           </div>
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={(e) => {
-            e.stopPropagation();
-            onDeleteWorkflow(workflow.name);
-          }}
-          className="absolute top-1/2 right-3 transform -translate-y-1/2 p-1.5 w-7 h-7 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-100 hover:text-red-600"
-        >
-          <Trash2 className="w-3.5 h-3.5" />
-        </Button>
+        {isHovered && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDeleteWorkflow(workflow.name);
+            }}
+            className="absolute top-1/2 right-3 transform -translate-y-1/2 p-4 w-7 h-10 hover:bg-red-100 hover:text-red-600"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </Button>
+        )}
       </SidebarMenuButton>
     </SidebarMenuItem>
   );

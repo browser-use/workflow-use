@@ -24,7 +24,13 @@ export type DialogType =
   | null;
 export type SidebarStatus = 'loading' | 'ready' | 'error';
 export type EditorStatus = 'saved' | 'unsaved';
-export type WorkflowStatus = 'idle' | 'running' | 'failed' | 'cancelling';
+export type WorkflowStatus =
+  | 'idle'
+  | 'running'
+  | 'failed'
+  | 'cancelling'
+  | 'cancelled'
+  | 'completed';
 export type RecordingStatus =
   | 'idle'
   | 'recording'
@@ -135,7 +141,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     } catch (err) {
       toast({
         title: 'Error ❌',
-        description: 'Failed to add the workflow. Please try again! 🔄',
+        description: 'Failed to add the workflow. Please try again!',
       });
     }
   };
@@ -151,7 +157,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     } catch (err) {
       toast({
         title: 'Error ❌',
-        description: 'Failed to delete the workflow. Please try again! 🔄',
+        description: 'Failed to delete the workflow. Please try again!',
       });
     }
   };
@@ -225,10 +231,18 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
             setWorkflowStatus(data.status as WorkflowStatus);
             if (data.status === 'failed' && data.error) {
               setWorkflowError(data.error);
+              stopPollingLogs();
+            } else if (
+              data.status === 'completed' ||
+              data.status === 'cancelled'
+            ) {
+              stopPollingLogs();
             }
           }
         } catch (err) {
           console.error('Polling error:', err);
+          setWorkflowError('Failed to fetch workflow logs');
+          stopPollingLogs();
         }
       };
 
@@ -240,11 +254,12 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
 
   const cancelWorkflowExecution = async (taskId: string) => {
     try {
-      await cancelWorkflow(taskId);
       setWorkflowStatus('cancelling');
+      await cancelWorkflow(taskId);
     } catch (err) {
       console.error('Failed to cancel workflow:', err);
-      // optionally: set error state
+      setWorkflowError('Failed to cancel workflow');
+      setWorkflowStatus('failed');
     }
   };
 
@@ -276,12 +291,16 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         setDisplayMode('log');
         startPollingLogs(result.task_id);
       } catch (err) {
-        setWorkflowError('An error occurred while executing the workflow');
+        const errorMessage =
+          err instanceof Error
+            ? err.message
+            : 'An error occurred while executing the workflow';
+        setWorkflowError(errorMessage);
         setWorkflowStatus('failed');
         stopPollingLogs();
       }
     },
-    [startPollingLogs, checkForUnsavedChanges]
+    [startPollingLogs, stopPollingLogs]
   );
 
   useEffect(() => {

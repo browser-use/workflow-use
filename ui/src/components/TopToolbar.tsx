@@ -1,4 +1,4 @@
-import { Play, Settings, Edit3, SidebarOpen } from 'lucide-react';
+import { Play, Settings, Edit3, SidebarOpen, Terminal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { useAppContext } from '@/contexts/AppContext';
@@ -10,6 +10,7 @@ export function TopToolbar() {
     currentWorkflowData,
     setActiveDialog,
     checkForUnsavedChanges,
+    workflowStatus,
   } = useAppContext();
 
   const handleRunWithInputs = () => {
@@ -47,11 +48,22 @@ export function TopToolbar() {
         </div>
 
         <div className="flex items-center gap-3">
+          {workflowStatus === 'running' && (
+            <Button
+              variant="default"
+              size="lg"
+              onClick={() => setDisplayMode('log')}
+              className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-base px-6 py-3 animate-pulse"
+            >
+              <Terminal className="w-5 h-5" />
+              Agent Running
+            </Button>
+          )}
           <Button
             variant="outline"
             size="lg"
             onClick={handleRunWithInputs}
-            disabled={!currentWorkflowData}
+            disabled={!currentWorkflowData || workflowStatus === 'running'}
             className="flex items-center gap-2 text-base px-6 py-3"
           >
             <Play className="w-5 h-5" />
@@ -62,7 +74,7 @@ export function TopToolbar() {
             variant="outline"
             size="lg"
             onClick={handleRunAsTool}
-            disabled={!currentWorkflowData}
+            disabled={!currentWorkflowData || workflowStatus === 'running'}
             className="flex items-center gap-2 text-base px-6 py-3"
           >
             <Settings className="w-5 h-5" />

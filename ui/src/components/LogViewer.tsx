@@ -20,7 +20,9 @@ export const LogViewer: React.FC<LogViewerProps> = ({ onClose }) => {
   const logContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    startPollingLogs(currentTaskId);
+    if (currentTaskId) {
+      startPollingLogs(currentTaskId);
+    }
     return () => {
       stopPollingLogs();
     };
@@ -36,7 +38,11 @@ export const LogViewer: React.FC<LogViewerProps> = ({ onClose }) => {
     if (workflowStatus !== 'running') return;
     setIsCancelling(true);
     try {
-      await cancelWorkflowExecution(currentTaskId);
+      if (currentTaskId) {
+        await cancelWorkflowExecution(currentTaskId);
+      }
+    } catch (error) {
+      console.error('Failed to cancel workflow:', error);
     } finally {
       setIsCancelling(false);
     }
@@ -74,6 +80,23 @@ export const LogViewer: React.FC<LogViewerProps> = ({ onClose }) => {
     );
   };
 
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'running':
+        return 'bg-[#e6f7ff] text-[#1890ff] border border-[#91d5ff]';
+      case 'completed':
+        return 'bg-[#f6ffed] text-[#52c41a] border border-[#b7eb8f]';
+      case 'cancelling':
+        return 'bg-[#fff2f0] text-orange-500 border border-[#ffccc7]';
+      case 'cancelled':
+        return 'bg-[#fff1f0] text-[#ff1a1a] border border-[#ff4d4f]';
+      case 'failed':
+        return 'bg-[#fff2f0] text-[#ff4d4f] border border-[#ffccc7]';
+      default:
+        return 'bg-[#fafafa] text-[#888] border border-[#ddd]';
+    }
+  };
+
   return (
     <div className="p-6 h-full">
       <div className="max-w-6xl mx-auto h-full flex flex-col border border-[#ddd] rounded-md overflow-hidden bg-[#f8f9fa] font-mono">
@@ -91,7 +114,7 @@ export const LogViewer: React.FC<LogViewerProps> = ({ onClose }) => {
                   onClick={handleCancel}
                   disabled={isCancelling}
                 >
-                  Cancel
+                  {isCancelling ? 'Cancelling...' : 'Cancel'}
                 </button>
               )}
               {logData.length > 0 && (
@@ -104,19 +127,9 @@ export const LogViewer: React.FC<LogViewerProps> = ({ onClose }) => {
               )}
             </div>
             <div
-              className={`py-0.5 px-2 rounded text-xs font-medium ${
-                workflowStatus === 'running'
-                  ? 'bg-[#e6f7ff] text-[#1890ff] border border-[#91d5ff]'
-                  : workflowStatus === 'completed'
-                  ? 'bg-[#f6ffed] text-[#52c41a] border border-[#b7eb8f]'
-                  : workflowStatus === 'cancelling'
-                  ? 'bg-[#fff2f0] text-orange border border-[#ffccc7]'
-                  : workflowStatus === 'cancelled'
-                  ? 'bg-[#fff2f0] text-[#ff4d4f] border border-[#ffccc7]'
-                  : workflowStatus === 'failed'
-                  ? 'bg-[#fff2f0] text-[#ff4d4f] border border-[#ffccc7]'
-                  : 'bg-[#fafafa] text-[#888] border border-[#ddd]'
-              }`}
+              className={`py-0.5 px-2 rounded text-xs font-medium ${getStatusColor(
+                workflowStatus
+              )}`}
             >
               Status:{' '}
               {workflowStatus.charAt(0).toUpperCase() + workflowStatus.slice(1)}
@@ -132,7 +145,9 @@ export const LogViewer: React.FC<LogViewerProps> = ({ onClose }) => {
             logData.map((log, index) => formatLog(log, index))
           ) : (
             <div className="text-[#999] italic py-5 text-center">
-              Waiting for logs...
+              {workflowStatus === 'running'
+                ? 'Waiting for logs...'
+                : 'No logs available'}
             </div>
           )}
 
