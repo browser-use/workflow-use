@@ -48,17 +48,6 @@ export function TopToolbar() {
         </div>
 
         <div className="flex items-center gap-3">
-          {workflowStatus === 'running' && (
-            <Button
-              variant="default"
-              size="lg"
-              onClick={() => setDisplayMode('log')}
-              className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-base px-6 py-3 animate-pulse"
-            >
-              <Terminal className="w-5 h-5" />
-              Agent Running
-            </Button>
-          )}
           <Button
             variant="outline"
             size="lg"

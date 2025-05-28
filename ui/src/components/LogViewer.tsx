@@ -1,11 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useAppContext } from '@/contexts/AppContext';
 
-interface LogViewerProps {
-  onClose: () => void;
-}
-
-export const LogViewer: React.FC<LogViewerProps> = ({ onClose }) => {
+export const LogViewer = () => {
   const {
     logData,
     workflowStatus,
@@ -98,9 +94,9 @@ export const LogViewer: React.FC<LogViewerProps> = ({ onClose }) => {
   };
 
   return (
-    <div className="p-6 h-full">
+    <div className="p-4 h-full">
       <div className="max-w-6xl mx-auto h-full flex flex-col border border-[#ddd] rounded-md overflow-hidden bg-[#f8f9fa] font-mono">
-        <div className="flex justify-between p-2 bg-[#f0f2f5] border-b border-[#ddd]">
+        <div className="flex justify-between px-2 py-1 bg-[#f0f2f5] border-b border-[#ddd]">
           <div className="font-semibold text-[#333]">
             Workflow Execution Logs
           </div>
@@ -156,15 +152,6 @@ export const LogViewer: React.FC<LogViewerProps> = ({ onClose }) => {
               <strong>Error:</strong> {workflowError}
             </div>
           )}
-        </div>
-
-        <div className="p-2.5 flex justify-center border-t border-[#ddd] bg-[#f0f2f5]">
-          <button
-            className="py-1.5 px-4 bg-[#f5f5f5] border border-[#ddd] rounded text-sm font-medium text-[#333] hover:bg-[#e6e6e6] hover:border-[#ccc]"
-            onClick={onClose}
-          >
-            Close
-          </button>
         </div>
       </div>
     </div>

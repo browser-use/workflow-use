@@ -13,7 +13,7 @@ import { workflowService } from '@/services/workflowService';
 import { z } from 'zod';
 import { useToast } from '@/hooks/use-toast';
 
-export type DisplayMode = 'canvas' | 'editor' | 'log' | 'start';
+export type DisplayMode = 'canvas' | 'editor' | 'start';
 export type DialogType =
   | 'run'
   | 'runAsTool'
@@ -115,6 +115,16 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     return false;
   }, [editorStatus, recordingStatus, setActiveDialog]);
 
+  const setDisplayMode = useCallback(
+    (mode: DisplayMode) => {
+      if (checkForUnsavedChanges()) {
+        return;
+      }
+      setDisplay(mode);
+    },
+    [checkForUnsavedChanges]
+  );
+
   const selectWorkflow = useCallback(
     (workflowName: string) => {
       if (checkForUnsavedChanges()) {
@@ -144,7 +154,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     } catch (err) {
       toast({
         title: 'Error ❌',
-        description: 'Failed to add the workflow. Please try again!',
+        description: `Failed to add the workflow. ${err}`,
       });
     }
   };
@@ -160,7 +170,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     } catch (err) {
       toast({
         title: 'Error ❌',
-        description: 'Failed to delete the workflow. Please try again!',
+        description: `Failed to delete the workflow. ${err}`,
       });
     }
   };
@@ -258,6 +268,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
             setWorkflowStatus(data.status as WorkflowStatus);
             if (data.status === 'failed' && data.error) {
               setWorkflowError(data.error);
+              setWorkflowStatus('failed');
               stopPollingLogs();
             } else if (
               data.status === 'completed' ||
@@ -266,10 +277,18 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
               stopPollingLogs();
             }
           }
+
+          if (['failed', 'cancelled', 'completed'].includes(workflowStatus)) {
+            stopPollingLogs();
+            if (workflowStatus === 'failed' && data.error) {
+              setWorkflowError(data.error);
+            }
+          }
         } catch (err) {
           console.error('Polling error:', err);
           setWorkflowError('Failed to fetch workflow logs');
           stopPollingLogs();
+          setWorkflowStatus('failed');
         }
       };
 
@@ -315,7 +334,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         setCurrentTaskId(result.task_id);
         setLogPosition(result.log_position);
         setWorkflowStatus('running');
-        setDisplayMode('log');
+        setDisplayMode('canvas');
         startPollingLogs(result.task_id);
       } catch (err) {
         const errorMessage =
@@ -327,7 +346,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         stopPollingLogs();
       }
     },
-    [startPollingLogs, stopPollingLogs]
+    [startPollingLogs, stopPollingLogs, setDisplayMode]
   );
 
   useEffect(() => {
@@ -356,16 +375,6 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
   useEffect(() => {
     fetchWorkflows();
   }, []);
-
-  const setDisplayMode = useCallback(
-    (mode: DisplayMode) => {
-      if (checkForUnsavedChanges()) {
-        return;
-      }
-      setDisplay(mode);
-    },
-    [checkForUnsavedChanges]
-  );
 
   return (
     <AppContext.Provider

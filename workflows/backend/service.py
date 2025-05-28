@@ -127,7 +127,7 @@ class WorkflowService:
 	def list_workflows(self) -> List[str]:
 		return [f.name for f in self.tmp_dir.iterdir() if f.is_file() and not f.name.startswith('temp_recording')]
 
-	def get_workflow(self, name: str) -> dict:
+	def get_workflow(self, name: str) -> str:
 		wf_file = self.tmp_dir / name
 		try:
 			data = wf_file.read_text()
@@ -138,9 +138,9 @@ class WorkflowService:
 				wf_file = self._sync_workflow_filename(wf_file, workflow_content)
 				return json.loads(wf_file.read_text())
 				
-			return workflow_content
+			return data
 		except (FileNotFoundError, json.JSONDecodeError):
-			return {}
+			return ""
 
 	def update_workflow(self, request: WorkflowUpdateRequest) -> WorkflowResponse:
 		workflow_filename = request.filename

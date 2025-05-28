@@ -129,7 +129,7 @@ class RecordingService:
 					'--no-default-browser-check',
 					'--no-first-run',
 				],
-				keep_alive=True,
+				keep_alive=False, # Use this mode for now, since it is easier to keep track of browser instances.
 			)
 
 			# Create and configure browser
@@ -290,7 +290,7 @@ class RecordingService:
 		await self._start_proxy_server()
 
 		self.event_processor_task = asyncio.create_task(self._process_event_queue())
-		self.playwright_task = asyncio.create_task(self._launch_playwright_and_wait())
+		self.playwright_task = asyncio.create_task(self._launch_browser_and_wait())
 
 		try:
 			print('[Service] Recording finished, proceeding to cleanup.')
@@ -312,14 +312,6 @@ class RecordingService:
 					pass
 				except Exception as e_pw_cancel:
 					print(f'[Service] Error awaiting cancelled Playwright task: {e_pw_cancel}')
-
-			# Ensure browser context is closed
-			if self.playwright_context:
-				try:
-					await self.playwright_context.close()
-				except Exception as e:
-					print(f'[Service] Error closing Playwright context: {e}')
-				self.playwright_context = None
 
 			# Stop event processor task
 			if self.event_processor_task and not self.event_processor_task.done():
