@@ -25,7 +25,12 @@ export type DialogType =
 export type SidebarStatus = 'loading' | 'ready' | 'error';
 export type EditorStatus = 'saved' | 'unsaved';
 export type WorkflowStatus = 'idle' | 'running' | 'failed' | 'cancelling';
-export type RecordingStatus = 'idle' | 'recording' | 'building' | 'failed';
+export type RecordingStatus =
+  | 'idle'
+  | 'recording'
+  | 'building'
+  | 'failed'
+  | 'cancelling';
 
 interface AppContextType {
   displayMode: DisplayMode;

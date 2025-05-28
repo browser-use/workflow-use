@@ -29,6 +29,8 @@ export interface WorkflowService {
   addWorkflow(name: string, content: string): Promise<void>;
   deleteWorkflow(name: string): Promise<void>;
   buildWorkflow(name: string, prompt: string, workflow: any): Promise<any>;
+  recordWorkflow(): Promise<any>;
+  stopRecording(): Promise<any>;
 }
 
 class WorkflowServiceImpl implements WorkflowService {
@@ -114,6 +116,18 @@ class WorkflowServiceImpl implements WorkflowService {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({}),
     });
+    return response.json();
+  }
+
+  async stopRecording(): Promise<any> {
+    const response = await fetch(
+      'http://localhost:8000/api/workflows/cancel-recording',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      }
+    );
     return response.json();
   }
 

@@ -12,7 +12,7 @@ import { workflowService } from '@/services/workflowService';
 import { Workflow } from '@/types/workflow-layout.types';
 import { useAppContext } from '@/contexts/AppContext';
 import { toast } from './ui/use-toast';
-import { Clock, ListChecks, Activity } from 'lucide-react';
+import { Clock, ListChecks, Activity, Loader2 } from 'lucide-react';
 
 interface WorkflowRecordResponse {
   success: boolean;
@@ -83,7 +83,7 @@ export function EditRecordingDialog({
   useEffect(() => {
     if (recordingData?.workflow) {
       setEditedData({
-        name: recordingData.workflow.name || '',
+        name: '',
         steps: recordingData.workflow.steps || [],
         description: recordingData.workflow.description || '',
         version: recordingData.workflow.version || '',
@@ -92,6 +92,15 @@ export function EditRecordingDialog({
       });
     }
   }, [recordingData]);
+
+  const [recordingStartTime] = useState(() =>
+    new Date().toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    })
+  );
 
   const handleSave = async () => {
     try {
@@ -133,16 +142,15 @@ export function EditRecordingDialog({
   };
 
   const handleCloseAttempt = () => {
-    if (recordingStatus === 'building') {
-      return; // Prevent closing while building
-    }
     setShowConfirmClose(true);
   };
 
   const handleConfirmClose = () => {
     setShowConfirmClose(false);
     onClose();
-    setRecordingStatus('idle');
+    if (recordingStatus !== 'cancelling') {
+      setRecordingStatus('idle');
+    }
   };
 
   const handleCancelClose = () => {
@@ -186,6 +194,7 @@ export function EditRecordingDialog({
                       setEditedData({ ...editedData, name: e.target.value })
                     }
                     className="border rounded-md p-5 text-lg"
+                    placeholder="Leave empty for automatic name generation"
                   />
                 </div>
 
@@ -240,9 +249,7 @@ export function EditRecordingDialog({
                       <p className="text-sm text-green-600 font-medium">
                         Recording Time
                       </p>
-                      <p className="text-2xl font-bold">
-                        {new Date().toLocaleTimeString()}
-                      </p>
+                      <p className="text-2xl font-bold">{recordingStartTime}</p>
                     </div>
                   </div>
                 </div>
@@ -271,7 +278,7 @@ export function EditRecordingDialog({
             <Button
               variant="outline"
               onClick={handleCloseAttempt}
-              disabled={recordingStatus === 'building'}
+              disabled={showConfirmClose}
             >
               Cancel
             </Button>
@@ -280,7 +287,14 @@ export function EditRecordingDialog({
               disabled={isBuilding || !userPrompt.trim()}
               className="bg-purple-600 hover:bg-purple-700"
             >
-              {isBuilding ? 'Building...' : 'Build Workflow'}
+              {isBuilding ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Building...
+                </>
+              ) : (
+                'Build Workflow'
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

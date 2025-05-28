@@ -164,7 +164,7 @@ async def add_workflow(request: WorkflowAddRequest):
 async def delete_workflow(name: str):
 	service = get_service()
 	if not name:
-		raise HTTPException(status_code=400, detail='Missing workflow name')	
+		raise HTTPException(status_code=400, detail='Missing workflow name')
 	result = service.delete_workflow(name)
 	if not result:
 		raise HTTPException(status_code=404, detail=f'Workflow {name} not found')
@@ -175,6 +175,10 @@ async def record_workflow():
 	service = get_service()
 	return await service.record_workflow()
 
+@router.post('/cancel-recording', response_model=WorkflowRecordResponse)
+async def cancel_recording():
+	service = get_service()
+	return await service.cancel_recording()
 
 @router.post('/build-from-recording', response_model=WorkflowBuildResponse)
 async def build_workflow(request: WorkflowBuildRequest):

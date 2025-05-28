@@ -246,11 +246,11 @@ class RecordingService:
 		await self._proxy_runner.setup()
 		self._proxy_site = web.TCPSite(self._proxy_runner, '127.0.0.1', 7331)
 		await self._proxy_site.start()
-		print("[Services] Reverse proxy started on port 7331.")
+		print("[Service] Reverse proxy started on port 7331.")
 
 	async def _stop_proxy_server(self):
 		if hasattr(self, '_proxy_site'):
-			print("[Services] Stopping reverse proxy on port 7331.")
+			print("[Service] Stopping reverse proxy on port 7331.")
 			await self._proxy_runner.cleanup()
 	
 	async def record_workflow_using_main_server(self) -> Optional[WorkflowDefinitionSchema]:
@@ -312,10 +312,15 @@ class RecordingService:
 
 		if self.final_workflow_output:
 			print('[Service] Returning captured workflow.')
-			print(self.final_workflow_output)
 		else:
 			print('[Service] No workflow captured.')
 		return self.final_workflow_output
+
+	async def cancel_recording(self) -> None:
+		"""Cancel an ongoing workflow recording by capturing the final workflow and signaling completion."""
+		print('[Service] Cancelling recording...')
+		await self._capture_and_signal_final_workflow('RecordingStoppedEvent')
+		print('[Service] Recording cancellation complete.')
 
 
 async def main_service_runner():  # Example of how to run the service

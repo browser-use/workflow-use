@@ -1,4 +1,3 @@
-import React, { useEffect } from 'react';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { WorkflowSidebar } from '@/components/WorkflowSidebar';
 import { WorkflowCanvas } from '@/components/WorkflowCanvas';

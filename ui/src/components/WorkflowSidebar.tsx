@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Globe, Search, Plus, Loader } from 'lucide-react';
 import {
   Sidebar,
@@ -37,6 +37,14 @@ export function WorkflowSidebar() {
     setActiveDialog,
   } = useAppContext();
 
+  // Important, this ref keeps track of the recording status
+  const recordingStatusRef = useRef(recordingStatus);
+
+  useEffect(() => {
+    recordingStatusRef.current = recordingStatus;
+    console.log('Recording status change:', recordingStatusRef.current);
+  }, [recordingStatus]);
+
   const filteredWorkflows = useMemo(() => {
     if (!searchTerm) return workflows;
     return workflows.filter(
@@ -55,13 +63,23 @@ export function WorkflowSidebar() {
       older: [],
     };
 
-    filteredWorkflows.forEach((workflow) => {
+    const sorted = [...filteredWorkflows].sort((a, b) => {
+      const getLatest = (wf: typeof a) =>
+        Math.max(
+          ...wf.steps
+            .map((step) => step.timestamp || 0)
+            .filter((ts) => ts !== null)
+        );
+      return getLatest(b) - getLatest(a);
+    });
+
+    sorted.forEach((workflow) => {
       const timestamps = workflow.steps
         .map((step) => step.timestamp)
         .filter((timestamp) => timestamp !== null);
 
       const mostRecentTimestamp =
-        timestamps.length > 0 ? Math.max(...timestamps) : 0; // Use 0 if no timestamps found
+        timestamps.length > 0 ? Math.max(...timestamps) : 0;
 
       const category = workflowService.getWorkflowCategory(
         mostRecentTimestamp
@@ -82,13 +100,20 @@ export function WorkflowSidebar() {
     setRecordingStatus('recording');
     try {
       const response = await workflowService.recordWorkflow();
-      if (response) {
-        console.log('RECORDING SERVICE RESPONSE', response);
+      const refStatus = recordingStatusRef.current;
+      if (refStatus === 'cancelling') {
+        setActiveDialog(null);
+        setRecordingData(null);
+        setRecordingStatus('idle');
+        return;
+      }
+      if (response?.success) {
         setRecordingData(response);
         setRecordingStatus('building');
         setActiveDialog('editRecording');
       } else {
-        throw new Error('Recording failed');
+        console.error('Recording failed:', response?.error);
+        throw new Error(response?.error || 'Recording failed');
       }
     } catch (error) {
       console.error('Failed to record workflow:', error);
@@ -121,19 +146,22 @@ export function WorkflowSidebar() {
 
   const handleCancelRecording = async () => {
     try {
-      await workflowService.stopRecording();
-      setRecordingStatus('idle');
-      setRecordingData(null);
-      setActiveDialog(null);
-      toast({
-        title: 'Recording Cancelled',
-        description: 'The workflow recording has been cancelled.',
-      });
+      setRecordingStatus('cancelling');
+      const response = await workflowService.stopRecording();
+      if (response?.success) {
+        setRecordingData(null);
+        toast({
+          title: '🎥 Recording Cancelled',
+          description: 'The workflow recording has been cancelled.',
+        });
+      } else {
+        throw new Error(response?.error || 'Failed to cancel recording');
+      }
     } catch (error) {
       console.error('Failed to cancel recording:', error);
+      setRecordingStatus('recording');
       toast({
-        variant: 'destructive',
-        title: 'Error',
+        title: '⚠️ Error',
         description: 'Failed to cancel the recording. Please try again.',
       });
     }
@@ -270,7 +298,6 @@ export function WorkflowSidebar() {
           isOpen={true}
           onClose={() => {
             setActiveDialog(null);
-            setRecordingStatus('idle');
             setRecordingData(null);
           }}
           recordingData={recordingData}
@@ -281,6 +308,7 @@ export function WorkflowSidebar() {
         <RecordingInProgressDialog
           onCancel={handleCancelRecording}
           onContinue={handleContinueRecording}
+          recordingStatus={recordingStatus}
         />
       )}
     </>

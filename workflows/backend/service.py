@@ -323,6 +323,15 @@ class WorkflowService:
 			print(f'Error recording workflow: {e}')
 			return WorkflowRecordResponse(success=False, workflow=None, error=str(e))
 
+	async def cancel_recording(self) -> WorkflowRecordResponse:
+		"""Cancel an ongoing workflow recording."""
+		try:
+			await self.recording_service.cancel_recording()
+			return WorkflowRecordResponse(success=True, workflow=None)
+		except Exception as e:
+			print(f'Error cancelling recording: {e}')
+			return WorkflowRecordResponse(success=False, workflow=None, error=str(e))
+
 	def _get_next_available_filename(self, base_name: str) -> str:
 		"""Get the next available filename by adding incremental numbers."""
 		counter = 1
@@ -364,8 +373,15 @@ class WorkflowService:
 					if hasattr(step, 'type') and step.type != 'agent' and hasattr(step, 'timestamp'):
 						step.timestamp = current_time
 
+			# Handle workflow name
+			if not request.name:
+				workflow_name = built_workflow.name
+			else:
+				built_workflow.name = request.name
+				workflow_name = request.name
+
 			# Save the built workflow to the final location with collision handling
-			final_file = self.tmp_dir / self._get_next_available_filename(request.name)
+			final_file = self.tmp_dir / self._get_next_available_filename(workflow_name)
 			final_file.write_text(built_workflow.model_dump_json(indent=2))
 			
 			return WorkflowBuildResponse(
