@@ -92,12 +92,55 @@ class WorkflowService:
 		async with aiofiles.open(log_file, 'a', encoding='utf-8') as f:
 			await f.write(message)
 
+	def _sync_workflow_filename(self, file_path: Path, workflow_content: dict) -> Path:
+		"""Synchronize the workflow file name with its internal name."""
+		current_name = workflow_content.get('name')
+		if not current_name:
+			return file_path
+
+		# Check if a file with this name already exists (excluding current file)
+		name_exists = False
+		for path in self.tmp_dir.iterdir():
+			if (path.is_file() and not path.name.startswith('temp_recording') 
+				and path != file_path 
+				and path.stem == current_name):
+				name_exists = True
+				break
+
+		if name_exists:
+			# If name exists, update both file name and internal name
+			new_filename = self._get_next_available_filename(current_name)
+			new_name = Path(new_filename).stem  # Get name without extension
+			workflow_content['name'] = new_name
+			new_file_path = self.tmp_dir / new_filename
+			file_path.rename(new_file_path)
+			return new_file_path
+		elif file_path.stem != current_name:
+			# If name doesn't exist but file name doesn't match internal name
+			new_filename = f"{current_name}.json"
+			new_file_path = self.tmp_dir / new_filename
+			file_path.rename(new_file_path)
+			return new_file_path
+
+		return file_path
+	
 	def list_workflows(self) -> List[str]:
 		return [f.name for f in self.tmp_dir.iterdir() if f.is_file() and not f.name.startswith('temp_recording')]
 
-	def get_workflow(self, name: str) -> str:
+	def get_workflow(self, name: str) -> dict:
 		wf_file = self.tmp_dir / name
-		return wf_file.read_text()
+		try:
+			data = wf_file.read_text()
+			workflow_content = json.loads(data)
+			
+			# If file name doesn't match internal name, sync them
+			if workflow_content.get('name') != wf_file.stem:
+				wf_file = self._sync_workflow_filename(wf_file, workflow_content)
+				return json.loads(wf_file.read_text())
+				
+			return workflow_content
+		except (FileNotFoundError, json.JSONDecodeError):
+			return {}
 
 	def update_workflow(self, request: WorkflowUpdateRequest) -> WorkflowResponse:
 		workflow_filename = request.filename
@@ -154,15 +197,26 @@ class WorkflowService:
 				continue
 
 		if not matching_file:
+			print(f"Workflow with name '{workflow_name}' not found")
 			return WorkflowResponse(success=False, error=f"Workflow with name '{workflow_name}' not found")
 
 		workflow_content = json.loads(matching_file.read_text())
-		workflow_content['name'] = updated_metadata.get('name', workflow_content.get('name', ''))
-		workflow_content['description'] = updated_metadata.get('description', workflow_content.get('description', ''))
-		workflow_content['version'] = updated_metadata.get('version', workflow_content.get('version', ''))
-
+		
+		# Update metadata fields directly from updated_metadata
+		if 'name' in updated_metadata:
+			workflow_content['name'] = updated_metadata['name']
+		if 'description' in updated_metadata:
+			workflow_content['description'] = updated_metadata['description']
+		if 'workflow_analysis' in updated_metadata:
+			workflow_content['workflow_analysis'] = updated_metadata['workflow_analysis']
+		if 'version' in updated_metadata:
+			workflow_content['version'] = updated_metadata['version']
 		if 'input_schema' in updated_metadata:
 			workflow_content['input_schema'] = updated_metadata['input_schema']
+
+		# Only sync if the name was updated and is different from current file name
+		if 'name' in updated_metadata and updated_metadata['name'] != matching_file.stem:
+			matching_file = self._sync_workflow_filename(matching_file, workflow_content)
 
 		matching_file.write_text(json.dumps(workflow_content, indent=2))
 		return WorkflowResponse(success=True)

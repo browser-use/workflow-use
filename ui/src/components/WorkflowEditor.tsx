@@ -128,26 +128,50 @@ export function WorkflowEditor() {
     const validation = workflowSchema.safeParse(workflow);
     if (!validation.success) {
       setSaveError('Invalid workflow data');
+      toast.error(saveError, {
+        duration: 4000,
+        style: { fontSize: '1.25rem', padding: '16px' },
+      });
       return;
     }
 
     setIsSaving(true);
     setSaveError(null);
     try {
-      await updateWorkflow(oldWorkflow, validation.data);
-      setOldWorkflow(validation.data); // Update old workflow after successful save
-      setEditorStatus('saved');
-      setSaveError(null);
-      toast.success('Changes saved successfully', {
-        icon: <CheckCircle2 className="w-4 h-4 text-green-500" />,
-        duration: 2000,
-      });
+      const response = await updateWorkflow(oldWorkflow, validation.data);
+      const allStepsSuccessful =
+        (response.metadataResponse == null ||
+          response.stepResponses?.every(
+            (stepResponse) => stepResponse?.success || stepResponse == null
+          )) ??
+        true;
+      const metadataSuccess =
+        response.metadataResponse == null || response.metadataResponse.success;
+
+      if (allStepsSuccessful && metadataSuccess) {
+        setOldWorkflow(validation.data); // Update old workflow after successful save
+        setEditorStatus('saved');
+        setSaveError(null);
+        toast.success('Changes saved successfully', {
+          icon: <CheckCircle2 className="w-4 h-4 text-green-500" />,
+          duration: 2000,
+          style: { fontSize: '1.25rem', padding: '16px' },
+        });
+      } else {
+        const errorMessage = response.error || 'Failed to save changes';
+        setSaveError(errorMessage);
+        toast.error(saveError, {
+          duration: 4000,
+          style: { fontSize: '1.25rem', padding: '16px' },
+        });
+      }
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : 'Failed to save changes';
       setSaveError(errorMessage);
-      toast.error(errorMessage, {
+      toast.error(saveError, {
         duration: 4000,
+        style: { fontSize: '1.25rem', padding: '16px' },
       });
     } finally {
       setIsSaving(false);
@@ -238,9 +262,6 @@ export function WorkflowEditor() {
 
       <div className="fixed bottom-0 left-0 right-0 ml-40 bg-white border-t border-gray-200 p-4">
         <div className="max-w-4xl mx-auto space-y-2">
-          {saveError && (
-            <div className="text-red-600 text-sm text-center">{saveError}</div>
-          )}
           <Button
             className="w-full ml-10 bg-purple-600 text-white disabled:opacity-50"
             onClick={saveChanges}

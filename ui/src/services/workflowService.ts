@@ -32,19 +32,15 @@ export interface WorkflowService {
 
 class WorkflowServiceImpl implements WorkflowService {
   async getWorkflows(): Promise<Workflow[]> {
-    console.log('Fetching list of workflows...');
     const response = await fetchClient.GET('/api/workflows');
-    console.log('Received response for workflows:', response.data);
 
     const workflowNames = response.data?.workflows ?? [];
-    console.log('Workflow names extracted:', workflowNames);
 
     // Fetch full workflow data for each workflow name
     const workflows = await Promise.all(
       workflowNames.map((name) => this.getWorkflowByName(name))
     );
 
-    console.log('Fetched full workflow data:', workflows);
     return workflows;
   }
 
