@@ -1,8 +1,8 @@
 import asyncio
 import logging
 
+from browser_use import Browser
 from browser_use.agent.views import ActionResult
-from browser_use.browser.context import BrowserContext
 from browser_use.controller.service import Controller
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.prompts import PromptTemplate
@@ -62,9 +62,9 @@ class WorkflowController(Controller):
 	def __register_actions(self):
 		# Navigate to URL ------------------------------------------------------------
 		@self.registry.action('Manually navigate to URL', param_model=NavigationAction)
-		async def navigation(params: NavigationAction, browser: BrowserContext) -> ActionResult:
+		async def navigation(params: NavigationAction, browser_session: Browser) -> ActionResult:
 			"""Navigate to the given URL."""
-			page = await browser.get_current_page()
+			page = await browser_session.get_current_page()
 			await page.goto(params.url)
 			await page.wait_for_load_state()
 
@@ -78,9 +78,9 @@ class WorkflowController(Controller):
 			'Click element by all available selectors',
 			param_model=ClickElementDeterministicAction,
 		)
-		async def click(params: ClickElementDeterministicAction, browser: BrowserContext) -> ActionResult:
+		async def click(params: ClickElementDeterministicAction, browser_session: Browser) -> ActionResult:
 			"""Click the first element matching *params.cssSelector* with fallback mechanisms."""
-			page = await browser.get_current_page()
+			page = await browser_session.get_current_page()
 			original_selector = params.cssSelector
 
 			try:
@@ -107,11 +107,11 @@ class WorkflowController(Controller):
 		)
 		async def input(
 			params: InputTextDeterministicAction,
-			browser: BrowserContext,
+			browser_session: Browser,
 			has_sensitive_data: bool = False,
 		) -> ActionResult:
 			"""Fill text into the element located with *params.cssSelector*."""
-			page = await browser.get_current_page()
+			page = await browser_session.get_current_page()
 			original_selector = params.cssSelector
 
 			try:
@@ -149,9 +149,9 @@ class WorkflowController(Controller):
 			'Select dropdown option by all available selectors and visible text',
 			param_model=SelectDropdownOptionDeterministicAction,
 		)
-		async def select_change(params: SelectDropdownOptionDeterministicAction, browser: BrowserContext) -> ActionResult:
+		async def select_change(params: SelectDropdownOptionDeterministicAction, browser_session: Browser) -> ActionResult:
 			"""Select dropdown option whose visible text equals *params.value*."""
-			page = await browser.get_current_page()
+			page = await browser_session.get_current_page()
 			original_selector = params.cssSelector
 
 			try:
@@ -177,9 +177,9 @@ class WorkflowController(Controller):
 			'Press key on element by all available selectors',
 			param_model=KeyPressDeterministicAction,
 		)
-		async def key_press(params: KeyPressDeterministicAction, browser: BrowserContext) -> ActionResult:
+		async def key_press(params: KeyPressDeterministicAction, browser_session: Browser) -> ActionResult:
 			"""Press *params.key* on the element identified by *params.cssSelector*."""
-			page = await browser.get_current_page()
+			page = await browser_session.get_current_page()
 			original_selector = params.cssSelector
 
 			try:
@@ -197,9 +197,9 @@ class WorkflowController(Controller):
 
 		# Scroll action --------------------------------------------------------------
 		@self.registry.action('Scroll page', param_model=ScrollDeterministicAction)
-		async def scroll(params: ScrollDeterministicAction, browser: BrowserContext) -> ActionResult:
+		async def scroll(params: ScrollDeterministicAction, browser_session: Browser) -> ActionResult:
 			"""Scroll the page by the given x/y pixel offsets."""
-			page = await browser.get_current_page()
+			page = await browser_session.get_current_page()
 			await page.evaluate(f'window.scrollBy({params.scrollX}, {params.scrollY});')
 			msg = f'📜  Scrolled page by (x={params.scrollX}, y={params.scrollY})'
 			logger.info(msg)
@@ -211,8 +211,10 @@ class WorkflowController(Controller):
 			'Extract page content to retrieve specific information from the page, e.g. all company names, a specific description, all information about, links with companies in structured format or simply links',
 			param_model=PageExtractionAction,
 		)
-		async def extract_page_content(params: PageExtractionAction, browser: BrowserContext, page_extraction_llm: BaseChatModel):
-			page = await browser.get_current_page()
+		async def extract_page_content(
+			params: PageExtractionAction, browser_session: Browser, page_extraction_llm: BaseChatModel
+		):
+			page = await browser_session.get_current_page()
 			import markdownify
 
 			strip = ['a', 'img']

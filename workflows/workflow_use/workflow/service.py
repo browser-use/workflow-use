@@ -7,10 +7,8 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, TypeVar
 
-from browser_use.agent.service import Agent
+from browser_use import Agent, Browser
 from browser_use.agent.views import ActionResult, AgentHistoryList
-from browser_use.browser.browser import Browser
-from browser_use.browser.context import BrowserContext
 from langchain.agents import AgentExecutor, create_tool_calling_agent
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
@@ -76,13 +74,17 @@ class Workflow:
 		self.steps = self.schema.steps
 
 		self.controller = controller or WorkflowController()
+
 		self.browser = browser or Browser()
+
+		# Hack to not close it after agent kicks in
+		self.browser.browser_profile.keep_alive = True
+
 		self.llm = llm
 		self.page_extraction_llm = page_extraction_llm
 
 		self.fallback_to_agent = fallback_to_agent
 
-		self.browser_context = BrowserContext(browser=self.browser, config=self.browser.config.new_context_config)
 		self.context: dict[str, Any] = {}
 
 		self.inputs_def: List[WorkflowInputSchemaDefinition] = self.schema.input_schema
@@ -123,7 +125,7 @@ class Workflow:
 		action_model = ActionModel(**{action_name: params})
 
 		try:
-			result = await self.controller.act(action_model, self.browser_context, page_extraction_llm=self.page_extraction_llm)
+			result = await self.controller.act(action_model, self.browser, page_extraction_llm=self.page_extraction_llm)
 		except Exception as e:
 			raise RuntimeError(f"Deterministic action '{action_name}' failed: {str(e)}")
 
@@ -139,8 +141,8 @@ class Workflow:
 			css_selector = getattr(next_step_resolved, 'cssSelector', None)
 			if css_selector:
 				try:
-					await self.browser_context._wait_for_stable_network()
-					page = await self.browser_context.get_agent_current_page()
+					await self.browser._wait_for_stable_network()
+					page = await self.browser.get_current_page()
 
 					logger.info(f'Waiting for element with selector: {truncate_selector(css_selector)}')
 					locator, selector_used = await get_best_element_handle(
@@ -164,8 +166,7 @@ class Workflow:
 		agent = Agent(
 			task=task,
 			llm=self.llm,
-			browser=self.browser,
-			browser_context=self.browser_context,
+			browser_session=self.browser,
 			use_vision=True,  # Consider making this configurable via WorkflowStep schema
 		)
 		return await agent.run(max_steps=max_steps)
@@ -487,7 +488,7 @@ class Workflow:
 			else:
 				self.context.update(runtime_inputs)
 
-		async with self.browser_context:
+		async with self.browser:
 			raw_step_cfg = self.steps[step_index]
 			step_resolved = self._resolve_placeholders(raw_step_cfg)
 			result = await self._execute_step(step_index, step_resolved)
@@ -529,11 +530,11 @@ class Workflow:
 		results: List[ActionResult | AgentHistoryList] = []
 
 		logger.debug(f"Current event loop type: {type(asyncio.get_event_loop())}")
-		await self.browser_context.__aenter__()
+		await self.browser.start()
 		try:
 			for step_index, step_dict in enumerate(self.steps):  # self.steps now holds dictionaries
 				await asyncio.sleep(0.1)
-				await self.browser_context._wait_for_stable_network()
+				await self.browser._wait_for_stable_network()
 
 				# Check if cancellation was requested
 				if cancel_event and cancel_event.is_set():
@@ -560,16 +561,10 @@ class Workflow:
 				output_model_result = await self._convert_results_to_output_model(results, output_model)
 
 		finally:
+			# Clean-up browser after finishing workflow
 			if close_browser_at_end:
-				# Ensure __aexit__ is called with appropriate args for exception handling if needed
-				# For simplicity, assuming no exception to pass: exc_type, exc_val, exc_tb = None, None, None
-				# wait 3 seconds before closing the browser
-				await asyncio.sleep(3)
-				await self.browser_context.__aexit__(None, None, None)
-
-		# Clean-up browser after finishing workflow
-		if close_browser_at_end:
-			await self.browser.close()
+				self.browser.browser_profile.keep_alive = False
+				await self.browser.close()
 
 		return WorkflowRunOutput(step_results=results, output_model=output_model_result)
 
