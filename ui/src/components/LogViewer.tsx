@@ -26,7 +26,7 @@ export const LogViewer: React.FC<LogViewerProps> = ({ onClose }) => {
     return () => {
       stopPollingLogs();
     };
-  }, [currentTaskId]);
+  }, [currentTaskId, startPollingLogs, stopPollingLogs]);
 
   useEffect(() => {
     if (logContainerRef.current) {

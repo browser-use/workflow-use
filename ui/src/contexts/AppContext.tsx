@@ -7,10 +7,9 @@ import React, {
   useRef,
   useEffect,
 } from 'react';
-import { Workflow } from '../types/workflow-layout.types';
+import { Workflow, inputFieldSchema } from '../types/workflow-layout.types';
 import { workflowService } from '@/services/workflowService';
-import { fetchWorkflowLogs, cancelWorkflow } from '@/services/pollingService';
-import { inputFieldSchema } from '../types/workflow-layout.types';
+// import { fetchWorkflowLogs, cancelWorkflow } from '@/services/pollingService';
 import { z } from 'zod';
 import { useToast } from '@/hooks/use-toast';
 
@@ -218,7 +217,10 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
 
       const poll = async () => {
         try {
-          const data = await fetchWorkflowLogs(taskId, logPosition);
+          const data = await workflowService.fetchWorkflowLogs(
+            taskId,
+            logPosition
+          );
           if (data.logs?.length) {
             setLogData((prev) => {
               const newLogs = data.logs.filter((log) => !prev.includes(log));
@@ -255,7 +257,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
   const cancelWorkflowExecution = async (taskId: string) => {
     try {
       setWorkflowStatus('cancelling');
-      await cancelWorkflow(taskId);
+      await workflowService.cancelWorkflow(taskId);
     } catch (err) {
       console.error('Failed to cancel workflow:', err);
       setWorkflowError('Failed to cancel workflow');

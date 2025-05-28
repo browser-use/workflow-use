@@ -27,7 +27,6 @@ export function RunWorkflowDialog() {
     setActiveDialog,
     currentWorkflowData,
     workflowStatus,
-    workflowError,
   } = useAppContext();
   const [inputs, setInputs] = useState<WorkflowInput[]>([]);
   const [isExecuting, setIsExecuting] = useState(false);

@@ -6,11 +6,6 @@ import {
 } from '../types/workflow-layout.types';
 import { z } from 'zod';
 
-interface WorkflowResponse {
-  success: boolean;
-  error?: string;
-}
-
 export interface WorkflowService {
   getWorkflows(): Promise<Workflow[]>;
   getWorkflowByName(name: string): Promise<any>;
@@ -31,6 +26,8 @@ export interface WorkflowService {
   buildWorkflow(name: string, prompt: string, workflow: any): Promise<any>;
   recordWorkflow(): Promise<any>;
   stopRecording(): Promise<any>;
+  fetchWorkflowLogs(taskId: string, position: number): Promise<any>;
+  cancelWorkflow(taskId: string): Promise<any>;
 }
 
 class WorkflowServiceImpl implements WorkflowService {
@@ -55,6 +52,9 @@ class WorkflowServiceImpl implements WorkflowService {
     const response = await fetchClient.GET('/api/workflows/{name}', {
       params: { path: { name } },
     });
+    if (!response.data) {
+      throw new Error('Failed to return data from server');
+    }
     return response.data;
   }
 
@@ -66,6 +66,9 @@ class WorkflowServiceImpl implements WorkflowService {
       body: { name, metadata: metadata as any },
     });
     console.log('Response from updateWorkflowMetadata:', response);
+    if (!response.data) {
+      throw new Error('Failed to return data from server');
+    }
     return response.data;
   }
 
@@ -78,6 +81,9 @@ class WorkflowServiceImpl implements WorkflowService {
       body: { filename, nodeId, stepData },
     });
     console.log('Response from updateWorkflow:', response);
+    if (!response.data) {
+      throw new Error('Failed to return data from server');
+    }
     return response.data;
   }
 
@@ -87,48 +93,41 @@ class WorkflowServiceImpl implements WorkflowService {
   ): Promise<{
     task_id: string;
     log_position: number;
+    message: string;
   }> {
-    const inputs: Record<string, any> = {};
+    const inputs: any = {};
     inputFields.forEach((field) => {
       inputs[field.name] = field.value;
     });
 
-    const response = await fetch(
-      'http://127.0.0.1:8000/api/workflows/execute',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, inputs }),
-      }
-    );
-
-    if (!response.ok) {
-      throw new Error('Failed to execute workflow');
+    const response = await fetchClient.POST('/api/workflows/execute', {
+      body: { name, inputs },
+    });
+    if (!response.data) {
+      throw new Error('Failed to return data from server');
     }
 
-    const data = await response.json();
-    return data;
+    return response.data;
   }
 
   async recordWorkflow(): Promise<any> {
-    const response = await fetch('http://localhost:8000/api/workflows/record', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({}),
+    const response = await fetchClient.POST('/api/workflows/record', {
+      body: undefined,
     });
-    return response.json();
+    if (!response.data) {
+      throw new Error('Failed to return data from server');
+    }
+    return response.data;
   }
 
   async stopRecording(): Promise<any> {
-    const response = await fetch(
-      'http://localhost:8000/api/workflows/cancel-recording',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      }
-    );
-    return response.json();
+    const response = await fetchClient.POST('/api/workflows/cancel-recording', {
+      body: undefined,
+    });
+    if (!response.data) {
+      throw new Error('Failed to return data from server');
+    }
+    return response.data;
   }
 
   async buildWorkflow(
@@ -136,50 +135,78 @@ class WorkflowServiceImpl implements WorkflowService {
     prompt: string,
     workflow: any
   ): Promise<any> {
-    const response = await fetch(
-      'http://localhost:8000/api/workflows/build-from-recording',
+    const response = await fetchClient.POST(
+      '/api/workflows/build-from-recording',
       {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, prompt, workflow }),
+        body: { name, prompt, workflow },
       }
     );
-    return response.json();
+    if (!response.data) {
+      throw new Error('Failed to return data from server');
+    }
+    return response.data;
   }
 
   async addWorkflow(name: string, content: string): Promise<void> {
-    const response = await fetch('http://localhost:8000/api/workflows/add', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, content }),
+    const response = await fetchClient.POST('/api/workflows/add', {
+      body: { name, content },
     });
 
-    if (!response.ok) {
+    if (!response.data) {
       throw new Error('Failed to add workflow');
     }
 
-    const data = (await response.json()) as WorkflowResponse;
+    const data = response.data;
     if (!data.success) {
       throw new Error(data.error || 'Failed to add workflow');
     }
   }
 
   async deleteWorkflow(name: string): Promise<void> {
-    const response = await fetch(
-      `http://localhost:8000/api/workflows/${name}`,
-      {
-        method: 'DELETE',
-      }
-    );
+    const response = await fetchClient.DELETE('/api/workflows/{name}', {
+      params: { path: { name } },
+    });
 
-    if (!response.ok) {
+    if (!response.data) {
       throw new Error('Failed to delete workflow');
     }
 
-    const data = (await response.json()) as WorkflowResponse;
+    const data = response.data;
     if (!data.success) {
       throw new Error(data.error || 'Failed to delete workflow');
     }
+  }
+
+  async fetchWorkflowLogs(taskId: string, position: number) {
+    const response = await fetchClient.GET('/api/workflows/logs/{task_id}', {
+      params: { path: { task_id: taskId }, query: { position } },
+    });
+
+    if (!response.data) {
+      throw new Error('Failed to return data from server');
+    }
+
+    return response.data;
+  }
+
+  async cancelWorkflow(taskId: string) {
+    const response = await fetchClient.POST(
+      '/api/workflows/tasks/{task_id}/cancel',
+      {
+        params: { path: { task_id: taskId } },
+      }
+    );
+
+    if (!response.data) {
+      throw new Error('Failed to return data from server');
+    }
+
+    const data = response.data;
+    if (!data?.success) {
+      throw new Error(data.message || 'Failed to cancel workflow');
+    }
+
+    return data;
   }
 
   getWorkflowCategory(timestamp: number): string {
