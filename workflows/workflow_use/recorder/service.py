@@ -36,7 +36,7 @@ class RecordingService:
 		self.final_workflow_processed_flag = False
 
 		if app:
-			print("[Service] Using provided FastAPI app instance.")
+			print('[Service] Using provided FastAPI app instance.')
 		else:
 			print("[Service] Creating new FastAPI app instance with title 'Temporary Recording Event Server'.")
 		self.app = app or FastAPI(title='Temporary Recording Event Server')
@@ -248,18 +248,18 @@ class RecordingService:
 		else:
 			print('[Service] No workflow captured or an error occurred.')
 		return self.final_workflow_output
-	
+
 	# Setup a temporary reverse proxy to the main server
 	async def _start_proxy_server(self):
 		async def proxy(request):
-			target_url = f"http://127.0.0.1:8000{request.rel_url}"
+			target_url = f'http://127.0.0.1:8000{request.rel_url}'
 			data = await request.read()
 			async with ClientSession() as session:
 				async with session.request(
 					method=request.method,
 					url=target_url,
 					headers={k: v for k, v in request.headers.items() if k.lower() != 'host'},
-					data=data
+					data=data,
 				) as resp:
 					body = await resp.read()
 					return web.Response(status=resp.status, body=body, headers=resp.headers)
@@ -270,16 +270,16 @@ class RecordingService:
 		await self._proxy_runner.setup()
 		self._proxy_site = web.TCPSite(self._proxy_runner, '127.0.0.1', 7331)
 		await self._proxy_site.start()
-		print("[Service] Reverse proxy started on port 7331.")
+		print('[Service] Reverse proxy started on port 7331.')
 
 	async def _stop_proxy_server(self):
 		if hasattr(self, '_proxy_site'):
-			print("[Service] Stopping reverse proxy on port 7331.")
+			print('[Service] Stopping reverse proxy on port 7331.')
 			await self._proxy_runner.cleanup()
-	
+
 	async def record_workflow_using_main_server(self) -> Optional[WorkflowDefinitionSchema]:
 		"""Used in the UI version because there is already a Uvicorn server."""
-		
+
 		print('[Service] Starting Playwright-only workflow recording session...')
 		self.last_workflow_update_event = None
 		self.final_workflow_output = None

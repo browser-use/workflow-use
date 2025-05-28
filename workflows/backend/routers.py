@@ -26,6 +26,7 @@ router = APIRouter(prefix='/api/workflows')
 # Global service instance
 _service = None
 
+
 def get_service(app=None) -> WorkflowService:
 	global _service
 	if _service is None:
@@ -151,7 +152,7 @@ async def add_workflow(request: WorkflowAddRequest):
 		raise HTTPException(status_code=400, detail='Missing workflow name')
 	if not request.content:
 		raise HTTPException(status_code=400, detail='Missing workflow content')
-	
+
 	try:
 		# Validate that the content is valid JSON
 		json.loads(request.content)
@@ -170,18 +171,20 @@ async def delete_workflow(name: str):
 		raise HTTPException(status_code=404, detail=f'Workflow {name} not found')
 	return result
 
+
 @router.post('/record', response_model=WorkflowRecordResponse)
 async def record_workflow():
 	service = get_service()
 	return await service.record_workflow()
+
 
 @router.post('/cancel-recording', response_model=WorkflowRecordResponse)
 async def cancel_recording():
 	service = get_service()
 	return await service.cancel_recording()
 
+
 @router.post('/build-from-recording', response_model=WorkflowBuildResponse)
 async def build_workflow(request: WorkflowBuildRequest):
 	service = get_service()
 	return await service.build_workflow(request)
-

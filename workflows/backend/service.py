@@ -212,7 +212,7 @@ class WorkflowService:
 			formatted_result = []
 			for i, s in enumerate(result.step_results):
 				content = None
-				if isinstance(s, ActionResult): # Handle agentic steps and agent fallback
+				if isinstance(s, ActionResult):  # Handle agentic steps and agent fallback
 					content = s.extracted_content
 				elif hasattr(s, 'history') and s.history:  # AgentHistoryList
 					# For AgentHistoryList, get the last successful result
@@ -224,18 +224,24 @@ class WorkflowService:
 					if last_action_result:
 						content = last_action_result.extracted_content
 
-				formatted_result.append({
-					'step_id': i,
-					'extracted_content': content,
-					'status': 'completed',
-				})
+				formatted_result.append(
+					{
+						'step_id': i,
+						'extracted_content': content,
+						'status': 'completed',
+					}
+				)
 
 			for step in formatted_result:
-				await self._write_log(log_file, f'[{self._get_timestamp()}] Completed step {step["step_id"]}: {step["extracted_content"]}\n')
+				await self._write_log(
+					log_file, f'[{self._get_timestamp()}] Completed step {step["step_id"]}: {step["extracted_content"]}\n'
+				)
 
 			self.active_tasks[task_id].status = 'completed'
 			self.active_tasks[task_id].result = formatted_result
-			await self._write_log(log_file, f'[{self._get_timestamp()}] Workflow completed successfully with {len(result.step_results)} steps\n')
+			await self._write_log(
+				log_file, f'[{self._get_timestamp()}] Workflow completed successfully with {len(result.step_results)} steps\n'
+			)
 
 		except asyncio.CancelledError:
 			await self._write_log(log_file, f'[{self._get_timestamp()}] Workflow force‑cancelled\n')
@@ -293,7 +299,7 @@ class WorkflowService:
 			workflow_file.write_text(request.content)
 			return WorkflowResponse(success=True)
 		except Exception as e:
-			return WorkflowResponse(success=False, error=f"Error creating workflow: {str(e)}")
+			return WorkflowResponse(success=False, error=f'Error creating workflow: {str(e)}')
 
 	def delete_workflow(self, name: str) -> WorkflowResponse:
 		"""Delete a workflow file."""
@@ -335,9 +341,9 @@ class WorkflowService:
 	def _get_next_available_filename(self, base_name: str) -> str:
 		"""Get the next available filename by adding incremental numbers."""
 		counter = 1
-		file_name = f"{base_name}.json"
+		file_name = f'{base_name}.json'
 		while (self.tmp_dir / file_name).exists():
-			file_name = f"{base_name}{counter}.json"
+			file_name = f'{base_name}{counter}.json'
 			counter += 1
 		return file_name
 
@@ -347,18 +353,18 @@ class WorkflowService:
 			if not self.llm_instance:
 				return WorkflowBuildResponse(
 					success=False,
-					message="Failed to build workflow",
-					error="LLM instance not available. Please ensure OPENAI_API_KEY is set."
+					message='Failed to build workflow',
+					error='LLM instance not available. Please ensure OPENAI_API_KEY is set.',
 				)
-			
+
 			# Initialize the builder service with the LLM instance
 			builder_service = BuilderService(llm=self.llm_instance)
-			
+
 			# Build the workflow using the builder service
 			built_workflow = await builder_service.build_workflow(
 				input_workflow=request.workflow,
 				user_goal=request.prompt,
-				use_screenshots=False  # We don't need screenshots for now
+				use_screenshots=False,  # We don't need screenshots for now
 			)
 
 			# Set timestamps for steps that don't have them
@@ -383,15 +389,8 @@ class WorkflowService:
 			# Save the built workflow to the final location with collision handling
 			final_file = self.tmp_dir / self._get_next_available_filename(workflow_name)
 			final_file.write_text(built_workflow.model_dump_json(indent=2))
-			
-			return WorkflowBuildResponse(
-				success=True,
-				message=f"Workflow '{final_file.stem}' built successfully"
-			)
+
+			return WorkflowBuildResponse(success=True, message=f"Workflow '{final_file.stem}' built successfully")
 		except Exception as e:
 			print(f'Error building workflow: {e}')
-			return WorkflowBuildResponse(
-				success=False,
-				message="Failed to build workflow",
-				error=str(e)
-			)
+			return WorkflowBuildResponse(success=False, message='Failed to build workflow', error=str(e))

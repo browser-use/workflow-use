@@ -4,6 +4,7 @@ from pydantic import BaseModel, ConfigDict
 
 from workflow_use.schema.views import WorkflowDefinitionSchema
 
+
 # Task Models
 class TaskInfo(BaseModel):
 	model_config = ConfigDict(extra='ignore')
@@ -67,10 +68,12 @@ class WorkflowLogsResponse(BaseModel):
 	result: Optional[List[Dict[str, Any]]] = None
 	error: Optional[str] = None
 
+
 class WorkflowRecordResponse(BaseModel):
 	success: bool
 	workflow: Optional[WorkflowDefinitionSchema] = None
 	error: Optional[str] = None
+
 
 class WorkflowStatusResponse(BaseModel):
 	task_id: str
