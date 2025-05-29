@@ -28,6 +28,10 @@ export interface WorkflowService {
   stopRecording(): Promise<any>;
   fetchWorkflowLogs(taskId: string, position: number): Promise<any>;
   cancelWorkflow(taskId: string): Promise<any>;
+  deleteStep(
+    workflowName: string,
+    stepIndex: number
+  ): Promise<{ success: boolean; error?: string }>;
 }
 
 class WorkflowServiceImpl implements WorkflowService {
@@ -77,6 +81,17 @@ class WorkflowServiceImpl implements WorkflowService {
       body: { filename, nodeId, stepData },
     });
     console.log('Response from updateWorkflow:', response);
+    if (!response.data) {
+      throw new Error('Failed to return data from server');
+    }
+    return response.data;
+  }
+
+  async deleteStep(workflowName: string, stepIndex: number): Promise<any> {
+    const response = await fetchClient.POST('/api/workflows/delete-step', {
+      body: { workflowName, stepIndex },
+    });
+    console.log('Response from deleteStep:', response);
     if (!response.data) {
       throw new Error('Failed to return data from server');
     }

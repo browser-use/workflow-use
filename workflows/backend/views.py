@@ -31,6 +31,10 @@ class WorkflowExecuteRequest(BaseModel):
 	inputs: Dict[str, Any]
 
 
+class WorkflowDeleteStepRequest(BaseModel):
+	workflowName: str
+	stepIndex: int
+
 class WorkflowAddRequest(BaseModel):
 	name: str
 	content: str  # JSON string containing the workflow definition

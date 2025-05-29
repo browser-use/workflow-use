@@ -25,6 +25,7 @@ import {
 import { toast } from 'sonner';
 import { SortableStep } from './SortableStep';
 import { UnsavedChangesDialog } from './UnsavedChangesDialog';
+import { workflowService } from '@/services/workflowService';
 
 type Workflow = z.infer<typeof workflowSchema>;
 type Step = z.infer<typeof stepSchema>;
@@ -32,7 +33,7 @@ type Step = z.infer<typeof stepSchema>;
 export function WorkflowEditor() {
   const {
     currentWorkflowData,
-    updateWorkflow,
+    updateWorkflowUI,
     setEditorStatus,
     editorStatus,
     activeDialog,
@@ -89,8 +90,8 @@ export function WorkflowEditor() {
     const newStep = stepSchema.parse({
       description: 'New step',
       type: 'click',
-      timestamp: null,
-      tabId: null,
+      timestamp: null as number | null,
+      tabId: null as number | null,
       output: null,
       url: null,
       cssSelector: null,
@@ -125,9 +126,11 @@ export function WorkflowEditor() {
 
   const saveChanges = async () => {
     if (!workflow || !oldWorkflow) return;
+
     const validation = workflowSchema.safeParse(workflow);
     if (!validation.success) {
-      setSaveError('Invalid workflow data');
+      const errorMessage = 'Invalid workflow data';
+      setSaveError(errorMessage);
       toast.error(saveError, {
         duration: 4000,
         style: { fontSize: '1.25rem', padding: '16px' },
@@ -137,28 +140,97 @@ export function WorkflowEditor() {
 
     setIsSaving(true);
     setSaveError(null);
-    try {
-      const response = await updateWorkflow(oldWorkflow, validation.data);
-      const allStepsSuccessful =
-        (response.metadataResponse == null ||
-          response.stepResponses?.every(
-            (stepResponse) => stepResponse?.success || stepResponse == null
-          )) ??
-        true;
-      const metadataSuccess =
-        response.metadataResponse == null || response.metadataResponse.success;
 
-      if (allStepsSuccessful && metadataSuccess) {
-        setOldWorkflow(validation.data); // Update old workflow after successful save
+    try {
+      const newWorkflow = validation.data;
+      const updateResponses: any[] = [];
+      const deleteResponses: any[] = [];
+
+      // Step updates (shared indices)
+      const sharedLength = Math.min(
+        oldWorkflow.steps.length,
+        newWorkflow.steps.length
+      );
+
+      for (let i = 0; i < sharedLength; i++) {
+        const oldStep = oldWorkflow.steps[i];
+        const newStep = newWorkflow.steps[i];
+
+        if (JSON.stringify(oldStep) !== JSON.stringify(newStep)) {
+          const res = await workflowService.updateWorkflow(
+            oldWorkflow.name,
+            i,
+            newStep
+          );
+          updateResponses.push(res);
+        }
+      }
+
+      // Step additions
+      for (let i = sharedLength; i < newWorkflow.steps.length; i++) {
+        const newStep = newWorkflow.steps[i];
+        const res = await workflowService.updateWorkflow(
+          oldWorkflow.name,
+          i,
+          newStep
+        );
+        updateResponses.push(res);
+      }
+
+      // Step deletions (from end down to new length)
+      for (
+        let i = oldWorkflow.steps.length - 1;
+        i >= newWorkflow.steps.length;
+        i--
+      ) {
+        const res = await workflowService.deleteStep(oldWorkflow.name, i);
+        deleteResponses.push(res);
+      }
+
+      // Handle metadata update if needed
+      const shouldUpdateMetadata =
+        oldWorkflow.name !== newWorkflow.name ||
+        oldWorkflow.description !== newWorkflow.description ||
+        oldWorkflow.version !== newWorkflow.version ||
+        oldWorkflow.workflow_analysis !== newWorkflow.workflow_analysis ||
+        JSON.stringify(oldWorkflow.input_schema) !==
+          JSON.stringify(newWorkflow.input_schema);
+
+      const metadataResponse = shouldUpdateMetadata
+        ? await workflowService.updateWorkflowMetadata(oldWorkflow.name, {
+            name: newWorkflow.name,
+            description: newWorkflow.description,
+            version: newWorkflow.version,
+            input_schema: newWorkflow.input_schema,
+            workflow_analysis: newWorkflow.workflow_analysis,
+          })
+        : { success: true };
+
+      // Collect errors
+      const allErrors = [
+        ...updateResponses
+          .filter((r) => !r.success)
+          .map((r) => r.error || 'Step update failed'),
+        ...deleteResponses
+          .filter((r) => !r.success)
+          .map((r) => r.error || 'Step delete failed'),
+        ...(metadataResponse.success
+          ? []
+          : [metadataResponse.error || 'Metadata update failed']),
+      ];
+
+      if (allErrors.length === 0) {
+        // Update UI state
+        updateWorkflowUI(oldWorkflow, newWorkflow);
+        setOldWorkflow(newWorkflow);
         setEditorStatus('saved');
-        setSaveError(null);
         toast.success('Changes saved successfully', {
           icon: <CheckCircle2 className="w-4 h-4 text-green-500" />,
           duration: 2000,
           style: { fontSize: '1.25rem', padding: '16px' },
         });
       } else {
-        const errorMessage = response.error || 'Failed to save changes';
+        const errorMessage = allErrors.join('\n');
         setSaveError(errorMessage);
         toast.error(saveError, {
           duration: 4000,
@@ -167,7 +239,7 @@ export function WorkflowEditor() {
       }
     } catch (error) {
       const errorMessage =
-        error instanceof Error ? error.message : 'Failed to save changes';
+        error instanceof Error ? error.message : 'Unexpected error occurred';
       setSaveError(errorMessage);
       toast.error(saveError, {
         duration: 4000,

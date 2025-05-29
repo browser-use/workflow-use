@@ -26,6 +26,8 @@ export const stepSchema = z.object({
     'input',
     'agent',
     'key_press',
+    'scroll',
+    'extract_page_content',
   ]),
 
   /* optional fields (vary by step type) */

@@ -58,14 +58,7 @@ interface AppContextType {
     name: string,
     inputFields: z.infer<typeof inputFieldSchema>[]
   ) => Promise<void>;
-  updateWorkflow: (
-    oldWorkflow: Workflow,
-    newWorkflow: Workflow
-  ) => Promise<{
-    metadataResponse?: any;
-    stepResponses?: any[] | null;
-    error?: string;
-  }>;
+  updateWorkflowUI: (oldWorkflow: Workflow, newWorkflow: Workflow) => void;
   startPollingLogs: (taskId: string) => void;
   stopPollingLogs: () => void;
   logData: string[];
@@ -175,65 +168,13 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     }
   };
 
-  const updateWorkflow = useCallback(
-    async (oldWorkflow: Workflow, newWorkflow: Workflow) => {
-      try {
-        let metadataResponse = null;
-        let stepResponses = null;
-
-        if (
-          oldWorkflow.name !== newWorkflow.name ||
-          oldWorkflow.description !== newWorkflow.description ||
-          oldWorkflow.version !== newWorkflow.version ||
-          oldWorkflow.workflow_analysis !== newWorkflow.workflow_analysis ||
-          JSON.stringify(oldWorkflow.input_schema) !==
-            JSON.stringify(newWorkflow.input_schema)
-        ) {
-          metadataResponse = await workflowService.updateWorkflowMetadata(
-            oldWorkflow.name,
-            {
-              name: newWorkflow.name,
-              description: newWorkflow.description,
-              version: newWorkflow.version,
-              input_schema: newWorkflow.input_schema,
-              workflow_analysis: newWorkflow.workflow_analysis,
-            }
-          );
-        }
-        if (
-          JSON.stringify(oldWorkflow.steps) !==
-          JSON.stringify(newWorkflow.steps)
-        ) {
-          stepResponses = await Promise.all(
-            newWorkflow.steps.map(async (newStep, index) => {
-              const oldStep = oldWorkflow.steps[index];
-              if (JSON.stringify(oldStep) !== JSON.stringify(newStep)) {
-                return workflowService.updateWorkflow(
-                  newWorkflow.name,
-                  index,
-                  newStep
-                );
-              }
-              return null;
-            })
-          );
-        }
-        setWorkflows((prev) =>
-          prev.map((wf) => (wf.name === oldWorkflow.name ? newWorkflow : wf))
-        );
-        if (currentWorkflowData?.name === oldWorkflow.name) {
-          setCurrentWorkflowData(newWorkflow);
-        }
-        return {
-          metadataResponse,
-          stepResponses,
-        };
-      } catch (err) {
-        console.error(`Failed to update workflow ${oldWorkflow.name}`, err);
-        return {
-          error:
-            err instanceof Error ? err.message : 'Failed to update workflow',
-        };
+  const updateWorkflowUI = useCallback(
+    (oldWorkflow: Workflow, newWorkflow: Workflow) => {
+      setWorkflows((prev) =>
+        prev.map((wf) => (wf.name === oldWorkflow.name ? newWorkflow : wf))
+      );
+      if (currentWorkflowData?.name === oldWorkflow.name) {
+        setCurrentWorkflowData(newWorkflow);
       }
     },
     [currentWorkflowData]
@@ -349,14 +290,15 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     [startPollingLogs, stopPollingLogs, setDisplayMode]
   );
 
-  useEffect(() => {
-    const logInterval = setInterval(() => {
-      console.log('Current workflows:', workflows);
-      console.log('Current workflow data:', currentWorkflowData);
-    }, 2000); // Log every 10 seconds
+  // Uncomment for debugging
+  // useEffect(() => {
+  //   const logInterval = setInterval(() => {
+  //     console.log('Current workflows:', workflows);
+  //     console.log('Current workflow data:', currentWorkflowData);
+  //   }, 2000); // Log every 10 seconds
 
-    return () => clearInterval(logInterval);
-  }, [workflows, currentWorkflowData]);
+  //   return () => clearInterval(logInterval);
+  // }, [workflows, currentWorkflowData]);
 
   // Fetch workflows on mount
   const fetchWorkflows = async () => {
@@ -393,7 +335,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         activeDialog,
         setActiveDialog,
         executeWorkflow,
-        updateWorkflow,
+        updateWorkflowUI,
         startPollingLogs,
         stopPollingLogs,
         logData,

@@ -17,12 +17,16 @@ import { CSS } from '@dnd-kit/utilities';
 import { stepSchema } from '@/types/workflow-layout.types';
 
 type Step = z.infer<typeof stepSchema>;
+type StepType = z.infer<typeof stepSchema>['type'];
+
+// Get the step types used in the dropdowns from the schema
+const stepTypes = stepSchema.shape.type.options as StepType[];
 
 interface SortableStepProps {
   step: Step;
   index: number;
   onDelete: (index: number) => void;
-  onUpdate: (index: number, key: keyof Step, value: any) => void;
+  onUpdate: (index: number, key: keyof Step, value: unknown) => void;
 }
 
 export function SortableStep({
@@ -88,16 +92,9 @@ export function SortableStep({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {[
-                  'navigation',
-                  'click',
-                  'select_change',
-                  'input',
-                  'agent',
-                  'key_press',
-                ].map((t) => (
-                  <SelectItem key={t} value={t}>
-                    {t}
+                {stepTypes.map((type) => (
+                  <SelectItem key={type} value={type}>
+                    {type}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -107,7 +104,7 @@ export function SortableStep({
           <div>
             <Label className="capitalize">description</Label>
             <Input
-              value={step.description}
+              value={step.description ?? ''}
               onChange={(e) => onUpdate(index, 'description', e.target.value)}
             />
           </div>

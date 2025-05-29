@@ -20,6 +20,7 @@ from .views import (
 	WorkflowBuildRequest,
 	WorkflowBuildResponse,
 	WorkflowCancelResponse,
+	WorkflowDeleteStepRequest,
 	WorkflowExecuteRequest,
 	WorkflowMetadataUpdateRequest,
 	WorkflowRecordResponse,
@@ -165,16 +166,26 @@ class WorkflowService:
 
 		if not matching_file:
 			return WorkflowResponse(success=False, error=f"Workflow with name '{workflow_filename}' not found")
-
+		# Load and modify the workflow
 		workflow_content = json.loads(matching_file.read_text())
 		steps = workflow_content.get('steps', [])
 
-		if 0 <= int(node_id) < len(steps):
-			steps[int(node_id)] = updated_step_data
-			matching_file.write_text(json.dumps(workflow_content, indent=2))
-			return WorkflowResponse(success=True)
+		try:
+			node_index = int(node_id)
+		except ValueError:
+			return WorkflowResponse(success=False, error='Invalid node ID')
 
-		return WorkflowResponse(success=False, error='Node not found in workflow')
+		# Updating or adding a step
+		if 0 <= node_index < len(steps):
+			steps[node_index] = updated_step_data
+		elif node_index == len(steps):  # Add new step
+			steps.append(updated_step_data)
+		else:
+			return WorkflowResponse(success=False, error='Node index out of bounds for adding step')
+
+		workflow_content['steps'] = steps
+		matching_file.write_text(json.dumps(workflow_content, indent=2))
+		return WorkflowResponse(success=True)
 
 	def update_workflow_metadata(self, request: WorkflowMetadataUpdateRequest) -> WorkflowResponse:
 		workflow_name = request.name
@@ -220,6 +231,44 @@ class WorkflowService:
 
 		matching_file.write_text(json.dumps(workflow_content, indent=2))
 		return WorkflowResponse(success=True)
+	
+	def delete_step(self, request: WorkflowDeleteStepRequest) -> WorkflowResponse:
+		workflow_name = request.workflowName
+		step_index = request.stepIndex
+
+		if not (workflow_name and step_index):
+			return WorkflowResponse(success=False, error='Missing required fields')
+
+		# Search through all files in tmp_dir to find the matching workflow
+		matching_file = None
+		for file_path in self.tmp_dir.iterdir():
+			if not file_path.is_file() or file_path.name.startswith('temp_recording'):
+				continue
+			try:
+				workflow_content = json.loads(file_path.read_text())
+				if workflow_content.get('name') == workflow_name:
+					matching_file = file_path
+					break
+			except (json.JSONDecodeError, KeyError):
+				continue
+
+		if not matching_file:
+			print(f"Workflow with name '{workflow_name}' not found")
+			return WorkflowResponse(success=False, error=f"Workflow with name '{workflow_name}' not found")
+
+		if not matching_file:
+			return WorkflowResponse(success=False, error="Workflow not found")
+
+		workflow_content = json.loads(matching_file.read_text())
+		steps = workflow_content.get('steps', [])
+
+		if 0 <= step_index < len(steps):
+			del steps[step_index]
+			workflow_content['steps'] = steps
+			matching_file.write_text(json.dumps(workflow_content, indent=2))
+			return WorkflowResponse(success=True)
+
+		return WorkflowResponse(success=False, error="Invalid step index")
 
 	async def run_workflow_in_background(
 		self,

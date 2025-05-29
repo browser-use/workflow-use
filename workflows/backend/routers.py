@@ -10,6 +10,7 @@ from .views import (
 	WorkflowBuildRequest,
 	WorkflowBuildResponse,
 	WorkflowCancelResponse,
+	WorkflowDeleteStepRequest,
 	WorkflowExecuteRequest,
 	WorkflowExecuteResponse,
 	WorkflowListResponse,
@@ -58,6 +59,10 @@ async def update_workflow_metadata(request: WorkflowMetadataUpdateRequest):
 	service = get_service()
 	return service.update_workflow_metadata(request)
 
+@router.post('/delete-step', response_model=WorkflowResponse)
+async def delete_step(request: WorkflowDeleteStepRequest):
+	service = get_service()
+	return service.delete_step(request)
 
 @router.post('/execute', response_model=WorkflowExecuteResponse)
 async def execute_workflow(request: WorkflowExecuteRequest):
