@@ -38,7 +38,6 @@ playwright install chromium
 cp .env.example .env # add your OPENAI_API_KEY to the .env file
 ```
 
-
 ## Run workflow as tool
 
 ```bash
@@ -48,7 +47,7 @@ python cli.py run-as-tool examples/example.workflow.json --prompt "fill the form
 ## Run workflow with predefined variables
 
 ```bash
-python cli.py run-workflow examples/example.workflow.json 
+python cli.py run-workflow examples/example.workflow.json
 ```
 
 ## Record your own workflow
@@ -88,6 +87,7 @@ python cli.py launch-gui
 ```
 
 This command will:
+
 - Start the backend server (FastAPI)
 - Start the frontend development server
 - Automatically open http://localhost:5173 in your browser
@@ -103,7 +103,7 @@ Alternatively, you can start the servers individually:
 
 ```bash
 cd workflows
-uvicorn backend.api:app --reload
+uvicorn backend.api:app
 ```
 
 #### Start the frontend development server

@@ -5,29 +5,40 @@ export type PositionLoggerNode = Node<{ label: string }, 'position-logger'>;
 export type AppNode = BuiltInNode | PositionLoggerNode;
 
 /* ── Input field definition ────────────────────────────────────────── */
-const inputFieldSchema = z.object({
+export const inputFieldSchema = z.object({
   name: z.string(),
   type: z.enum(['string', 'number', 'boolean']),
   required: z.boolean(),
+  value: z.any(),
 });
 
 /* ── Step definition ───────────────────────────────────────────────── */
-const stepSchema = z.object({
+export const stepSchema = z.object({
   /* core fields */
-  description: z.string(),
+  description: z.string().nullable(),
   output: z.unknown().nullable(),
   timestamp: z.number().int().nullable(),
   tabId: z.number().int().nullable(),
-  type: z.enum(['navigation', 'click', 'select_change', 'input']),
+  type: z.enum([
+    'navigation',
+    'click',
+    'select_change',
+    'input',
+    'agent',
+    'key_press',
+    'scroll',
+    'extract_page_content',
+  ]),
 
-  /* optional fields (vary by step type) */
-  url: z.string().url().optional(),
-  cssSelector: z.string().optional(),
-  xpath: z.string().optional(),
-  elementTag: z.string().optional(),
-  elementText: z.string().optional(),
-  selectedText: z.string().optional(),
-  value: z.string().optional(),
+  /* optional fields (vary by step type) */
+  url: z.string().nullable().optional(),
+  cssSelector: z.string().nullable().optional(),
+  xpath: z.string().nullable().optional(),
+  elementTag: z.string().nullable().optional(),
+  elementText: z.string().nullable().optional(),
+  selectedText: z.string().nullable().optional(),
+  value: z.string().nullable().optional(),
+  task: z.string().nullable().optional(),
 });
 
 /* ── Workflow wrapper ──────────────────────────────────────────────── */
@@ -43,24 +54,10 @@ export const workflowSchema = z.object({
 /* ── Inferred TypeScript type ───────────────────────────────────────– */
 export type Workflow = z.infer<typeof workflowSchema>;
 
-export interface WorkflowStep {
-  description: string;
-  type: string;
-  [key: string]: any;
-}
-
 export interface WorkflowMetadata {
   name: string;
   description: string;
   version: string;
+  workflow_analysis: string;
   input_schema: any[];
-  workflow_analysis?: string;
-}
-
-export interface WorkflowItemProps {
-  id: string;
-  selected: boolean;
-  metadata?: WorkflowMetadata;
-  onSelect: (id: string) => void;
-  onUpdateMetadata: (m: WorkflowMetadata) => Promise<void>;
 }

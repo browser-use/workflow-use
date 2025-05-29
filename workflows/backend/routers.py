@@ -1,16 +1,22 @@
 import asyncio
+import json
 import uuid
 
 from fastapi import APIRouter, HTTPException
 
 from .service import WorkflowService
 from .views import (
+	WorkflowAddRequest,
+	WorkflowBuildRequest,
+	WorkflowBuildResponse,
 	WorkflowCancelResponse,
+	WorkflowDeleteStepRequest,
 	WorkflowExecuteRequest,
 	WorkflowExecuteResponse,
 	WorkflowListResponse,
 	WorkflowLogsResponse,
 	WorkflowMetadataUpdateRequest,
+	WorkflowRecordResponse,
 	WorkflowResponse,
 	WorkflowStatusResponse,
 	WorkflowUpdateRequest,
@@ -18,9 +24,15 @@ from .views import (
 
 router = APIRouter(prefix='/api/workflows')
 
+# Global service instance
+_service = None
 
-def get_service() -> WorkflowService:
-	return WorkflowService()
+
+def get_service(app=None) -> WorkflowService:
+	global _service
+	if _service is None:
+		_service = WorkflowService(app=app)
+	return _service
 
 
 @router.get('', response_model=WorkflowListResponse)
@@ -47,6 +59,10 @@ async def update_workflow_metadata(request: WorkflowMetadataUpdateRequest):
 	service = get_service()
 	return service.update_workflow_metadata(request)
 
+@router.post('/delete-step', response_model=WorkflowResponse)
+async def delete_step(request: WorkflowDeleteStepRequest):
+	service = get_service()
+	return service.delete_step(request)
 
 @router.post('/execute', response_model=WorkflowExecuteResponse)
 async def execute_workflow(request: WorkflowExecuteRequest):
@@ -57,8 +73,23 @@ async def execute_workflow(request: WorkflowExecuteRequest):
 	if not workflow_name:
 		raise HTTPException(status_code=400, detail='Missing workflow name')
 
-	workflow_path = service.tmp_dir / workflow_name
-	if not workflow_path.exists():
+	# Ugly code to find the matching workflow
+	# Search through all files in tmp_dir to find the matching workflow
+	matching_file = None
+	for file_path in service.tmp_dir.iterdir():
+		if not file_path.is_file() or file_path.name.startswith('temp_recording'):
+			continue
+		try:
+			workflow_content = json.loads(file_path.read_text())
+			if workflow_content.get('name') == workflow_name:
+				matching_file = file_path
+				# Update the request with the actual filename
+				request.name = file_path.name
+				break
+		except (json.JSONDecodeError, KeyError):
+			continue
+
+	if not matching_file:
 		raise HTTPException(status_code=404, detail=f'Workflow {workflow_name} not found')
 
 	try:
@@ -117,3 +148,48 @@ async def cancel_workflow(task_id: str):
 	if not result.success and result.message == 'Task not found':
 		raise HTTPException(status_code=404, detail=f'Task {task_id} not found')
 	return result
+
+
+@router.post('/add', response_model=WorkflowResponse)
+async def add_workflow(request: WorkflowAddRequest):
+	service = get_service()
+	if not request.name:
+		raise HTTPException(status_code=400, detail='Missing workflow name')
+	if not request.content:
+		raise HTTPException(status_code=400, detail='Missing workflow content')
+
+	try:
+		# Validate that the content is valid JSON
+		json.loads(request.content)
+		return service.add_workflow(request)
+	except json.JSONDecodeError:
+		raise HTTPException(status_code=400, detail='Invalid JSON content')
+
+
+@router.delete('/{name}', response_model=WorkflowResponse)
+async def delete_workflow(name: str):
+	service = get_service()
+	if not name:
+		raise HTTPException(status_code=400, detail='Missing workflow name')
+	result = service.delete_workflow(name)
+	if not result:
+		raise HTTPException(status_code=404, detail=f'Workflow {name} not found')
+	return result
+
+
+@router.post('/record', response_model=WorkflowRecordResponse)
+async def record_workflow():
+	service = get_service()
+	return await service.record_workflow()
+
+
+@router.post('/cancel-recording', response_model=WorkflowRecordResponse)
+async def cancel_recording():
+	service = get_service()
+	return await service.cancel_recording()
+
+
+@router.post('/build-from-recording', response_model=WorkflowBuildResponse)
+async def build_workflow(request: WorkflowBuildRequest):
+	service = get_service()
+	return await service.build_workflow(request)

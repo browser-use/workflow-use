@@ -1,10 +1,13 @@
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
+
+from workflow_use.schema.views import WorkflowDefinitionSchema
 
 
 # Task Models
 class TaskInfo(BaseModel):
+	model_config = ConfigDict(extra='ignore')
 	status: str
 	workflow: str
 	result: Optional[List[Dict[str, Any]]] = None
@@ -26,6 +29,21 @@ class WorkflowMetadataUpdateRequest(BaseModel):
 class WorkflowExecuteRequest(BaseModel):
 	name: str
 	inputs: Dict[str, Any]
+
+
+class WorkflowDeleteStepRequest(BaseModel):
+	workflowName: str
+	stepIndex: int
+
+class WorkflowAddRequest(BaseModel):
+	name: str
+	content: str  # JSON string containing the workflow definition
+
+
+class WorkflowBuildRequest(BaseModel):
+	workflow: WorkflowDefinitionSchema
+	prompt: str
+	name: str
 
 
 # Response Models
@@ -55,6 +73,12 @@ class WorkflowLogsResponse(BaseModel):
 	error: Optional[str] = None
 
 
+class WorkflowRecordResponse(BaseModel):
+	success: bool
+	workflow: Optional[WorkflowDefinitionSchema] = None
+	error: Optional[str] = None
+
+
 class WorkflowStatusResponse(BaseModel):
 	task_id: str
 	status: str
@@ -66,3 +90,9 @@ class WorkflowStatusResponse(BaseModel):
 class WorkflowCancelResponse(BaseModel):
 	success: bool
 	message: str
+
+
+class WorkflowBuildResponse(BaseModel):
+	success: bool
+	message: str
+	error: Optional[str] = None

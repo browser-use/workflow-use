@@ -4,6 +4,7 @@ import pathlib
 from typing import Optional
 
 import uvicorn
+from aiohttp import ClientSession, web
 from browser_use import Browser
 from browser_use.browser.profile import BrowserProfile
 from fastapi import FastAPI
@@ -24,7 +25,7 @@ USER_DATA_DIR = SCRIPT_DIR / 'user_data_dir'
 
 
 class RecordingService:
-	def __init__(self):
+	def __init__(self, app: Optional[FastAPI] = None):
 		self.event_queue: asyncio.Queue[RecorderEvent] = asyncio.Queue()
 		self.last_workflow_update_event: Optional[HttpWorkflowUpdateEvent] = None
 		self.browser: Browser
@@ -34,7 +35,11 @@ class RecordingService:
 		self.final_workflow_processed_lock = asyncio.Lock()
 		self.final_workflow_processed_flag = False
 
-		self.app = FastAPI(title='Temporary Recording Event Server')
+		if app:
+			print('[Service] Using provided FastAPI app instance.')
+		else:
+			print("[Service] Creating new FastAPI app instance with title 'Temporary Recording Event Server'.")
+		self.app = app or FastAPI(title='Temporary Recording Event Server')
 		self.app.add_api_route('/event', self._handle_event_post, methods=['POST'], status_code=202)
 		# -- DEBUGGING --
 		# Turn this on to debug requests
@@ -124,7 +129,7 @@ class RecordingService:
 					'--no-default-browser-check',
 					'--no-first-run',
 				],
-				keep_alive=True,
+				keep_alive=False, # Use this mode for now, since it is easier to keep track of browser instances.
 			)
 
 			# Create and configure browser
@@ -243,6 +248,95 @@ class RecordingService:
 		else:
 			print('[Service] No workflow captured or an error occurred.')
 		return self.final_workflow_output
+
+	# Setup a temporary reverse proxy to the main server
+	async def _start_proxy_server(self):
+		async def proxy(request):
+			target_url = f'http://127.0.0.1:8000{request.rel_url}'
+			data = await request.read()
+			async with ClientSession() as session:
+				async with session.request(
+					method=request.method,
+					url=target_url,
+					headers={k: v for k, v in request.headers.items() if k.lower() != 'host'},
+					data=data,
+				) as resp:
+					body = await resp.read()
+					return web.Response(status=resp.status, body=body, headers=resp.headers)
+
+		self._proxy_app = web.Application()
+		self._proxy_app.router.add_route('*', '/{tail:.*}', proxy)
+		self._proxy_runner = web.AppRunner(self._proxy_app)
+		await self._proxy_runner.setup()
+		self._proxy_site = web.TCPSite(self._proxy_runner, '127.0.0.1', 7331)
+		await self._proxy_site.start()
+		print('[Service] Reverse proxy started on port 7331.')
+
+	async def _stop_proxy_server(self):
+		if hasattr(self, '_proxy_site'):
+			print('[Service] Stopping reverse proxy on port 7331.')
+			await self._proxy_runner.cleanup()
+
+	async def record_workflow_using_main_server(self) -> Optional[WorkflowDefinitionSchema]:
+		"""Used in the UI version because there is already a Uvicorn server."""
+
+		print('[Service] Starting Playwright-only workflow recording session...')
+		self.last_workflow_update_event = None
+		self.final_workflow_output = None
+		self.recording_complete_event.clear()
+		self.final_workflow_processed_flag = False
+
+		# Start reverse proxy on port 7331
+		await self._start_proxy_server()
+
+		self.event_processor_task = asyncio.create_task(self._process_event_queue())
+		self.playwright_task = asyncio.create_task(self._launch_browser_and_wait())
+
+		try:
+			print('[Service] Recording finished, proceeding to cleanup.')
+			await self.recording_complete_event.wait()
+			print('[Service] Recording complete event received. Proceeding to cleanup.')
+		except asyncio.CancelledError:
+			print('[Service] record_workflow_using_main_server was cancelled.')
+		finally:
+			print('[Service] Starting cleanup phase (Playwright-only mode)...')
+
+			await self._stop_proxy_server()
+
+			if self.playwright_task and not self.playwright_task.done():
+				print('[Service] Cancelling Playwright task...')
+				self.playwright_task.cancel()
+				try:
+					await self.playwright_task
+				except asyncio.CancelledError:
+					pass
+				except Exception as e_pw_cancel:
+					print(f'[Service] Error awaiting cancelled Playwright task: {e_pw_cancel}')
+
+			# Stop event processor task
+			if self.event_processor_task and not self.event_processor_task.done():
+				print('[Service] Cancelling event processor task...')
+				self.event_processor_task.cancel()
+				try:
+					await self.event_processor_task
+				except asyncio.CancelledError:
+					pass
+				except Exception as e_ep:
+					print(f'[Service] Error while awaiting event processor: {e_ep}')
+
+			print('[Service] Cleanup complete.')
+
+		if self.final_workflow_output:
+			print('[Service] Returning captured workflow.')
+		else:
+			print('[Service] No workflow captured.')
+		return self.final_workflow_output
+
+	async def cancel_recording(self) -> None:
+		"""Cancel an ongoing workflow recording by capturing the final workflow and signaling completion."""
+		print('[Service] Cancelling recording...')
+		await self._capture_and_signal_final_workflow('RecordingStoppedEvent')
+		print('[Service] Recording cancellation complete.')
 
 
 async def main_service_runner():  # Example of how to run the service

@@ -529,6 +529,14 @@ class Workflow:
 
 		results: List[ActionResult | AgentHistoryList] = []
 
+		logger.debug(f'Current event loop type: {type(asyncio.get_event_loop())}')
+
+		# We need to reset these to None. Temporary fix to eliminate zombie browser instances that playwright doesn't catch when closing the context and browser normally.
+		# print(self.browser.agent_current_page)
+		self.browser.agent_current_page = None
+		# print(self.browser.browser_pid)
+		self.browser.browser_pid = None
+
 		await self.browser.start()
 		try:
 			for step_index, step_dict in enumerate(self.steps):  # self.steps now holds dictionaries

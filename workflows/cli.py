@@ -448,7 +448,7 @@ def launch_gui():
 	backend_log = open(logs_dir / 'backend.log', 'w')
 	frontend_log = open(logs_dir / 'frontend.log', 'w')
 
-	backend = subprocess.Popen(['uvicorn', 'backend.api:app', '--reload'], stdout=backend_log, stderr=subprocess.STDOUT)
+	backend = subprocess.Popen(['uvicorn', 'backend.api:app'], stdout=backend_log, stderr=subprocess.STDOUT)
 	typer.echo(typer.style('Starting frontend...', bold=True))
 	frontend = subprocess.Popen(['npm', 'run', 'dev'], cwd='../ui', stdout=frontend_log, stderr=subprocess.STDOUT)
 	typer.echo(typer.style('Opening browser...', bold=True))
