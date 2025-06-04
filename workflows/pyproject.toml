@@ -18,6 +18,7 @@ dependencies = [
     "fastmcp>=2.3.4",
     "typer>=0.15.3",
     "uvicorn>=0.34.2",
+    "google-genai", # New SDK recommended in migration guide
 ]
 
 

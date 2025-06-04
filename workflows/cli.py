@@ -8,9 +8,10 @@ from pathlib import Path
 
 import typer
 from browser_use import Browser
+from langchain_google_genai import ChatGoogleGenerativeAI # Changed
+from typing import Optional # Added for type hinting
+# os is already imported
 
-# Assuming OPENAI_API_KEY is set in the environment
-from langchain_openai import ChatOpenAI
 from patchright.async_api import async_playwright as patchright_async_playwright
 
 from workflow_use.builder.service import BuilderService
@@ -29,18 +30,19 @@ app = typer.Typer(
 	no_args_is_help=True,
 )
 
-# Default LLM instance to None
-llm_instance = None
+# LLM Initialization using Langchain's ChatGoogleGenerativeAI
+llm_instance: Optional[ChatGoogleGenerativeAI] = None
+page_extraction_llm: Optional[ChatGoogleGenerativeAI] = None
+
 try:
-	llm_instance = ChatOpenAI(model='gpt-4o')
-	page_extraction_llm = ChatOpenAI(model='gpt-4o-mini')
+	if not os.getenv("GOOGLE_API_KEY"):
+		typer.secho("Error: GOOGLE_API_KEY environment variable not set. LLM features will be disabled.", fg=typer.colors.RED)
+	else:
+		llm_instance = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0, convert_system_message_to_human=True)
+		page_extraction_llm = ChatGoogleGenerativeAI(model="gemini-pro", temperature=0, convert_system_message_to_human=True) # Using gemini-pro
+		typer.secho("ChatGoogleGenerativeAI models initialized for CLI.", fg=typer.colors.GREEN)
 except Exception as e:
-	typer.secho(f'Error initializing LLM: {e}. Would you like to set your OPENAI_API_KEY?', fg=typer.colors.RED)
-	set_openai_api_key = input('Set OPENAI_API_KEY? (y/n): ')
-	if set_openai_api_key.lower() == 'y':
-		os.environ['OPENAI_API_KEY'] = input('Enter your OPENAI_API_KEY: ')
-		llm_instance = ChatOpenAI(model='gpt-4o')
-		page_extraction_llm = ChatOpenAI(model='gpt-4o-mini')
+	typer.secho(f'Error initializing ChatGoogleGenerativeAI models for CLI: {e}. LLM instances will be None.', fg=typer.colors.RED)
 
 builder_service = BuilderService(llm=llm_instance) if llm_instance else None
 # recorder_service = RecorderService() # Placeholder
@@ -269,7 +271,7 @@ def run_as_tool_command(
 	"""
 	if not llm_instance:
 		typer.secho(
-			'LLM not initialized. Please check your OpenAI API key. Cannot run as tool.',
+			'LLM not initialized. Please check your GOOGLE_API_KEY. Cannot run as tool.', # Changed message
 			fg=typer.colors.RED,
 		)
 		raise typer.Exit(code=1)
@@ -426,10 +428,24 @@ def mcp_server_command(
 	typer.echo(typer.style('Starting MCP server...', bold=True))
 	typer.echo()  # Add space
 
-	llm_instance = ChatOpenAI(model='gpt-4o')
-	page_extraction_llm = ChatOpenAI(model='gpt-4o-mini')
+	# Re-initialize LLMs for MCP server using ChatGoogleGenerativeAI
+	mcp_llm_instance: Optional[ChatGoogleGenerativeAI] = None
+	mcp_page_extraction_llm: Optional[ChatGoogleGenerativeAI] = None
+	try:
+		if not os.getenv("GOOGLE_API_KEY"):
+			typer.secho("Error: GOOGLE_API_KEY environment variable not set for MCP server. MCP LLMs will not be available.", fg=typer.colors.RED)
+		else:
+			mcp_llm_instance = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0, convert_system_message_to_human=True)
+			mcp_page_extraction_llm = ChatGoogleGenerativeAI(model="gemini-pro", temperature=0, convert_system_message_to_human=True)
+			typer.secho("ChatGoogleGenerativeAI models initialized for MCP Server.", fg=typer.colors.GREEN)
+	except Exception as e:
+		typer.secho(f'Error initializing ChatGoogleGenerativeAI models for MCP server: {e}. MCP LLMs may be None.', fg=typer.colors.RED)
 
-	mcp = get_mcp_server(llm_instance, page_extraction_llm=page_extraction_llm, workflow_dir='./tmp')
+	if not mcp_llm_instance or not mcp_page_extraction_llm:
+		typer.secho('LLM instances for MCP server could not be initialized. Exiting.', fg=typer.colors.RED)
+		raise typer.Exit(code=1)
+
+	mcp = get_mcp_server(mcp_llm_instance, page_extraction_llm=mcp_page_extraction_llm, workflow_dir='./tmp')
 
 	mcp.run(
 		transport='sse',

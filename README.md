@@ -35,7 +35,7 @@ cd .. && cd workflows
 uv sync
 source .venv/bin/activate # for mac / linux
 playwright install chromium
-cp .env.example .env # add your OPENAI_API_KEY to the .env file
+cp .env.example .env # add your GOOGLE_API_KEY to the .env file
 ```
 
 

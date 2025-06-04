@@ -1,12 +1,13 @@
 import asyncio
 import json
 import time
+import os # Added
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import aiofiles
 from browser_use.browser.browser import Browser
-from langchain_openai import ChatOpenAI
+from langchain_google_genai import ChatGoogleGenerativeAI # Changed
 
 from workflow_use.controller.service import WorkflowController
 from workflow_use.workflow.service import Workflow
@@ -32,10 +33,15 @@ class WorkflowService:
 		self.log_dir.mkdir(exist_ok=True, parents=True)
 
 		# LLM / workflow executor
+		self.llm_instance: Optional[ChatGoogleGenerativeAI] = None # Type hint added
 		try:
-			self.llm_instance = ChatOpenAI(model='gpt-4.1-mini')
+			if not os.getenv("GOOGLE_API_KEY"): # Added check for GOOGLE_API_KEY
+				print("Error: GOOGLE_API_KEY environment variable not set. LLM will not be available for WorkflowService.")
+			else:
+				self.llm_instance = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0, convert_system_message_to_human=True) # Changed
+				print("ChatGoogleGenerativeAI model initialized for WorkflowService.")
 		except Exception as exc:
-			print(f'Error initializing LLM: {exc}. Ensure OPENAI_API_KEY is set.')
+			print(f'Error initializing ChatGoogleGenerativeAI for WorkflowService: {exc}.') # Changed
 			self.llm_instance = None
 
 		self.browser_instance = Browser()
