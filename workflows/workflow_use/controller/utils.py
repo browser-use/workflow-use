@@ -9,7 +9,7 @@ def truncate_selector(selector: str, max_length: int = 35) -> str:
 	return selector if len(selector) <= max_length else f'{selector[:max_length]}...'
 
 
-async def get_best_element_handle(page, selector, params=None, timeout_ms=500):
+async def get_best_element_handle(page, selector, params=None, timeout_ms=100):
 	"""Find element using stability-ranked selector strategies."""
 	original_selector = selector
 

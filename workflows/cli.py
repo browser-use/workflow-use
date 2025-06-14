@@ -8,6 +8,7 @@ from pathlib import Path
 
 import typer
 from browser_use import Browser
+from langchain.chat_models.base import BaseChatModel
 
 # Assuming OPENAI_API_KEY is set in the environment
 from langchain_openai import ChatOpenAI
@@ -30,9 +31,9 @@ app = typer.Typer(
 )
 
 # Default LLM instance to None
-llm_instance = None
+llm_instance: BaseChatModel
 try:
-	llm_instance = ChatOpenAI(model='gpt-4o')
+	llm_instance = ChatOpenAI(model='gpt-4o-mini')
 	page_extraction_llm = ChatOpenAI(model='gpt-4o-mini')
 except Exception as e:
 	typer.secho(f'Error initializing LLM: {e}. Would you like to set your OPENAI_API_KEY?', fg=typer.colors.RED)
@@ -367,7 +368,12 @@ def run_workflow_command(
 				else:
 					status_str = typer.style('optional', fg=typer.colors.YELLOW)
 
-				full_prompt_text = f'{prompt_question} ({status_str}, {type_info_str})'
+				# Add format information if available
+				format_info_str = ''
+				if hasattr(input_def, 'format') and input_def.format:
+					format_info_str = f', format: {typer.style(input_def.format, fg=typer.colors.GREEN)}'
+
+				full_prompt_text = f'{prompt_question} ({status_str}, {type_info_str}{format_info_str})'
 
 				input_val = None
 				if var_type == 'bool':

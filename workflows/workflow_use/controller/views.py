@@ -13,8 +13,9 @@ class _BaseExtra(BaseModel):
 
 # Mixin for shared step metadata (timestamp and tab context)
 class StepMeta(_BaseExtra):
-	timestamp: int
-	tabId: int
+	# timestamp: int
+	# tabId: int
+	pass
 
 
 # Common optional fields present in recorder events

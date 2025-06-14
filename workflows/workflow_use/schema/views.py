@@ -6,16 +6,19 @@ from pydantic import BaseModel, Field
 # --- Base Step Model ---
 # Common fields for all step types
 class BaseWorkflowStep(BaseModel):
-	description: Optional[str] = Field(None, description="Optional description/comment about the step's purpose.")
+	description: Optional[str] = Field(None, description="Description of the step's purpose.")
 	output: Optional[str] = Field(None, description='Context key to store step output under.')
 	# Allow other fields captured from raw events but not explicitly modeled
 	model_config = {'extra': 'allow'}
 
 
-# --- Timestamped Step Mixin (for deterministic actions) ---
-class TimestampedWorkflowStep(BaseWorkflowStep):
-	timestamp: Optional[int] = Field(None, description='Timestamp from recording (informational).')
-	tabId: Optional[int] = Field(None, description='Browser tab ID from recording (informational).')
+# --- Steps that require interaction with a DOM element ---
+class SelectorWorkflowSteps(BaseWorkflowStep):
+	cssSelector: Optional[str] = Field(None, description='CSS selector for the target element.')
+	xpath: Optional[str] = Field(None, description='XPath selector (often informational).')
+	elementTag: Optional[str] = Field(None, description='HTML tag (informational).')
+
+	elementHash: str = Field(..., description='Hash of the element.')
 
 
 # --- Agent Step ---
@@ -26,6 +29,7 @@ class AgentTaskWorkflowStep(BaseWorkflowStep):
 		None,
 		description='Maximum number of iterations for the agent (default handled in code).',
 	)
+
 	# Agent steps might also have 'params' for other configs, handled by extra='allow'
 
 
@@ -33,54 +37,49 @@ class AgentTaskWorkflowStep(BaseWorkflowStep):
 
 
 # Actions from src/workflows/controller/service.py & Examples
-class NavigationStep(TimestampedWorkflowStep):
+class NavigationStep(BaseWorkflowStep):
 	"""Navigates using the 'navigation' action (likely maps to go_to_url)."""
 
 	type: Literal['navigation']  # As seen in examples
 	url: str = Field(..., description='Target URL to navigate to. Can use {context_var}.')
 
 
-class ClickStep(TimestampedWorkflowStep):
+class ClickStep(SelectorWorkflowSteps):
 	"""Clicks an element using 'click' (maps to workflow controller's click)."""
 
 	type: Literal['click']  # As seen in examples
-	cssSelector: str = Field(..., description='CSS selector for the target element.')
-	xpath: Optional[str] = Field(None, description='XPath selector (often informational).')
-	elementTag: Optional[str] = Field(None, description='HTML tag (informational).')
-	elementText: Optional[str] = Field(None, description='Element text (informational).')
 
 
-class InputStep(TimestampedWorkflowStep):
+class InputStep(SelectorWorkflowSteps):
 	"""Inputs text using 'input' (maps to workflow controller's input)."""
 
+	description: Optional[str] = Field(
+		None,
+		description="Description of the step's purpose. If neccesary describe the format that data should be in.",
+	)
+
 	type: Literal['input']  # As seen in examples
-	cssSelector: str = Field(..., description='CSS selector for the target input element.')
+
 	value: str = Field(..., description='Value to input. Can use {context_var}.')
-	xpath: Optional[str] = Field(None, description='XPath selector (informational).')
-	elementTag: Optional[str] = Field(None, description='HTML tag (informational).')
 
 
-class SelectChangeStep(TimestampedWorkflowStep):
+class SelectChangeStep(SelectorWorkflowSteps):
 	"""Selects a dropdown option using 'select_change' (maps to workflow controller's select_change)."""
 
 	type: Literal['select_change']  # Assumed type for workflow controller's select_change
-	cssSelector: str = Field(..., description='CSS selector for the target select element.')
+
 	selectedText: str = Field(..., description='Visible text of the option to select. Can use {context_var}.')
-	xpath: Optional[str] = Field(None, description='XPath selector (informational).')
-	elementTag: Optional[str] = Field(None, description='HTML tag (informational).')
 
 
-class KeyPressStep(TimestampedWorkflowStep):
+class KeyPressStep(SelectorWorkflowSteps):
 	"""Presses a key using 'key_press' (maps to workflow controller's key_press)."""
 
 	type: Literal['key_press']  # As seen in examples
-	cssSelector: str = Field(..., description='CSS selector for the target element.')
+
 	key: str = Field(..., description="The key to press (e.g., 'Tab', 'Enter').")
-	xpath: Optional[str] = Field(None, description='XPath selector (informational).')
-	elementTag: Optional[str] = Field(None, description='HTML tag (informational).')
 
 
-class ScrollStep(TimestampedWorkflowStep):
+class ScrollStep(BaseWorkflowStep):
 	"""Scrolls the page using 'scroll' (maps to workflow controller's scroll)."""
 
 	type: Literal['scroll']  # Assumed type for workflow controller's scroll
@@ -88,7 +87,7 @@ class ScrollStep(TimestampedWorkflowStep):
 	scrollY: int = Field(..., description='Vertical scroll pixels.')
 
 
-class PageExtractionStep(TimestampedWorkflowStep):
+class PageExtractionStep(BaseWorkflowStep):
 	"""Extracts text from the page using 'page_extraction' (maps to workflow controller's page_extraction)."""
 
 	type: Literal['extract_page_content']  # Assumed type for workflow controller's page_extraction
@@ -128,6 +127,12 @@ class WorkflowInputSchemaDefinition(BaseModel):
 		description='The name of the property. This will be used as the key in the input schema.',
 	)
 	type: Literal['string', 'number', 'bool']
+
+	format: Optional[str] = Field(
+		None,
+		description='Format of the input. If the input is a string, you can specify the format of the string.',
+	)
+
 	required: Optional[bool] = Field(
 		default=None,
 		description='None if the property is optional, True if the property is required.',
@@ -143,7 +148,7 @@ class WorkflowDefinitionSchema(BaseModel):
 
 	workflow_analysis: Optional[str] = Field(
 		None,
-		description='A chain of thought reasoning analysis of the original workflow recording.',
+		description='A chain of thought reasoning about the workflow. Think about which variables should be extracted.',
 	)
 
 	name: str = Field(..., description='The name of the workflow.')

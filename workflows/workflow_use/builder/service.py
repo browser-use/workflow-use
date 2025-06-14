@@ -49,7 +49,8 @@ class BuilderService:
 		self.actions_markdown = self._get_available_actions_markdown()
 		logger.info('BuilderService initialized.')
 
-	def _get_available_actions_markdown(self) -> str:
+	@staticmethod
+	def _get_available_actions_markdown() -> str:
 		"""Return a markdown list of available actions and their schema."""
 		controller = WorkflowController()
 		lines: List[str] = []

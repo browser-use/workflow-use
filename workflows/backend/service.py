@@ -32,11 +32,7 @@ class WorkflowService:
 		self.log_dir.mkdir(exist_ok=True, parents=True)
 
 		# LLM / workflow executor
-		try:
-			self.llm_instance = ChatOpenAI(model='gpt-4.1-mini')
-		except Exception as exc:
-			print(f'Error initializing LLM: {exc}. Ensure OPENAI_API_KEY is set.')
-			self.llm_instance = None
+		self.llm_instance = ChatOpenAI(model='gpt-4.1-mini')
 
 		self.browser_instance = Browser()
 		self.controller_instance = WorkflowController()

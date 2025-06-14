@@ -1,3 +1,8 @@
+import os
+
+AGENT_STEP_SYSTEM_PROMPT = open(os.path.join(os.path.dirname(__file__), 'prompts', 'agent_step_system_prompt.md')).read()
+
+
 WORKFLOW_FALLBACK_PROMPT_TEMPLATE = (
 	'While executing step {step_index}/{total_steps} in the workflow:\n\n'
 	# "{workflow_details}\n\n"

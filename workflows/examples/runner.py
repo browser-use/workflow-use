@@ -1,10 +1,14 @@
 import asyncio
 
+from langchain_openai import ChatOpenAI
+
 from workflow_use.workflow.service import Workflow
+
+llm = ChatOpenAI(model='gpt-4.1-mini')
 
 
 async def main():
-	workflow = Workflow.load_from_file('examples/example.workflow.json')
+	workflow = Workflow.load_from_file('examples/example.workflow.json', llm)
 	print(workflow)
 
 	first_name = 'John'
