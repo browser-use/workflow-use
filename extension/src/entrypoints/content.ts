@@ -265,9 +265,30 @@ function handleCustomClick(event: MouseEvent) {
 // --- Custom Input Handler ---
 function handleInput(event: Event) {
   if (!isRecordingActive) return;
-  const targetElement = event.target as HTMLInputElement | HTMLTextAreaElement;
-  if (!targetElement || !("value" in targetElement)) return;
-  const isPassword = targetElement.type === "password";
+  const targetElement = event.target as HTMLElement;
+  if (!targetElement) return;
+
+  const isInput =
+    targetElement instanceof HTMLInputElement ||
+    targetElement instanceof HTMLTextAreaElement;
+  const isContentEditable =
+    targetElement.isContentEditable === true ||
+    targetElement.getAttribute("contenteditable") === "true";
+
+  if (!isInput && !isContentEditable) return;
+
+  let value: string;
+  if (isInput) {
+    const inputEl = targetElement as HTMLInputElement | HTMLTextAreaElement;
+    value =
+      inputEl instanceof HTMLInputElement && inputEl.type === "password"
+        ? "********"
+        : inputEl.value;
+  } else if (isContentEditable) {
+    value = targetElement.textContent?.slice(0, 1000) || "";
+  } else {
+    return;
+  }
 
   try {
     const xpath = getXPath(targetElement);
@@ -278,7 +299,7 @@ function handleInput(event: Event) {
       xpath: xpath,
       cssSelector: getEnhancedCSSSelector(targetElement, xpath),
       elementTag: targetElement.tagName,
-      value: isPassword ? "********" : targetElement.value,
+      value: value
     };
     console.log("Sending CUSTOM_INPUT_EVENT:", inputData);
     chrome.runtime.sendMessage({
