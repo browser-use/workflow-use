@@ -6,8 +6,8 @@ from typing import Dict, List, Optional, Tuple
 
 import aiofiles
 from browser_use.browser.browser import Browser
-from langchain_openai import ChatOpenAI
 
+from workflow_use.config import create_llm_pair
 from workflow_use.controller.service import WorkflowController
 from workflow_use.workflow.service import Workflow
 
@@ -33,10 +33,11 @@ class WorkflowService:
 
 		# LLM / workflow executor
 		try:
-			self.llm_instance = ChatOpenAI(model='gpt-4.1-mini')
+			self.llm_instance, self.page_extraction_llm = create_llm_pair()
 		except Exception as exc:
-			print(f'Error initializing LLM: {exc}. Ensure OPENAI_API_KEY is set.')
+			print(f'Error initializing LLM: {exc}. Check your .env configuration.')
 			self.llm_instance = None
+			self.page_extraction_llm = None
 
 		self.browser_instance = Browser()
 		self.controller_instance = WorkflowController()
@@ -154,7 +155,7 @@ class WorkflowService:
 			workflow_path = self.tmp_dir / workflow_name
 			try:
 				self.workflow_obj = Workflow.load_from_file(
-					str(workflow_path), llm=self.llm_instance, browser=self.browser_instance, controller=self.controller_instance
+					str(workflow_path), llm=self.llm_instance, browser=self.browser_instance, controller=self.controller_instance, page_extraction_llm=self.page_extraction_llm
 				)
 			except Exception as e:
 				print(f'Error loading workflow: {e}')

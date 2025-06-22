@@ -9,11 +9,10 @@ from pathlib import Path
 import typer
 from browser_use import Browser
 
-# Assuming OPENAI_API_KEY is set in the environment
-from langchain_openai import ChatOpenAI
 from patchright.async_api import async_playwright as patchright_async_playwright
 
 from workflow_use.builder.service import BuilderService
+from workflow_use.config import create_llm_pair, load_env_config
 from workflow_use.controller.service import WorkflowController
 from workflow_use.mcp.service import get_mcp_server
 from workflow_use.recorder.service import RecordingService  # Added import
@@ -31,16 +30,15 @@ app = typer.Typer(
 
 # Default LLM instance to None
 llm_instance = None
+page_extraction_llm = None
+
 try:
-	llm_instance = ChatOpenAI(model='gpt-4o')
-	page_extraction_llm = ChatOpenAI(model='gpt-4o-mini')
+	# Load environment configuration and create LLM pair
+	load_env_config()
+	llm_instance, page_extraction_llm = create_llm_pair()
 except Exception as e:
-	typer.secho(f'Error initializing LLM: {e}. Would you like to set your OPENAI_API_KEY?', fg=typer.colors.RED)
-	set_openai_api_key = input('Set OPENAI_API_KEY? (y/n): ')
-	if set_openai_api_key.lower() == 'y':
-		os.environ['OPENAI_API_KEY'] = input('Enter your OPENAI_API_KEY: ')
-		llm_instance = ChatOpenAI(model='gpt-4o')
-		page_extraction_llm = ChatOpenAI(model='gpt-4o-mini')
+	typer.secho(f'Error initializing LLM: {e}. Please check your .env configuration.', fg=typer.colors.RED)
+	typer.secho('Make sure you have the correct API keys and provider settings in workflows/.env', fg=typer.colors.YELLOW)
 
 builder_service = BuilderService(llm=llm_instance) if llm_instance else None
 # recorder_service = RecorderService() # Placeholder
@@ -426,8 +424,11 @@ def mcp_server_command(
 	typer.echo(typer.style('Starting MCP server...', bold=True))
 	typer.echo()  # Add space
 
-	llm_instance = ChatOpenAI(model='gpt-4o')
-	page_extraction_llm = ChatOpenAI(model='gpt-4o-mini')
+	try:
+		llm_instance, page_extraction_llm = create_llm_pair()
+	except Exception as e:
+		typer.secho(f'Error initializing LLM for MCP server: {e}', fg=typer.colors.RED)
+		raise typer.Exit(code=1)
 
 	mcp = get_mcp_server(llm_instance, page_extraction_llm=page_extraction_llm, workflow_dir='./tmp')
 
