@@ -1,13 +1,18 @@
 import asyncio
 import json
 import pathlib
-from typing import Optional
+from typing import Optional, Tuple
 
 import uvicorn
 from browser_use import Browser
 from browser_use.browser.profile import BrowserProfile
 from fastapi import FastAPI
 from patchright.async_api import async_playwright as patchright_async_playwright
+
+import speech_recognition as sr
+import whisper
+import tempfile
+import os
 
 # Assuming views.py is correctly located for this import path
 from workflow_use.recorder.views import (
@@ -16,6 +21,135 @@ from workflow_use.recorder.views import (
 	RecorderEvent,
 	WorkflowDefinitionSchema,  # This is the expected output type
 )
+from workflow_use.video_analysis.service import analyze_video as video_analyze_video
+
+
+def analyze_video(video_path: str):
+    """
+    Wrapper for video analysis using the video_analysis package.
+    Returns a list of detected user actions from the video.
+    """
+    return video_analyze_video(video_path)
+
+def record_voice_prompt(duration: int = 10) -> Optional[str]:
+    """
+    Record voice input from microphone and transcribe it to text.
+    
+    Args:
+        duration: Recording duration in seconds (default: 10)
+    
+    Returns:
+        Transcribed text or None if recording failed
+    """
+    recognizer = sr.Recognizer()
+    microphone = sr.Microphone()
+    
+    try:
+        with microphone as source:
+            print(f"Recording for {duration} seconds... Speak now!")
+            audio = recognizer.listen(source, timeout=duration, phrase_time_limit=duration)
+            
+        # Try to transcribe using Whisper (more accurate)
+        model = whisper.load_model("base")
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_file:
+            temp_file.write(audio.get_wav_data())
+            temp_file_path = temp_file.name
+        
+        try:
+            result = model.transcribe(temp_file_path)
+            os.unlink(temp_file_path)  # Clean up temp file
+            return result["text"].strip()
+        except Exception as e:
+            print(f"Whisper transcription failed: {e}")
+            # Fallback to speech_recognition
+            try:
+                text = recognizer.recognize_google(audio)
+                return text.strip()
+            except sr.UnknownValueError:
+                print("Could not understand audio")
+                return None
+            except sr.RequestError as e:
+                print(f"Could not request results: {e}")
+                return None
+                
+    except Exception as e:
+        print(f"Recording failed: {e}")
+        return None
+
+
+def get_voice_and_text_prompt() -> Tuple[str, str]:
+    """
+    Get both voice recording and text prompt from user.
+    
+    Returns:
+        Tuple of (voice_transcription, text_prompt)
+    """
+    # Get voice recording
+    voice_text = record_voice_prompt()
+    if voice_text:
+        print(f"Voice transcription: {voice_text}")
+    else:
+        voice_text = ""
+    
+    # Get text prompt
+    text_prompt = input("Enter additional text prompt (optional): ").strip()
+    
+    return voice_text, text_prompt
+
+
+def get_text_only_prompt() -> Tuple[str, str]:
+    """
+    Fallback function for when voice recording dependencies are not available.
+    Gets text input only.
+    
+    Returns:
+        Tuple of (empty_voice_text, text_prompt)
+    """
+    print("Voice recording not available. Using text input only.")
+    text_prompt = input("Enter your workflow description: ").strip()
+    return "", text_prompt
+
+
+def get_voice_and_text_prompt_safe() -> Tuple[str, str]:
+    """
+    Safe version that tries voice recording first, falls back to text-only if dependencies missing.
+    
+    Returns:
+        Tuple of (voice_transcription, text_prompt)
+    """
+    try:
+        # Try to import speech recognition
+        import speech_recognition as sr
+        import whisper
+        # If we get here, dependencies are available
+        return get_voice_and_text_prompt()
+    except ImportError:
+        # Dependencies not available, use text-only fallback
+        return get_text_only_prompt()
+    except Exception as e:
+        print(f"Voice recording failed: {e}")
+        print("Falling back to text input only.")
+        return get_text_only_prompt()
+
+
+def combine_prompts(voice_text: str, text_prompt: str) -> str:
+    """
+    Combine voice transcription and text prompt into a single prompt.
+    
+    Args:
+        voice_text: Transcribed voice input
+        text_prompt: Additional text prompt
+    
+    Returns:
+        Combined prompt string
+    """
+    combined = []
+    if voice_text:
+        combined.append(f"Voice description: {voice_text}")
+    if text_prompt:
+        combined.append(f"Additional instructions: {text_prompt}")
+    
+    return " ".join(combined) if combined else "Create a workflow based on the provided recording."
 
 # Path Configuration (should be identical to recorder.py if run from the same context)
 SCRIPT_DIR = pathlib.Path(__file__).resolve().parent

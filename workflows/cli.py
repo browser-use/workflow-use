@@ -16,7 +16,7 @@ from patchright.async_api import async_playwright as patchright_async_playwright
 from workflow_use.builder.service import BuilderService
 from workflow_use.controller.service import WorkflowController
 from workflow_use.mcp.service import get_mcp_server
-from workflow_use.recorder.service import RecordingService  # Added import
+from workflow_use.recorder.service import RecordingService, get_voice_and_text_prompt_safe, combine_prompts
 from workflow_use.workflow.service import Workflow
 
 # Placeholder for recorder functionality
@@ -143,14 +143,115 @@ def _build_and_save_workflow_from_recording(
 		return None
 
 
+def _build_and_save_workflow_from_recording_with_prompt(
+	recording_path: Path,
+	default_save_dir: Path,
+	is_temp_recording: bool = False,
+	user_prompt: str = "",
+) -> Path | None:
+	"""Enhanced version of _build_and_save_workflow_from_recording that accepts a user prompt."""
+	if not builder_service:
+		typer.secho(
+			'BuilderService not initialized. Cannot build workflow.',
+			fg=typer.colors.RED,
+		)
+		return None
+
+	prompt_subject = 'recorded' if is_temp_recording else 'provided'
+	typer.echo()  # Add space
+	
+	# Use provided prompt if available, otherwise prompt user
+	if user_prompt:
+		description = user_prompt
+		typer.echo(f'Using provided prompt: "{description}"')
+	else:
+		description: str = typer.prompt(typer.style(f'What is the purpose of this {prompt_subject} workflow?', bold=True))
+
+	typer.echo()  # Add space
+	output_dir_str: str = typer.prompt(
+		typer.style('Where would you like to save the final built workflow?', bold=True)
+		+ f" (e.g., ./my_workflows, press Enter for '{default_save_dir}')",
+		default=str(default_save_dir),
+	)
+	output_dir = Path(output_dir_str).resolve()
+	output_dir.mkdir(parents=True, exist_ok=True)
+
+	typer.echo(f'The final built workflow will be saved in: {typer.style(str(output_dir), fg=typer.colors.CYAN)}')
+	typer.echo()  # Add space
+
+	typer.echo(
+		f'Processing recording ({typer.style(str(recording_path.name), fg=typer.colors.MAGENTA)}) and building workflow...'
+	)
+	try:
+		workflow_definition = asyncio.run(
+			builder_service.build_workflow_from_path(
+				recording_path,
+				description,
+			)
+		)
+	except FileNotFoundError:
+		typer.secho(
+			f'Error: Recording file not found at {recording_path}. Please ensure it exists.',
+			fg=typer.colors.RED,
+		)
+		return None
+	except Exception as e:
+		typer.secho(f'Error building workflow: {e}', fg=typer.colors.RED)
+		return None
+
+	if not workflow_definition:
+		typer.secho(
+			f'Failed to build workflow definition from the {prompt_subject} recording.',
+			fg=typer.colors.RED,
+		)
+		return None
+
+	typer.secho('Workflow built successfully!', fg=typer.colors.GREEN, bold=True)
+	typer.echo()  # Add space
+
+	file_stem = recording_path.stem
+	if is_temp_recording:
+		file_stem = file_stem.replace('temp_recording_', '') or 'recorded'
+
+	default_workflow_filename = f'{file_stem}.workflow.json'
+	workflow_output_name: str = typer.prompt(
+		typer.style('Enter a name for the generated workflow file', bold=True) + ' (e.g., my_search.workflow.json):',
+		default=default_workflow_filename,
+	)
+	# Ensure the file name ends with .json
+	if not workflow_output_name.endswith('.json'):
+		workflow_output_name = f'{workflow_output_name}.json'
+	final_workflow_path = output_dir / workflow_output_name
+
+	try:
+		asyncio.run(builder_service.save_workflow_to_path(workflow_definition, final_workflow_path))
+		typer.secho(
+			f'Final workflow definition saved to: {typer.style(str(final_workflow_path.resolve()), fg=typer.colors.BRIGHT_GREEN, bold=True)}',
+			fg=typer.colors.GREEN,  # Overall message color
+		)
+		return final_workflow_path
+	except Exception as e:
+		typer.secho(f'Error saving workflow: {e}', fg=typer.colors.RED)
+		return None
+
+
 @app.command(
 	name='create-workflow',
 	help='Records a new browser interaction and then builds a workflow definition.',
 )
-def create_workflow():
+def create_workflow(
+	voice_input: bool = typer.Option(
+		False,
+		'--voice',
+		'-v',
+		help='Enable voice recording before browser recording starts.',
+	),
+):
 	"""
 	Guides the user through recording browser actions, then uses the helper
 	to build and save the workflow definition.
+	
+	If --voice is enabled, records voice input first, then proceeds with browser recording.
 	"""
 	if not recording_service:
 		# Adjusted RecordingService initialization check assuming it doesn't need LLM
@@ -161,6 +262,27 @@ def create_workflow():
 		raise typer.Exit(code=1)
 
 	default_tmp_dir = get_default_save_dir()  # Ensures ./tmp exists for temporary files
+
+	# Voice recording section
+	combined_prompt = ""
+	if voice_input:
+		typer.echo(typer.style('Voice recording enabled. You will be prompted to record your voice first.', bold=True))
+		typer.echo('This will help provide context for the workflow generation.')
+		typer.echo()  # Add space
+		
+		try:
+			voice_text, text_prompt = get_voice_and_text_prompt_safe()
+
+			combined_prompt = combine_prompts(voice_text, text_prompt)
+			
+			if combined_prompt:
+				typer.secho('Voice input captured successfully!', fg=typer.colors.GREEN, bold=True)
+				typer.echo(f'Combined prompt: "{combined_prompt}"')
+			else:
+				typer.secho('No voice input captured, proceeding with browser recording only.', fg=typer.colors.YELLOW)
+		except Exception as e:
+			typer.secho(f'Voice recording failed: {e}', fg=typer.colors.RED)
+			typer.secho('Proceeding with browser recording only.', fg=typer.colors.YELLOW)
 
 	typer.echo(typer.style('Starting interactive browser recording session...', bold=True))
 	typer.echo('Please follow instructions in the browser. Close the browser or follow prompts to stop recording.')
@@ -194,8 +316,13 @@ def create_workflow():
 				json.dump(captured_recording_model, tmp_file, indent=2)
 			temp_recording_path = Path(tmp_file.name)
 
-		# Use the helper function to build and save
-		saved_path = _build_and_save_workflow_from_recording(temp_recording_path, default_tmp_dir, is_temp_recording=True)
+		# Use the helper function to build and save, passing the combined prompt
+		saved_path = _build_and_save_workflow_from_recording_with_prompt(
+			temp_recording_path, 
+			default_tmp_dir, 
+			is_temp_recording=True,
+			user_prompt=combined_prompt
+		)
 		if not saved_path:
 			typer.secho(
 				'Failed to complete workflow creation after recording.',

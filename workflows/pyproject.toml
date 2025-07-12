@@ -18,6 +18,10 @@ dependencies = [
     "fastmcp>=2.3.4",
     "typer>=0.15.3",
     "uvicorn>=0.34.2",
+    "opencv-python>=4.9.0.80",
+    "SpeechRecognition>=3.10.0",
+    "pyaudio>=0.2.11",
+    "openai-whisper>=20231117",
 ]
 
 

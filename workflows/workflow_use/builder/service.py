@@ -13,6 +13,7 @@ from pydantic import ValidationError
 
 from workflow_use.builder.prompts import WORKFLOW_BUILDER_PROMPT_TEMPLATE
 from workflow_use.controller.service import WorkflowController
+from workflow_use.recorder.service import analyze_video
 from workflow_use.schema.views import WorkflowDefinitionSchema
 
 logger = logging.getLogger(__name__)
@@ -267,6 +268,40 @@ class BuilderService:
 
 		# Return the workflow data object directly
 		return workflow_data
+
+	@staticmethod
+	def build_workflow_from_video(video_path: str, user_goal: str = "") -> WorkflowDefinitionSchema:
+		"""
+		Generate a WorkflowDefinitionSchema from a screen recording video.
+		- Analyzes the video for user actions (mouse, scroll, page change, etc.)
+		- Maps detected actions to workflow steps
+		- Returns a minimal WorkflowDefinitionSchema
+		"""
+		actions = analyze_video(video_path)
+		steps = []
+		for action in actions:
+			step = {"type": action["type"], "timestamp": action["timestamp"]}
+			# Add more details based on action type
+			if action["type"] == "mouse_move":
+				step["from"] = action["from"]
+				step["to"] = action["to"]
+			elif action["type"] == "mouse_click":
+				step["position"] = action["position"]
+			elif action["type"] == "scroll":
+				step["direction"] = action["direction"]
+				step["motion_score"] = action["motion_score"]
+			elif action["type"] == "page_change":
+				step["motion_score"] = action["motion_score"]
+			steps.append(step)
+		workflow = WorkflowDefinitionSchema(
+			workflow_analysis="Generated from video analysis.",
+			name="Video-based Workflow",
+			description=user_goal or "Workflow generated from screen recording.",
+			input_schema=[],
+			steps=steps,
+			version="0.1"
+		)
+		return workflow
 
 	# path handlers
 	async def build_workflow_from_path(self, path: Path, user_goal: str) -> WorkflowDefinitionSchema:
