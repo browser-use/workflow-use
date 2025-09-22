@@ -60,7 +60,7 @@ export interface WorkflowMetadata {
 export interface WorkflowItemProps {
   id: string;
   selected: boolean;
-  metadata?: WorkflowMetadata;
+  workflow?: Workflow;
   onSelect: (id: string) => void;
-  onUpdateMetadata: (m: WorkflowMetadata) => Promise<void>;
+  onUpdateWorkflow: (workflow: Workflow) => Promise<void>;
 }

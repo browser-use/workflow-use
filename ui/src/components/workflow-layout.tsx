@@ -19,7 +19,8 @@ import {
 import { type Node } from "@xyflow/react";
 import { NodeData } from "../types/node-config-menu.types";
 import { jsonToFlow } from "../utils/json-to-flow";
-import { type WorkflowMetadata } from "../types/workflow-layout.types";
+import { extractMetadata } from "../utils/extract-metadata";
+import { type Workflow } from "../types/workflow-layout.types";
 import Sidebar from "./sidebar";
 import { NodeConfigMenu } from "./node-config-menu";
 import { PlayButton } from "./play-button";
@@ -31,48 +32,77 @@ const WorkflowLayout: React.FC = () => {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [selectedNode, setSelectedNode] = useState<Node<NodeData> | null>(null);
-  const [workflowMetadata, setWorkflowMetadata] =
-    useState<WorkflowMetadata | null>(null);
+  const [workflowsData, setWorkflowsData] = useState<Record<string, Workflow>>({});
+  const [isLoadingAllWorkflows, setIsLoadingAllWorkflows] = useState(false);
   const [savedNodePositions, setSavedNodePositions] = useState<
     Record<string, Record<string, { x: number; y: number }>>
   >({});
   const { fitView } = useReactFlow();
 
-  // ----- Queries using $api -----
-  // Fetch all workflows
-  const { data: workflowsResponse, isLoading: isLoadingWorkflows } =
-    $api.useQuery("get", "/api/workflows");
-
-  const workflows: string[] = workflowsResponse?.workflows ?? [];
-
-  // Fetch a specific workflow (enabled only when selected is truthy)
-  const { data: selectedWorkflow, isLoading: isLoadingSelectedWorkflow } =
-    $api.useQuery(
-      "get",
-      "/api/workflows/{name}",
-      selected
-        ? {
-            params: { path: { name: selected } },
-          }
-        : ({} as any),
-      {
-        enabled: !!selected,
-      }
-    );
-
+  // Get the selected workflow data from our complete data
+  const selectedWorkflow = selected ? workflowsData[selected] : null;
+  
   // Mutation for updating workflow metadata
   const updateMetadataMutation = $api.useMutation(
     "post",
     "/api/workflows/update-metadata"
   );
+  // Mutation for fetching list of workflows
+  const workflowListMutation = $api.useMutation(
+    "get",
+    "/api/workflows"
+  );
+  // Mutation for fetching individual workflow data
+  const workflowFetchMutation = $api.useMutation(
+    "get",
+    "/api/workflows/{name}"
+  );
 
   const updateWorkflowMetadata = useCallback(
-    async (name: string, metadata: WorkflowMetadata) => {
+    async (workflowName: string, updatedWorkflow: Workflow) => {
+      // Extract metadata for the API call
+      const metadata = extractMetadata(updatedWorkflow);
+      
+      // Update the metadata via API
       await updateMetadataMutation.mutateAsync({
-        body: { name, metadata } as any,
+        body: { name: workflowName, metadata } as any,
       });
+      
+      // Refresh the workflow data
+      await refreshWorkflow(workflowName);
     },
     [updateMetadataMutation]
+  );
+  
+  // Function to refresh a workflow - fetches latest data and updates metadata if needed
+  const refreshWorkflow = useCallback(
+    async (workflowName: string) => {
+      // Validate that we have a workflow name and it exists in our data
+      if (!workflowName || !workflowsData[workflowName]) return null;
+      
+      try {
+        // Fetch the latest workflow data
+        const result = await workflowFetchMutation.mutateAsync({
+          params: { path: { name: workflowName } }
+        });
+        
+        if (result) {
+          const parsedWorkflow = JSON.parse(result) as Workflow;
+          
+          setWorkflowsData(prev => ({
+            ...prev,
+            [workflowName]: parsedWorkflow
+          }));
+          
+          return parsedWorkflow;
+        }
+      } catch (error) {
+        console.error(`Error refreshing workflow ${workflowName}:`, error);
+      }
+      
+      return null;
+    },
+    [workflowFetchMutation]
   );
 
   const isUpdating = updateMetadataMutation.isPending;
@@ -125,7 +155,6 @@ const WorkflowLayout: React.FC = () => {
       }
 
       setEdges(flowData.edges as any);
-      setWorkflowMetadata(flowData.metadata);
     }
   }, [selectedWorkflow, selected, savedNodePositions, setNodes, setEdges]);
 
@@ -147,17 +176,56 @@ const WorkflowLayout: React.FC = () => {
     },
     [selected]
   );
-
-  // Auto-select first workflow if none selected
+  
+  // Load all workflow data on component mount
   useEffect(() => {
-    if (workflows.length > 0 && !selected) {
-      setSelected(workflows[0]!);
+    // Function to fetch all workflow data at once
+    const fetchAllWorkflowsData = async () => {
+      setIsLoadingAllWorkflows(true);
+      
+      const processedData: Record<string, any> = {};
+      
+      try {
+        const workflowsListResponse = await workflowListMutation.mutateAsync({});
+        const workflowNames = workflowsListResponse?.workflows ?? [];
+        
+        for (const workflowName of workflowNames) {
+          try {
+            const result = await workflowFetchMutation.mutateAsync({
+              params: { path: { name: workflowName } }
+            });
+            
+            if (result) {
+              // Parse the JSON string into a Workflow object
+              const parsedWorkflow: Workflow = JSON.parse(result);
+              processedData[workflowName] = parsedWorkflow;
+            }
+          } catch (error) {
+            console.error(`Error fetching data for ${workflowName}:`, error);
+          }
+        }
+        
+        // Update state with all workflow data
+        setWorkflowsData(processedData);
+      } catch (error) {
+        console.error('Error fetching all workflow data:', error);
+      } finally {
+        setIsLoadingAllWorkflows(false);
+      }
+    };
+    
+    fetchAllWorkflowsData();
+  }, []);
+
+   // Auto-select first workflow if none selected
+  useEffect(() => {
+    const workflowKeys = Object.keys(workflowsData);
+    if (workflowKeys.length > 0 && !selected) {
+      setSelected(workflowKeys[0] || null);
     }
-  }, [workflows, selected]);
+  }, [workflowsData, selected]);
 
-  const isLoading = isLoadingWorkflows || isLoadingSelectedWorkflow;
-
-  if (isLoading) {
+  if (isLoadingAllWorkflows) {
     return (
       <div className="flex h-screen flex-col items-center justify-center bg-[#2a2a2a] text-white">
         <img
@@ -170,20 +238,15 @@ const WorkflowLayout: React.FC = () => {
     );
   }
 
-  if (!workflows.length) return <NoWorkflowsMessage />;
+  if (!Object.keys(workflowsData).length) return <NoWorkflowsMessage />;
 
   return (
     <div className="flex h-screen font-sans">
       <Sidebar
-        workflows={workflows}
         onSelect={setSelected}
         selected={selected}
-        workflowMetadata={workflowMetadata}
-        onUpdateMetadata={async (metadata: WorkflowMetadata) => {
-          if (selected) {
-            await updateWorkflowMetadata(selected, metadata);
-          }
-        }}
+        workflowsData={workflowsData}
+        onUpdateWorkflow={updateWorkflowMetadata}
       />
 
       <div className="relative flex-1">
@@ -209,20 +272,15 @@ const WorkflowLayout: React.FC = () => {
             <div className="absolute right-5 top-5 z-10 flex gap-2">
               <PlayButton
                 workflowName={selected}
-                workflowMetadata={workflowMetadata}
+                workflowData={selected && workflowsData[selected] ? workflowsData[selected] : null}
               />
 
               <button
                 title="Refresh workflow"
                 className="flex h-9 w-9 items-center justify-center rounded-full bg-[#2a2a2a] text-white shadow transition-transform duration-200 ease-in-out hover:scale-105 hover:bg-blue-500"
-                onClick={async () => {
-                  if (selected && workflowMetadata) {
-                    await updateWorkflowMetadata(selected, workflowMetadata);
-                  }
-                }}
+                onClick={() => selected && refreshWorkflow(selected)}
                 disabled={isUpdating}
               >
-                {/* hero‑icons refresh */}
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   viewBox="0 0 24 24"

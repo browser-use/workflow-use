@@ -1,10 +1,8 @@
-import { type WorkflowMetadata } from './workflow-layout.types';
+import { Workflow } from './workflow-layout.types';
 
 export interface SidebarProps {
-  workflows: string[];
-  onSelect: (wf: string) => void;
+  onSelect: (workflowName: string) => void;
   selected: string | null;
-  workflowMetadata: WorkflowMetadata | null;
-  onUpdateMetadata: (metadata: WorkflowMetadata) => Promise<void>;
-  allWorkflowsMetadata?: Record<string, WorkflowMetadata>;
+  workflowsData: Record<string, Workflow>;
+  onUpdateWorkflow: (workflowName: string, workflow: Workflow) => Promise<void>;
 }
