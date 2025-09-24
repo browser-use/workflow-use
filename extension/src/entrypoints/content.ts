@@ -974,6 +974,8 @@ function handleBlur(event: FocusEvent) {
 
 export default defineContentScript({
   matches: ["<all_urls>"],
+  allFrames: true,
+  matchAboutBlank: true,
   main(ctx) {
     // Listener for status updates from the background script
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {

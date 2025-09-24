@@ -188,15 +188,20 @@ class BuilderService:
 		images_used = 0
 		for step in input_workflow.steps:
 			step_messages: List[Dict[str, Any]] = []  # Messages for this specific step
+			
+			step_dict = step.model_dump(mode='json', exclude_none=True)
+			step_type = getattr(step, 'type', step_dict.get('type'))
+			step_url = getattr(step, 'url', step_dict.get('url', ''))
+			# Skip steps to avoid processing empty or irrelevant navigation steps, mostly from iframes.
+			if step_type == 'navigation' and step_url == 'about:blank':
+				continue
 
 			# 1. Text representation (JSON dump)
-			step_dict = step.model_dump(mode='json', exclude_none=True)
 			screenshot_data = step_dict.pop('screenshot', None)  # Pop potential screenshot
 			step_messages.append({'type': 'text', 'text': json.dumps(step_dict, indent=2)})
 
 			# 2. Optional screenshot
-			attach_image = use_screenshots and images_used < max_images
-			step_type = getattr(step, 'type', step_dict.get('type'))
+			attach_image = use_screenshots and images_used < max_images			
 
 			if attach_image and step_type != 'input':  # Don't attach for inputs
 				# Re-retrieve screenshot data if it wasn't popped (e.g., nested under 'data')
