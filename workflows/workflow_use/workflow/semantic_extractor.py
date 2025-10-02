@@ -1,8 +1,10 @@
 import re
 import logging
-from typing import Dict, List, Optional, Tuple
-from playwright.async_api import Page
+from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
 import asyncio
+
+if TYPE_CHECKING:
+	from browser_use.actor.page import Page
 
 logger = logging.getLogger(__name__)
 
@@ -38,9 +40,14 @@ class SemanticExtractor:
         tag = element_info.get('tag', '').lower()
         input_type = element_info.get('type', '').lower()
         role = element_info.get('role', '').lower()
-        
+
         # Determine element type
-        if tag == 'input':
+        # Check role-based types first (ARIA widgets can use any tag)
+        if role == 'radio':
+            element_type = 'radio'
+        elif role == 'checkbox':
+            element_type = 'checkbox'
+        elif tag == 'input':
             if input_type in ['radio']:
                 element_type = 'radio'
             elif input_type in ['checkbox']:
@@ -57,11 +64,11 @@ class SemanticExtractor:
             element_type = 'a'
         else:
             element_type = 'input'  # fallback
-        
+
         # Generate ID
         self.element_counters[element_type] += 1
         element_id = f"{element_type}_{self.element_counters[element_type]}"
-        
+
         return element_type, element_id
     
     def _normalize_text(self, text: str) -> str:
@@ -208,15 +215,14 @@ class SemanticExtractor:
         
         return f"{text} ({counter})"
 
-    async def extract_interactive_elements(self, page: Page) -> List[Dict]:
+    async def extract_interactive_elements(self, page: 'Page') -> List[Dict]:
         """Extract interactive elements with enhanced context for complex UI widgets."""
         
         # Add debugging flag
         debug_mode = False  # Set to True for debugging
         
         js_code = """
-        function extractInteractiveElements() {
-            const debugMode = arguments[0] || false;
+        (debugMode = false) => {
             const debugLog = [];
             
             function debugMessage(msg, data = null) {
@@ -766,8 +772,12 @@ class SemanticExtractor:
         """
         
         try:
-            result = await page.evaluate(js_code, debug_mode)
-            
+            result_str = await page.evaluate(js_code, debug_mode)
+
+            # Parse the JSON result
+            import json
+            result = json.loads(result_str) if isinstance(result_str, str) else result_str
+
             if debug_mode and 'debugLog' in result:
                 # Save debug information to file
                 debug_file = f"semantic_extraction_debug_{int(asyncio.get_event_loop().time())}.json"
@@ -792,13 +802,13 @@ class SemanticExtractor:
                 error_file = f"semantic_extraction_error_{int(asyncio.get_event_loop().time())}.txt"
                 with open(error_file, 'w') as f:
                     f.write(f"Error: {str(e)}\n")
-                    f.write(f"URL: {page.url}\n")
+                    f.write(f"URL: {await page.get_url()}\n")
                     f.write(f"Timestamp: {asyncio.get_event_loop().time()}\n")
                 logger.info(f"Error information saved to: {error_file}")
             
             return []
 
-    async def extract_semantic_mapping(self, page: Page) -> Dict[str, Dict]:
+    async def extract_semantic_mapping(self, page: 'Page') -> Dict[str, Dict]:
         """Extract semantic mapping from the current page.
         
         Returns mapping: visible_text -> {"class": "", "id": "", "selectors": ""}

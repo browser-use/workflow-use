@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv run:*)",
+      "Read(//Users/sauravpanda/Github/LLMs/Browser-Use/browser-use/**)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

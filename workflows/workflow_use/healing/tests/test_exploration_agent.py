@@ -3,8 +3,7 @@ import logging
 import os
 
 from browser_use import Agent, Browser
-from langchain_openai import ChatOpenAI
-from patchright.async_api import async_playwright
+from browser_use.llm import ChatOpenAI
 from pydantic import SecretStr
 
 from workflow_use.healing._agent.controller import HealingController
@@ -31,25 +30,24 @@ system_prompt = open('workflow_use/healing/_agent/agent_prompt.md').read()
 
 
 async def explore_page():
-	async with async_playwright() as playwright:
-		browser = Browser(playwright=playwright)
+	browser = Browser()
 
-		agent = Agent(
-			task=TASK_MESSAGE,
-			browser_session=browser,
-			llm=llm,
-			page_extraction_llm=page_extraction_llm,
-			controller=HealingController(extraction_llm=page_extraction_llm),
-			override_system_message=system_prompt,
-			enable_memory=False,
-			max_failures=10,
-			# max_actions_per_step=1,
-			tool_calling_method='auto',
-		)
+	agent = Agent(
+		task=TASK_MESSAGE,
+		browser_session=browser,
+		llm=llm,
+		page_extraction_llm=page_extraction_llm,
+		controller=HealingController(extraction_llm=page_extraction_llm),
+		override_system_message=system_prompt,
+		enable_memory=False,
+		max_failures=10,
+		# max_actions_per_step=1,
+		tool_calling_method='auto',
+	)
 
-		history = await agent.run()
+	history = await agent.run()
 
-		history.save_to_file('./tmp/history.json')
+	history.save_to_file('./tmp/history.json')
 
 
 if __name__ == '__main__':

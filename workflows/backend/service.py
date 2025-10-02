@@ -6,7 +6,7 @@ from typing import Dict, List, Optional, Tuple
 
 import aiofiles
 from browser_use.browser.browser import Browser
-from langchain_openai import ChatOpenAI
+from browser_use.llm import ChatOpenAI
 
 from workflow_use.controller.service import WorkflowController
 from workflow_use.workflow.service import Workflow

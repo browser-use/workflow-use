@@ -5,7 +5,7 @@ from pathlib import Path
 import aiofiles
 from browser_use import AgentHistoryList
 from browser_use.agent.views import AgentOutput
-from langchain_openai import ChatOpenAI
+from browser_use.llm import ChatOpenAI
 
 from workflow_use.healing._agent.controller import HealingController
 from workflow_use.healing.service import HealingService

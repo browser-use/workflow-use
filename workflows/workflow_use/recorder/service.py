@@ -7,7 +7,6 @@ import uvicorn
 from browser_use import Browser
 from browser_use.browser.profile import BrowserProfile
 from fastapi import FastAPI
-from patchright.async_api import async_playwright as patchright_async_playwright
 
 # Assuming views.py is correctly located for this import path
 from workflow_use.recorder.views import (
@@ -97,7 +96,7 @@ class RecordingService:
 			if trigger_reason == 'RecordingStoppedEvent' and self.browser:
 				print('[Service] Attempting to close browser due to RecordingStoppedEvent...')
 				try:
-					await self.browser.close()
+					await self.browser.stop()
 					print('[Service] Browser close command issued.')
 				except Exception as e_close:
 					print(f'[Service] Error closing browser on recording stop: {e_close}')
@@ -128,8 +127,7 @@ class RecordingService:
 			)
 
 			# Create and configure browser
-			playwright = await patchright_async_playwright().start()
-			self.browser = Browser(browser_profile=profile, playwright=playwright)
+			self.browser = Browser(browser_profile=profile)
 
 			print('[Service] Starting browser with extensions...')
 			await self.browser.start()
@@ -152,7 +150,7 @@ class RecordingService:
 			print('[Service] Browser task cancelled.')
 			if self.browser:
 				try:
-					await self.browser.close()
+					await self.browser.stop()
 				except:
 					pass  # Best effort
 			raise  # Re-raise to be caught by gather
@@ -220,7 +218,7 @@ class RecordingService:
 				print('[Service] Ensuring browser is closed in cleanup...')
 				try:
 					self.browser.browser_profile.keep_alive = False
-					await self.browser.close()
+					await self.browser.stop()
 				except Exception as e_browser_close:
 					print(f'[Service] Error closing browser in final cleanup: {e_browser_close}')
 				# self.browser = None

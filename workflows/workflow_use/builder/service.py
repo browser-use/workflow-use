@@ -5,10 +5,8 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, cast
 
-from langchain_core.exceptions import OutputParserException
-from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import HumanMessage
-from langchain_core.prompts import PromptTemplate
+from browser_use.llm.base import BaseChatModel
+from browser_use.llm import UserMessage
 from pydantic import ValidationError
 
 from workflow_use.builder.prompts import WORKFLOW_BUILDER_PROMPT_TEMPLATE
@@ -35,17 +33,9 @@ class BuilderService:
 		if llm is None:
 			raise ValueError('A BaseChatModel instance must be provided.')
 
-		# Configure the LLM to return structured output based on the Pydantic model
-		try:
-			# Specify method="function_calling" for better compatibility
-			self.llm_structured = llm.with_structured_output(WorkflowDefinitionSchema, method='function_calling')
-		except NotImplementedError:
-			logger.warning('LLM does not support structured output natively. Falling back.')
-			# Basic LLM call if structured output is not supported
-			# Output parsing will be handled manually later
-			self.llm_structured = llm  # Store the original llm
-
-		self.prompt_template = PromptTemplate.from_template(WORKFLOW_BUILDER_PROMPT_TEMPLATE)
+		# Store the LLM - will use browser-use's output_format parameter
+		self.llm = llm
+		self.prompt_template_str = WORKFLOW_BUILDER_PROMPT_TEMPLATE
 		self.actions_markdown = self._get_available_actions_markdown()
 		logger.info('BuilderService initialized.')
 
@@ -176,7 +166,7 @@ class BuilderService:
 		goal = goal or 'Automate the recorded browser actions.'  # Default goal if empty
 
 		# Format the main instruction prompt
-		prompt_str = self.prompt_template.format(
+		prompt_str = self.prompt_template_str.format(
 			actions=self.actions_markdown,
 			goal=goal,
 		)
@@ -232,39 +222,13 @@ class BuilderService:
 
 		logger.info(f'Prepared {len(vision_messages)} total message parts, including {images_used} images.')
 
-		# Invoke the LLM (structured output preferred)
+		# Invoke the LLM with structured output
 		try:
-			# Invoke the LLM (structured output preferred)
-			# Need to handle cases where structured output isn't truly supported
-			if hasattr(self.llm_structured, 'output_schema'):  # Check if it seems like structured output model
-				llm_response = await self.llm_structured.ainvoke([HumanMessage(content=cast(Any, vision_messages))])
-				# If structured output worked, llm_response is the Pydantic object
-				if isinstance(llm_response, WorkflowDefinitionSchema):
-					workflow_data = llm_response
-				else:
-					# It might have returned a message or dict, try parsing its content
-					content = getattr(llm_response, 'content', str(llm_response))
-					workflow_data = self._parse_llm_output_to_workflow(str(content))
-			else:
-				# Fallback to basic LLM call and manual parsing
-				llm_response = await self.llm_structured.ainvoke([HumanMessage(content=cast(Any, vision_messages))])
-				llm_content = str(getattr(llm_response, 'content', llm_response))  # Get string content
-				workflow_data = self._parse_llm_output_to_workflow(llm_content)
-
-		except OutputParserException as ope:
-			logger.error(f'LLM output parsing failed (OutputParserException): {ope}')
-			# Try to parse the raw output as a fallback
-			raw_output = getattr(ope, 'llm_output', str(ope))
-			logger.info('Attempting to parse raw output as fallback...')
-			try:
-				workflow_data = self._parse_llm_output_to_workflow(raw_output)
-			except ValueError as ve_fallback:
-				raise ValueError(
-					f'LLM structured output failed, and fallback parsing also failed. Error: {ve_fallback}'
-				) from ve_fallback
+			llm_response = await self.llm.ainvoke([UserMessage(content=cast(Any, vision_messages))], output_format=WorkflowDefinitionSchema)
+			workflow_data = llm_response.completion
 		except Exception as e:
 			logger.exception(f'An error occurred during LLM invocation or processing: {e}')
-			raise  # Re-raise other unexpected errors
+			raise
 
 		# Return the workflow data object directly
 		return workflow_data

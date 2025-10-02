@@ -1,10 +1,10 @@
-from langchain_openai import ChatOpenAI
+from browser_use.llm import ChatOpenAI
 
 from workflow_use.mcp.service import get_mcp_server
 
 # async def main():
 if __name__ == '__main__':
-	llm_instance = ChatOpenAI(model='gpt-4o', temperature=0)
+	llm_instance = ChatOpenAI(model='gpt-4.1', temperature=0)
 
 	print('[FastMCP Server] Starting MCP server...')
 	# This will run the FastMCP server, typically using stdio transport by default.

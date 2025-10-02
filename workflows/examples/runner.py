@@ -1,6 +1,6 @@
 import asyncio
 
-from langchain_openai import ChatOpenAI
+from browser_use.llm import ChatOpenAI
 
 from workflow_use.workflow.service import Workflow
 

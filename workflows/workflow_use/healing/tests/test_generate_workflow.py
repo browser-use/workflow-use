@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 
 import aiofiles
-from langchain_openai import ChatOpenAI
+from browser_use.llm import ChatOpenAI
 from pydantic import SecretStr
 
 from workflow_use.healing.service import HealingService

@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from fastmcp import FastMCP
-from langchain_core.language_models.chat_models import BaseChatModel
+from browser_use.llm.base import BaseChatModel
 
 from workflow_use.schema.views import WorkflowDefinitionSchema
 from workflow_use.workflow.service import Workflow

@@ -1,12 +1,14 @@
 import logging
 import os
+from typing import TYPE_CHECKING
 
 from browser_use import ActionResult, Controller
-from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.prompts import PromptTemplate
-from langchain_openai import ChatOpenAI
-from playwright.async_api import Page
+from browser_use.llm.base import BaseChatModel
+from browser_use.llm import ChatOpenAI
 from pydantic import BaseModel, Field, SecretStr
+
+if TYPE_CHECKING:
+	from browser_use.actor.page import Page
 
 logger = logging.getLogger(__name__)
 
@@ -46,12 +48,12 @@ class HealingController(Controller):
 
 		strip = ['a', 'img']
 
-		content = markdownify.markdownify(await page.content(), strip=strip)
+		# Get page HTML content using CDP evaluate
+		html_content = await page.evaluate('() => document.documentElement.outerHTML')
+		content = markdownify.markdownify(html_content, strip=strip)
 
-		for iframe in page.frames:
-			if iframe.url != page.url and not iframe.url.startswith('data:'):
-				content += f'\n\nIFRAME {iframe.url}:\n'
-				content += markdownify.markdownify(await iframe.content())
+		# Note: iframe content extraction is not yet supported in CDP-based implementation
+		# TODO: Implement iframe content extraction using CDP
 
 		prompt = """Analyze the page content and extract all possible actions, variables, and their side effects. This analysis will be used to create workflow steps.
 

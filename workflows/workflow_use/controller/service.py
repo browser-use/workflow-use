@@ -3,9 +3,8 @@ import logging
 
 from browser_use import Browser
 from browser_use.agent.views import ActionResult
-from browser_use.controller.service import Controller
-from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.prompts import PromptTemplate
+from browser_use.controller import Controller
+from browser_use.llm.base import BaseChatModel
 
 from workflow_use.controller.utils import get_best_element_handle, truncate_selector
 from workflow_use.controller.views import (
@@ -66,7 +65,9 @@ class WorkflowController(Controller):
 			"""Navigate to the given URL."""
 			page = await browser_session.get_current_page()
 			await page.goto(params.url)
-			await page.wait_for_load_state()
+			# Wait for page to load (CDP navigate doesn't wait automatically)
+			import asyncio
+			await asyncio.sleep(2)
 
 			msg = f'🔗  Navigated to URL: {params.url}'
 			logger.info(msg)
@@ -200,7 +201,7 @@ class WorkflowController(Controller):
 		async def scroll(params: ScrollDeterministicAction, browser_session: Browser) -> ActionResult:
 			"""Scroll the page by the given x/y pixel offsets."""
 			page = await browser_session.get_current_page()
-			await page.evaluate(f'window.scrollBy({params.scrollX}, {params.scrollY});')
+			await page.evaluate(f'() => window.scrollBy({params.scrollX}, {params.scrollY})')
 			msg = f'📜  Scrolled page by (x={params.scrollX}, y={params.scrollY})'
 			logger.info(msg)
 			return ActionResult(extracted_content=msg, include_in_memory=True)
@@ -219,19 +220,18 @@ class WorkflowController(Controller):
 
 			strip = ['a', 'img']
 
-			content = markdownify.markdownify(await page.content(), strip=strip)
+			# Get page HTML content using CDP evaluate
+			html_content = await page.evaluate('() => document.documentElement.outerHTML')
+			content = markdownify.markdownify(html_content, strip=strip)
 
-			# manually append iframe text into the content so it's readable by the LLM (includes cross-origin iframes)
-			for iframe in page.frames:
-				if iframe.url != page.url and not iframe.url.startswith('data:'):
-					content += f'\n\nIFRAME {iframe.url}:\n'
-					content += markdownify.markdownify(await iframe.content())
+			# Note: iframe content extraction is not yet supported in CDP-based implementation
+			# TODO: Implement iframe content extraction using CDP
 
-			prompt = 'Your task is to extract the content of the page. You will be given a page and a goal and you should extract all relevant information around this goal from the page. If the goal is vague, summarize the page. Respond in json format. Extraction goal: {goal}, Page: {page}'
-			template = PromptTemplate(input_variables=['goal', 'page'], template=prompt)
+			prompt = f'Your task is to extract the content of the page. You will be given a page and a goal and you should extract all relevant information around this goal from the page. If the goal is vague, summarize the page. Respond in json format. Extraction goal: {params.goal}, Page: {content}'
 			try:
-				output = await page_extraction_llm.ainvoke(template.format(goal=params.goal, page=content))
-				msg = f'📄  Extracted from page\n: {output.content}\n'
+				from browser_use.llm import UserMessage
+				output = await page_extraction_llm.ainvoke([UserMessage(content=prompt)])
+				msg = f'📄  Extracted from page\n: {output.completion}\n'
 				logger.info(msg)
 				return ActionResult(extracted_content=msg, include_in_memory=True)
 			except Exception as e:
