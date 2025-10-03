@@ -190,3 +190,4 @@ data/
 *.pdf
 
 user_data_dir
+.claude

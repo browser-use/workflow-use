@@ -48,7 +48,7 @@ python cli.py run-as-tool examples/example.workflow.json --prompt "fill the form
 ## Run workflow with predefined variables
 
 ```bash
-python cli.py run-workflow examples/example.workflow.json 
+python cli.py run-workflow examples/example.workflow.json
 ```
 
 ## Record your own workflow
@@ -73,6 +73,20 @@ from workflow_use import Workflow
 workflow = Workflow.load_from_file("example.workflow.json")
 result = asyncio.run(workflow.run_as_tool("I want to search for 'workflow use'"))
 ```
+
+## Cloud Browser Support
+
+Run workflows in [Browser-Use Cloud](https://cloud.browser-use.com) with semantic abstraction (no AI):
+(NOTE: Set BROWSER_USE_API_KEY environment variable)
+```python
+from workflow_use import Workflow
+
+workflow = Workflow.load_from_file("workflow.json", llm, use_cloud=True)
+result = await workflow.run_with_no_ai()  # No LLM calls, uses semantic mapping
+```
+
+Examples:
+- `examples/cloud_browser_demo.py` - Load recorded workflow and run on cloud
 
 ## Launch the GUI
 

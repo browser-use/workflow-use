@@ -1,6 +1,6 @@
 [project]
 name = "workflow-use"
-version = "0.0.2"
+version = "0.0.3"
 authors = [{ name = "Gregor Zunic" }]
 description = "Create, edit, run deterministic workflows"
 readme = "README.md"

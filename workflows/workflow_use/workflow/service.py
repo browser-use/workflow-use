@@ -46,6 +46,7 @@ class Workflow:
 		browser: Browser | None = None,
 		page_extraction_llm: BaseChatModel | None = None,
 		fallback_to_agent: bool = True,
+		use_cloud: bool = False,
 	) -> None:
 		"""Initialize a new Workflow instance from a schema object.
 
@@ -55,6 +56,7 @@ class Workflow:
 			browser: Optional Browser instance to use for browser automation
 			llm: Optional language model for fallback agent functionality
 			fallback_to_agent: Whether to fall back to agent-based execution on step failure
+			use_cloud: Whether to use browser-use cloud browser service instead of local browser
 
 		Raises:
 			ValueError: If the workflow schema is invalid (though Pydantic handles most).
@@ -63,7 +65,7 @@ class Workflow:
 
 		self.controller = controller or WorkflowController()
 
-		self.browser = browser or Browser()
+		self.browser = browser or Browser(use_cloud=use_cloud)
 
 		# Hack to not close it after agent kicks in
 		self.browser.browser_profile.keep_alive = True
@@ -88,6 +90,7 @@ class Workflow:
 		controller: WorkflowController | None = None,
 		browser: Browser | None = None,
 		page_extraction_llm: BaseChatModel | None = None,
+		use_cloud: bool = False,
 	) -> Workflow:
 		"""Load a workflow from a file."""
 		with open(file_path, 'r', encoding='utf-8') as f:
@@ -99,6 +102,7 @@ class Workflow:
 			browser=browser,
 			llm=llm,
 			page_extraction_llm=page_extraction_llm,
+			use_cloud=use_cloud,
 		)
 
 	# --- Runners ---
