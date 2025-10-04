@@ -81,9 +81,15 @@ Each step must include a `"type"` field and a brief `"description"`.
 - The `"type"` field must match exactly one of the available action names
 - Include all required parameters as specified in the action definitions
 - For actions that interact with elements (click, input, select_change, key_press):
-  - **ALWAYS use the exact `elementHash` from `interacted_elements`** (`elementHash` can NOT be a variable (`{{ }}` is not allowed inside the field) or guessed)
-  - If you are not sure about element hash (in case of doubt) use `agent` step
-- Reference workflow inputs using `{{input_name}}` syntax in parameter values
+  - **PREFERRED: Use semantic identification with `target_text`** - Identifies elements by visible text/labels (most robust)
+    - `target_text` (string): The visible text, label, or accessible name of the element
+    - Example: `{{"type": "click", "target_text": "Search", "description": "Click the search button"}}`
+    - Example: `{{"type": "input", "target_text": "Email", "value": "{{{{email}}}}", "description": "Enter email address"}}`
+  - **ALTERNATIVE: Use `elementHash` from `interacted_elements`** (only if target_text is not available)
+    - `elementHash` can NOT be a variable (`{{{{ }}}}` is not allowed) or guessed
+    - If you are not sure about element hash, use semantic `target_text` instead
+  - **LAST RESORT: Use `agent` step** only when neither target_text nor elementHash works
+- Reference workflow inputs using `{{{{input_name}}}}` syntax in parameter values
 - Please NEVER output `cssSelector`, `xpath`, `elementTag` fields in the output. They are not needed. (ALWAYS leave them empty/None).
 - **For input elements with format requirements**: Include specific format instructions in the step description (e.g., "Enter email in format: user@domain.com", "Enter date in MM/DD/YYYY format", "Enter phone number as (xxx) xxx-xxxx")
 
@@ -93,18 +99,21 @@ Each step must include a `"type"` field and a brief `"description"`.
   - `goal` (string): Description of what to extract
   - Prefer this over agentic steps for simple data gathering
 
-**Agentic Steps (Use Sparingly)**
+**Agentic Steps (LAST RESORT - Avoid When Possible)**
 
-- **`agent`**: Use when content is dynamic or unpredictable
+- **`agent`**: Use ONLY when semantic targetText and elementHash both fail
 
-  - `task` (string): User perspective goal (e.g., "Select the restaurant named {{restaurant_name}}")
+  - `task` (string): User perspective goal (e.g., "Select the restaurant named {{{{restaurant_name}}}}")
   - `description` (string): Why agentic reasoning is needed
   - `max_steps` (number, optional): Limit iterations (defaults to 5)
-  - Use when:
+  - **IMPORTANT**: Before using agent steps, try semantic `target_text` first!
+  - Use agent steps ONLY when:
+    - Element has no stable visible text or label (rare)
     - Selecting from frequently changing lists (search results, products)
     - Interacting with time-sensitive elements (calendars, schedules)
     - Content evaluation based on user criteria
-  - **CRITICAL: Use agent steps for any of the following UI elements** - deterministic steps WILL FAIL:
+  - **AVOID agent steps for simple clicks/inputs** - use semantic `target_text` instead
+  - Use agent steps for these specific UI patterns (but try target_text first):
     - **Dropdowns/select boxes** - Options may load dynamically or change based on context
     - **Multi-select interfaces** - Complex state management and option filtering
     - **Radio button groups** - Visual layout often changes, making element hashing unreliable
@@ -130,7 +139,7 @@ Each step must include a `"type"` field and a brief `"description"`.
 
 ### Parameter Syntax
 
-- Reference inputs using `{{input_name}}` syntax (no prefixes)
+- Reference inputs using `{{{{input_name}}}}` syntax (no prefixes)
 - Quote all placeholder values for JSON parsing
 - Extract variables from actual values in the steps, not defaults
 

@@ -3,12 +3,10 @@ import os
 from typing import TYPE_CHECKING
 
 from browser_use import ActionResult, Controller
+from browser_use.actor.page import Page
 from browser_use.llm.base import BaseChatModel
 from browser_use.llm import ChatOpenAI
 from pydantic import BaseModel, Field, SecretStr
-
-if TYPE_CHECKING:
-	from browser_use.actor.page import Page
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +41,7 @@ class HealingController(Controller):
 			'Call this action EVERY TIME the content on the page changes or is new. This is very important for understanding workflows.'
 		)(self.analyse_page_content_and_extract_possible_actions)
 
-	async def analyse_page_content_and_extract_possible_actions(self, page: Page):
+	async def analyse_page_content_and_extract_possible_actions(self, page):
 		import markdownify
 
 		strip = ['a', 'img']

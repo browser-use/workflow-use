@@ -16,6 +16,90 @@
 
 ❗ This project is in very early development so we don't recommend using this in production. Lots of things will change and we don't have a release schedule yet. Originally, the project was born out of customer demand to make Browser Use more reliable and deterministic.
 
+## 🚀 NEW: Generation Mode
+
+Automatically generate workflows from natural language! Describe your task, we run browser-use once, then create a reusable semantic workflow stored in a database.
+
+### Quick Commands
+
+```bash
+# Generate workflow from task description
+python cli.py generate-workflow "Find GitHub stars for browser-use repo"
+
+# List all workflows
+python cli.py list-workflows
+
+# Filter by generation mode
+python cli.py list-workflows --generation-mode browser_use
+
+# Run stored workflow
+python cli.py run-stored-workflow <workflow-id> --prompt "Find stars for playwright repo"
+
+# View workflow details
+python cli.py workflow-info <workflow-id>
+
+# Delete workflow
+python cli.py delete-workflow <workflow-id>
+```
+
+### How It Works
+
+1. **Describe**: Give a task in natural language
+2. **Execute**: Browser-use completes the task once
+3. **Generate**: Execution history → semantic workflow with parameters
+4. **Store**: Save to database with metadata
+5. **Reuse**: Run the workflow with different inputs, no AI needed
+
+### Advanced Options
+
+```bash
+# Custom models for generation
+python cli.py generate-workflow "Your task" \
+  --agent-model "gpt-4.1-mini" \
+  --extraction-model "gpt-4.1-mini" \
+  --workflow-model "gpt-4o"
+
+# Save to custom location
+python cli.py generate-workflow "Your task" --output-file ./my-workflow.json
+
+# Skip database storage
+python cli.py generate-workflow "Your task" --no-save-to-storage
+```
+
+### Storage
+
+Workflows stored at `workflows/storage/`:
+- `metadata.json` - Searchable index of all workflows
+- `workflows/<id>.workflow.json` - Individual workflow files
+
+### Programmatic Usage
+
+```python
+from workflow_use.healing.service import HealingService
+from workflow_use.storage.service import WorkflowStorageService
+from browser_use.llm import ChatOpenAI
+
+healing_service = HealingService(llm=ChatOpenAI(model='gpt-4o'))
+storage_service = WorkflowStorageService()
+
+# Generate workflow
+workflow = await healing_service.generate_workflow_from_prompt(
+    prompt="Fill contact form on example.com",
+    agent_llm=ChatOpenAI(model='gpt-4.1-mini'),
+    extraction_llm=ChatOpenAI(model='gpt-4.1-mini')
+)
+
+# Save to storage
+metadata = storage_service.save_workflow(
+    workflow=workflow,
+    generation_mode='browser_use',
+    original_task="Fill contact form on example.com"
+)
+
+# Retrieve and execute
+loaded_workflow = storage_service.get_workflow(metadata.id)
+```
+
 # Quick start
 
 ```bash

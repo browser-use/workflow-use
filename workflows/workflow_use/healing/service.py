@@ -4,8 +4,8 @@ from typing import Any, Dict, List, Sequence, Union
 
 import aiofiles
 from browser_use import Agent, AgentHistoryList, Browser
-from browser_use.agent.views import DOMHistoryElement
-from browser_use.llm.base import BaseChatModel
+from browser_use.dom.views import DOMInteractedElement
+from browser_use.llm.base import BaseChatModel, BaseMessage
 from browser_use.llm import UserMessage, SystemMessage
 
 from workflow_use.builder.service import BuilderService
@@ -22,15 +22,15 @@ class HealingService:
 	):
 		self.llm = llm
 
-		self.interacted_elements_hash_map: dict[str, DOMHistoryElement] = {}
+		self.interacted_elements_hash_map: dict[str, DOMInteractedElement] = {}
 
 	def _remove_none_fields_from_dict(self, d: dict) -> dict:
 		return {k: v for k, v in d.items() if v is not None}
 
-	def _history_to_workflow_definition(self, history_list: AgentHistoryList) -> list[HumanMessage]:
+	def _history_to_workflow_definition(self, history_list: AgentHistoryList) -> list[UserMessage]:
 		# history
 
-		messages: list[HumanMessage] = []
+		messages: list[UserMessage] = []
 
 		for history in history_list.history:
 			if history.model_output is None:
@@ -41,9 +41,12 @@ class HealingService:
 				if element is None:
 					continue
 
-				# hash element by hacshing the tag_name + css_selector + highlight_index
+				# Get tag_name from node_name (lowercased)
+				tag_name = element.node_name.lower() if hasattr(element, 'node_name') else ''
+
+				# hash element by hashing the node_name + element_hash
 				element_hash = hashlib.sha256(
-					f'{element.tag_name}_{element.css_selector}_{element.highlight_index}'.encode()
+					f'{tag_name}_{element.element_hash}'.encode()
 				).hexdigest()[:10]
 
 				if element_hash not in self.interacted_elements_hash_map:
@@ -51,14 +54,14 @@ class HealingService:
 
 				interacted_elements.append(
 					SimpleDomElement(
-						tag_name=element.tag_name,
-						highlight_index=element.highlight_index,
-						shadow_root=element.shadow_root,
+						tag_name=tag_name,
+						highlight_index=getattr(element, 'highlight_index', 0),
+						shadow_root=getattr(element, 'shadow_root', False),
 						element_hash=element_hash,
 					)
 				)
 
-			screenshot = history.state.screenshot
+			screenshot = history.state.get_screenshot() if hasattr(history.state, 'get_screenshot') else None
 			parsed_step = ParsedAgentStep(
 				url=history.state.url,
 				title=history.state.title,
@@ -86,7 +89,7 @@ class HealingService:
 				image_block: Dict[str, Any] = {'type': 'image_url', 'image_url': {'url': f'data:image/jpeg;base64,{screenshot}'}}
 				content_blocks.append(image_block)
 
-			messages.append(HumanMessage(content=content_blocks))
+			messages.append(UserMessage(content=content_blocks))
 
 		return messages
 
@@ -97,9 +100,10 @@ class HealingService:
 			if isinstance(step, SelectorWorkflowSteps):
 				if step.elementHash in self.interacted_elements_hash_map:
 					dom_element = self.interacted_elements_hash_map[step.elementHash]
-					step.cssSelector = dom_element.css_selector or ''
-					step.xpath = dom_element.xpath
-					step.elementTag = dom_element.tag_name
+					# DOMInteractedElement has different attribute names
+					step.cssSelector = getattr(dom_element, 'css_selector', '') or ''
+					step.xpath = getattr(dom_element, 'x_path', '') or getattr(dom_element, 'xpath', '')
+					step.elementTag = dom_element.node_name.lower() if hasattr(dom_element, 'node_name') else ''
 
 		# Create the full WorkflowDefinitionSchema with populated fields
 		return workflow_definition
@@ -115,10 +119,21 @@ class HealingService:
 
 		all_messages: Sequence[BaseMessage] = [system_message] + human_messages
 
-		# Chain the model with the structured output schema
-		structured_llm = self.llm.with_structured_output(WorkflowDefinitionSchema, method='function_calling')
-
-		workflow_definition: WorkflowDefinitionSchema = await structured_llm.ainvoke(all_messages)  # type: ignore
+		# Use browser-use's output_format parameter for structured output
+		try:
+			response = await self.llm.ainvoke(all_messages, output_format=WorkflowDefinitionSchema)
+			workflow_definition: WorkflowDefinitionSchema = response.completion  # type: ignore
+		except Exception as e:
+			print(f"ERROR: Failed to generate structured workflow definition")
+			print(f"Error details: {e}")
+			# Try to get the raw response
+			try:
+				raw_response = await self.llm.ainvoke(all_messages)
+				print(f"\nRaw LLM response:")
+				print(raw_response)
+			except:
+				pass
+			raise
 
 		workflow_definition = self._populate_selector_fields(workflow_definition)
 
@@ -136,13 +151,16 @@ class HealingService:
 
 		browser = Browser()
 
+		# Note: HealingController's custom action has compatibility issues with current browser-use version
+		# Using standard Controller for now
+		from browser_use import Controller
+
 		agent = Agent(
 			task=prompt,
 			browser_session=browser,
 			llm=agent_llm,
 			page_extraction_llm=extraction_llm,
-			controller=HealingController(extraction_llm=extraction_llm),
-			override_system_message=HEALING_AGENT_SYSTEM_PROMPT,
+			controller=Controller(),  # Using standard controller instead of HealingController
 			enable_memory=False,
 			max_failures=10,
 			tool_calling_method='auto',

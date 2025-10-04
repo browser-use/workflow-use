@@ -14,8 +14,10 @@ from browser_use.llm import ChatOpenAI
 
 from workflow_use.builder.service import BuilderService
 from workflow_use.controller.service import WorkflowController
+from workflow_use.healing.service import HealingService
 from workflow_use.mcp.service import get_mcp_server
 from workflow_use.recorder.service import RecordingService  # Added import
+from workflow_use.storage.service import WorkflowStorageService
 from workflow_use.workflow.service import Workflow
 
 # Placeholder for recorder functionality
@@ -46,6 +48,8 @@ builder_service = BuilderService(llm=llm_instance) if llm_instance else None
 recording_service = (
 	RecordingService()
 )  # Assuming RecordingService does not need LLM, or handle its potential None state if it does.
+healing_service = HealingService(llm=llm_instance) if llm_instance else None
+storage_service = WorkflowStorageService()
 
 
 def get_default_save_dir() -> Path:
@@ -2169,7 +2173,305 @@ def generate_csv_template_command(
 		raise typer.Exit(code=1)
 
 
+# ==================== GENERATION MODE COMMANDS ====================
 
+@app.command(name='generate-workflow')
+def generate_workflow_from_task(
+	task: str = typer.Argument(..., help='The task to automate (e.g., "Fill out the contact form")'),
+	agent_model: str = typer.Option('gpt-4.1-mini', help='Model for browser automation'),
+	extraction_model: str = typer.Option('gpt-4.1-mini', help='Model for page extraction'),
+	workflow_model: str = typer.Option('gpt-4.1', help='Model for workflow generation'),
+	save_to_storage: bool = typer.Option(True, help='Save workflow to storage database'),
+	output_file: Path | None = typer.Option(None, help='Optional: Save to specific file path'),
+):
+	"""
+	🤖 GENERATION MODE: Generate a semantic workflow from a task description.
+
+	This command:
+	1. Runs browser-use to complete the task
+	2. Generates a semantic workflow from the execution
+	3. Saves it to the storage database
+
+	Example:
+	  python cli.py generate-workflow "Fill out the contact form on example.com"
+	"""
+	if not healing_service:
+		typer.secho('Error: HealingService not initialized. Cannot generate workflow.', fg=typer.colors.RED)
+		raise typer.Exit(code=1)
+
+	typer.echo()
+	typer.secho('🤖 GENERATION MODE: Creating workflow from task', fg=typer.colors.CYAN, bold=True)
+	typer.echo(f'Task: {typer.style(task, fg=typer.colors.YELLOW)}')
+	typer.echo()
+
+	# Initialize LLMs
+	agent_llm = ChatOpenAI(model=agent_model)
+	extraction_llm = ChatOpenAI(model=extraction_model)
+
+	typer.echo('Starting browser automation to complete the task...')
+	typer.echo(f'  Agent Model: {agent_model}')
+	typer.echo(f'  Extraction Model: {extraction_model}')
+	typer.echo(f'  Workflow Model: {workflow_model}')
+	typer.echo()
+
+	try:
+		# Generate workflow from task
+		workflow_definition = asyncio.run(
+			healing_service.generate_workflow_from_prompt(
+				prompt=task,
+				agent_llm=agent_llm,
+				extraction_llm=extraction_llm
+			)
+		)
+
+		if not workflow_definition:
+			typer.secho('Failed to generate workflow from task.', fg=typer.colors.RED)
+			raise typer.Exit(code=1)
+
+		typer.secho('✅ Workflow generated successfully!', fg=typer.colors.GREEN, bold=True)
+		typer.echo()
+
+		# Display workflow info
+		typer.echo(typer.style('Workflow Details:', bold=True))
+		typer.echo(f'  Name: {typer.style(workflow_definition.name, fg=typer.colors.CYAN)}')
+		typer.echo(f'  Description: {workflow_definition.description}')
+		typer.echo(f'  Steps: {len(workflow_definition.steps)}')
+		typer.echo(f'  Input Parameters: {len(workflow_definition.input_schema)}')
+		typer.echo()
+
+		# Save to storage database
+		if save_to_storage:
+			metadata = storage_service.save_workflow(
+				workflow=workflow_definition,
+				generation_mode='browser_use',
+				original_task=task
+			)
+			typer.secho(f'💾 Saved to storage database with ID: {metadata.id}', fg=typer.colors.GREEN)
+			typer.echo(f'   Storage path: {metadata.file_path}')
+			typer.echo()
+
+		# Save to output file if specified
+		if output_file:
+			with open(output_file, 'w') as f:
+				json.dump(workflow_definition.model_dump(mode='json'), f, indent=2)
+			typer.secho(f'💾 Also saved to: {output_file}', fg=typer.colors.GREEN)
+			typer.echo()
+
+		# Display next steps
+		typer.echo(typer.style('Next Steps:', bold=True))
+		typer.echo('  1. List workflows: python cli.py list-workflows')
+		if save_to_storage:
+			typer.echo(f'  2. Run workflow: python cli.py run-stored-workflow {metadata.id if save_to_storage else "<workflow-id>"}')
+		typer.echo('  3. Run as tool: python cli.py run-as-tool <workflow-file> --prompt "Your task"')
+
+	except Exception as e:
+		typer.secho(f'Error generating workflow: {e}', fg=typer.colors.RED)
+		import traceback
+		typer.echo(f'\nFull error traceback:')
+		typer.echo(traceback.format_exc())
+		raise typer.Exit(code=1)
+
+
+@app.command(name='list-workflows')
+def list_workflows(
+	generation_mode: str | None = typer.Option(None, help='Filter by generation mode (manual/browser_use)'),
+	query: str | None = typer.Option(None, help='Search query for name or description'),
+):
+	"""
+	📋 List all stored workflows.
+
+	Examples:
+	  python cli.py list-workflows
+	  python cli.py list-workflows --generation-mode browser_use
+	  python cli.py list-workflows --query "contact form"
+	"""
+	workflows = storage_service.search_workflows(query=query, generation_mode=generation_mode)
+
+	if not workflows:
+		typer.secho('No workflows found.', fg=typer.colors.YELLOW)
+		return
+
+	typer.echo()
+	typer.secho(f'Found {len(workflows)} workflow(s):', fg=typer.colors.CYAN, bold=True)
+	typer.echo()
+
+	for wf in workflows:
+		mode_color = typer.colors.GREEN if wf.generation_mode == 'browser_use' else typer.colors.BLUE
+		mode_icon = '🤖' if wf.generation_mode == 'browser_use' else '✋'
+
+		typer.echo(f'{mode_icon} {typer.style(wf.name, fg=typer.colors.CYAN, bold=True)}')
+		typer.echo(f'   ID: {wf.id}')
+		typer.echo(f'   Description: {wf.description}')
+		typer.echo(f'   Mode: {typer.style(wf.generation_mode, fg=mode_color)}')
+		typer.echo(f'   Created: {wf.created_at}')
+		if wf.original_task:
+			typer.echo(f'   Original Task: {wf.original_task}')
+		typer.echo()
+
+
+@app.command(name='run-stored-workflow')
+def run_stored_workflow(
+	workflow_id: str = typer.Argument(..., help='Workflow ID from storage'),
+	prompt: str | None = typer.Option(None, help='Run as tool with this prompt'),
+):
+	"""
+	▶️  Run a workflow from storage.
+
+	Examples:
+	  python cli.py run-stored-workflow <workflow-id>
+	  python cli.py run-stored-workflow <workflow-id> --prompt "Fill with test data"
+	"""
+	if not llm_instance:
+		typer.secho('Error: LLM not initialized.', fg=typer.colors.RED)
+		raise typer.Exit(code=1)
+
+	# Load workflow from storage
+	workflow_definition = storage_service.get_workflow(workflow_id)
+
+	if not workflow_definition:
+		typer.secho(f'Workflow not found: {workflow_id}', fg=typer.colors.RED)
+		raise typer.Exit(code=1)
+
+	metadata = storage_service.metadata.get(workflow_id)
+
+	typer.echo()
+	typer.secho(f'▶️  Running workflow: {workflow_definition.name}', fg=typer.colors.CYAN, bold=True)
+	if metadata and metadata.original_task:
+		typer.echo(f'Original Task: {metadata.original_task}')
+	typer.echo()
+
+	# Save to temp file and run
+	temp_file = Path('./tmp') / f'temp_workflow_{workflow_id}.json'
+	temp_file.parent.mkdir(parents=True, exist_ok=True)
+
+	with open(temp_file, 'w') as f:
+		json.dump(workflow_definition.model_dump(mode='json'), f, indent=2)
+
+	try:
+		if prompt:
+			# Run as tool with prompt
+			workflow = Workflow.load_from_file(temp_file, llm_instance, page_extraction_llm=page_extraction_llm)
+			result = asyncio.run(workflow.run_as_tool(prompt))
+
+			typer.secho('✅ Workflow completed!', fg=typer.colors.GREEN, bold=True)
+			typer.echo()
+			typer.echo('Result:')
+			typer.echo(json.dumps(result, indent=2))
+		elif not workflow_definition.input_schema:
+			# No inputs needed, run directly
+			typer.secho('▶️  Running workflow (no inputs required)...', fg=typer.colors.CYAN)
+			workflow = Workflow.load_from_file(temp_file, llm_instance, page_extraction_llm=page_extraction_llm)
+			result = asyncio.run(workflow.run(inputs={}))
+
+			typer.secho('✅ Workflow completed!', fg=typer.colors.GREEN, bold=True)
+			typer.echo()
+			if result:
+				typer.echo('Result:')
+				# Extract the actual data from step results
+				if hasattr(result, 'step_results'):
+					for i, step_result in enumerate(result.step_results, 1):
+						if hasattr(step_result, 'extracted_content') and step_result.extracted_content:
+							typer.echo(f'Step {i}: {step_result.extracted_content}')
+				else:
+					typer.echo(str(result))
+		else:
+			# Has inputs but no prompt - need to collect them
+			typer.secho('This workflow requires input parameters:', fg=typer.colors.YELLOW)
+			typer.echo()
+			for inp in workflow_definition.input_schema:
+				required = typer.style('required', fg=typer.colors.RED) if inp.required else typer.style('optional', fg=typer.colors.YELLOW)
+				typer.echo(f'  • {inp.name} ({inp.type}, {required})')
+			typer.echo()
+			typer.echo('Options:')
+			typer.echo(f'  1. Run as tool: python cli.py run-stored-workflow {workflow_id} --prompt "Your task"')
+			typer.echo(f'  2. Run with inputs: python cli.py run-workflow {metadata.file_path if metadata else temp_file}')
+
+	finally:
+		# Cleanup temp file
+		if temp_file.exists():
+			temp_file.unlink()
+
+
+@app.command(name='delete-workflow')
+def delete_workflow(
+	workflow_id: str = typer.Argument(..., help='Workflow ID to delete'),
+	confirm: bool = typer.Option(False, '--yes', '-y', help='Skip confirmation'),
+):
+	"""
+	🗑️  Delete a workflow from storage.
+
+	Example:
+	  python cli.py delete-workflow <workflow-id>
+	"""
+	workflow = storage_service.get_workflow(workflow_id)
+
+	if not workflow:
+		typer.secho(f'Workflow not found: {workflow_id}', fg=typer.colors.RED)
+		raise typer.Exit(code=1)
+
+	if not confirm:
+		typer.echo(f'Delete workflow: {typer.style(workflow.name, fg=typer.colors.YELLOW)}?')
+		confirm = typer.confirm('Are you sure?')
+
+	if confirm:
+		storage_service.delete_workflow(workflow_id)
+		typer.secho(f'✅ Deleted workflow: {workflow.name}', fg=typer.colors.GREEN)
+	else:
+		typer.echo('Cancelled.')
+
+
+@app.command(name='workflow-info')
+def workflow_info(
+	workflow_id: str = typer.Argument(..., help='Workflow ID'),
+):
+	"""
+	ℹ️  Show detailed information about a workflow.
+
+	Example:
+	  python cli.py workflow-info <workflow-id>
+	"""
+	workflow = storage_service.get_workflow(workflow_id)
+	metadata = storage_service.metadata.get(workflow_id)
+
+	if not workflow or not metadata:
+		typer.secho(f'Workflow not found: {workflow_id}', fg=typer.colors.RED)
+		raise typer.Exit(code=1)
+
+	mode_color = typer.colors.GREEN if metadata.generation_mode == 'browser_use' else typer.colors.BLUE
+	mode_icon = '🤖' if metadata.generation_mode == 'browser_use' else '✋'
+
+	typer.echo()
+	typer.secho(f'{mode_icon} Workflow: {workflow.name}', fg=typer.colors.CYAN, bold=True)
+	typer.echo()
+
+	typer.echo(typer.style('Metadata:', bold=True))
+	typer.echo(f'  ID: {metadata.id}')
+	typer.echo(f'  Description: {metadata.description}')
+	typer.echo(f'  Version: {metadata.version}')
+	typer.echo(f'  Generation Mode: {typer.style(metadata.generation_mode, fg=mode_color)}')
+	typer.echo(f'  Created: {metadata.created_at}')
+	typer.echo(f'  Updated: {metadata.updated_at}')
+	typer.echo(f'  File Path: {metadata.file_path}')
+	if metadata.original_task:
+		typer.echo(f'  Original Task: {metadata.original_task}')
+	typer.echo()
+
+	typer.echo(typer.style('Workflow Details:', bold=True))
+	typer.echo(f'  Steps: {len(workflow.steps)}')
+	typer.echo(f'  Input Parameters: {len(workflow.input_schema)}')
+	typer.echo()
+
+	if workflow.input_schema:
+		typer.echo(typer.style('Input Schema:', bold=True))
+		for inp in workflow.input_schema:
+			required = typer.style('required', fg=typer.colors.RED) if inp.required else typer.style('optional', fg=typer.colors.YELLOW)
+			typer.echo(f'  • {typer.style(inp.name, fg=typer.colors.CYAN)} ({inp.type}, {required})')
+		typer.echo()
+
+	typer.echo(typer.style('Steps:', bold=True))
+	for i, step in enumerate(workflow.steps, 1):
+		typer.echo(f'  {i}. [{step.type}] {step.description}')
+	typer.echo()
 
 
 if __name__ == '__main__':

@@ -1,0 +1,13 @@
+{
+  "8077c0ec-f61b-4b48-b0df-65aac77372ae": {
+    "id": "8077c0ec-f61b-4b48-b0df-65aac77372ae",
+    "name": "Get Browser-Use GitHub Repo Star Count",
+    "description": "This workflow finds and returns the number of stars for the GitHub repository named 'browser-use' by searching GitHub repositories and extracting the star count from the top result.",
+    "version": "1.0",
+    "created_at": "2025-10-04T00:51:28.298017",
+    "updated_at": "2025-10-04T00:51:28.298029",
+    "file_path": "workflows/storage/workflows/8077c0ec-f61b-4b48-b0df-65aac77372ae.workflow.json",
+    "generation_mode": "browser_use",
+    "original_task": "Find number of stars for browser-use repo"
+  }
+}
