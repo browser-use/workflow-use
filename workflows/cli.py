@@ -1107,6 +1107,7 @@ def run_as_tool_command(
 		help='Prompt for the LLM to reason about and execute the workflow.',
 		prompt=True,  # Prompts interactively if not provided
 	),
+	use_cloud: bool = typer.Option(False, help='Use Browser-Use Cloud browser'),
 ):
 	"""
 	Run the workflow and automatically parse the required variables from the input/prompt that the user provides.
@@ -1125,7 +1126,7 @@ def run_as_tool_command(
 
 	try:
 		# Pass llm_instance to ensure the workflow can use it if needed for as_tool() or run_with_prompt()
-		workflow_obj = Workflow.load_from_file(str(workflow_path), llm=llm_instance, page_extraction_llm=page_extraction_llm)
+		workflow_obj = Workflow.load_from_file(str(workflow_path), llm=llm_instance, page_extraction_llm=page_extraction_llm, use_cloud=use_cloud)
 	except Exception as e:
 		typer.secho(f'Error loading workflow: {e}', fg=typer.colors.RED)
 		raise typer.Exit(code=1)
@@ -1159,6 +1160,7 @@ def run_workflow_command(
 		help='Path to the .workflow.json file.',
 		show_default=False,
 	),
+	use_cloud: bool = typer.Option(False, help='Use Browser-Use Cloud browser'),
 ):
 	"""
 	Loads and executes a workflow, prompting the user for required inputs.
@@ -1173,7 +1175,7 @@ def run_workflow_command(
 		try:
 			# Instantiate Browser and WorkflowController for the Workflow instance
 			# Pass llm_instance for potential agent fallbacks or agentic steps
-			browser = Browser()
+			browser = Browser(use_cloud_browser=use_cloud)
 			controller_instance = WorkflowController()  # Add any necessary config if required
 			workflow_obj = Workflow.load_from_file(
 				str(workflow_path),
@@ -1275,6 +1277,7 @@ def run_workflow_no_ai_command(
 		'-e',
 		help='Enable AI-powered extraction steps (requires OpenAI API key for extraction steps only)',
 	),
+	use_cloud: bool = typer.Option(False, help='Use Browser-Use Cloud browser'),
 ):
 	"""
 	Loads and executes a workflow using semantic abstraction without any AI/LLM involvement.
@@ -1290,7 +1293,7 @@ def run_workflow_no_ai_command(
 
 		try:
 			# Instantiate Browser for the Workflow instance
-			browser = Browser()
+			browser = Browser(use_cloud_browser=use_cloud)
 			# Create a dummy LLM instance since it's required by the constructor but won't be used for interactions
 			dummy_llm = None
 			extraction_llm = None
@@ -1667,6 +1670,7 @@ def run_workflow_csv_command(
 		min=1,
 		max=5,
 	),
+	use_cloud: bool = typer.Option(False, help='Use Browser-Use Cloud browser'),
 	output_file: Path = typer.Option(
 		None,
 		'--output',
@@ -1744,7 +1748,7 @@ def run_workflow_csv_command(
 
 		# Load workflow
 		try:
-			browser = Browser()
+			browser = Browser(use_cloud_browser=use_cloud)
 
 			dummy_llm = None
 			if use_ai and llm_instance:
@@ -2183,6 +2187,7 @@ def generate_workflow_from_task(
 	workflow_model: str = typer.Option('gpt-4.1', help='Model for workflow generation'),
 	save_to_storage: bool = typer.Option(True, help='Save workflow to storage database'),
 	output_file: Path | None = typer.Option(None, help='Optional: Save to specific file path'),
+	use_cloud: bool = typer.Option(False, help='Use Browser-Use Cloud browser'),
 ):
 	"""
 	🤖 GENERATION MODE: Generate a semantic workflow from a task description.
@@ -2212,6 +2217,7 @@ def generate_workflow_from_task(
 	typer.echo(f'  Agent Model: {agent_model}')
 	typer.echo(f'  Extraction Model: {extraction_model}')
 	typer.echo(f'  Workflow Model: {workflow_model}')
+	typer.echo(f'  Browser: {"☁️  Cloud" if use_cloud else "🖥️  Local"}')
 	typer.echo()
 
 	try:
@@ -2220,7 +2226,8 @@ def generate_workflow_from_task(
 			healing_service.generate_workflow_from_prompt(
 				prompt=task,
 				agent_llm=agent_llm,
-				extraction_llm=extraction_llm
+				extraction_llm=extraction_llm,
+				use_cloud=use_cloud
 			)
 		)
 
@@ -2313,6 +2320,7 @@ def list_workflows(
 def run_stored_workflow(
 	workflow_id: str = typer.Argument(..., help='Workflow ID from storage'),
 	prompt: str | None = typer.Option(None, help='Run as tool with this prompt'),
+	use_cloud: bool = typer.Option(False, help='Use Browser-Use Cloud browser'),
 ):
 	"""
 	▶️  Run a workflow from storage.
@@ -2350,7 +2358,7 @@ def run_stored_workflow(
 	try:
 		if prompt:
 			# Run as tool with prompt
-			workflow = Workflow.load_from_file(temp_file, llm_instance, page_extraction_llm=page_extraction_llm)
+			workflow = Workflow.load_from_file(temp_file, llm_instance, page_extraction_llm=page_extraction_llm, use_cloud=use_cloud)
 			result = asyncio.run(workflow.run_as_tool(prompt))
 
 			typer.secho('✅ Workflow completed!', fg=typer.colors.GREEN, bold=True)
@@ -2360,7 +2368,7 @@ def run_stored_workflow(
 		elif not workflow_definition.input_schema:
 			# No inputs needed, run directly
 			typer.secho('▶️  Running workflow (no inputs required)...', fg=typer.colors.CYAN)
-			workflow = Workflow.load_from_file(temp_file, llm_instance, page_extraction_llm=page_extraction_llm)
+			workflow = Workflow.load_from_file(temp_file, llm_instance, page_extraction_llm=page_extraction_llm, use_cloud=use_cloud)
 			result = asyncio.run(workflow.run(inputs={}))
 
 			typer.secho('✅ Workflow completed!', fg=typer.colors.GREEN, bold=True)

@@ -141,7 +141,7 @@ class HealingService:
 
 	# Generate workflow from prompt
 	async def generate_workflow_from_prompt(
-		self, prompt: str, agent_llm: BaseChatModel, extraction_llm: BaseChatModel
+		self, prompt: str, agent_llm: BaseChatModel, extraction_llm: BaseChatModel, use_cloud: bool = False
 	) -> WorkflowDefinitionSchema:
 		"""
 		Generate a workflow definition from a prompt by:
@@ -149,7 +149,7 @@ class HealingService:
 		2. Converting the agent history into a workflow definition
 		"""
 
-		browser = Browser()
+		browser = Browser(use_cloud_browser=use_cloud)
 
 		# Note: HealingController's custom action has compatibility issues with current browser-use version
 		# Using standard Controller for now

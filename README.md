@@ -59,6 +59,9 @@ python cli.py generate-workflow "Your task" \
   --extraction-model "gpt-4.1-mini" \
   --workflow-model "gpt-4o"
 
+# Use Browser-Use Cloud browser
+python cli.py generate-workflow "Your task" --use-cloud
+
 # Save to custom location
 python cli.py generate-workflow "Your task" --output-file ./my-workflow.json
 
@@ -86,7 +89,8 @@ storage_service = WorkflowStorageService()
 workflow = await healing_service.generate_workflow_from_prompt(
     prompt="Fill contact form on example.com",
     agent_llm=ChatOpenAI(model='gpt-4.1-mini'),
-    extraction_llm=ChatOpenAI(model='gpt-4.1-mini')
+    extraction_llm=ChatOpenAI(model='gpt-4.1-mini'),
+    use_cloud=True  # Optional: use Browser-Use Cloud
 )
 
 # Save to storage
