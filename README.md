@@ -164,7 +164,7 @@ result = asyncio.run(workflow.run_as_tool("I want to search for 'workflow use'")
 
 ## Cloud Browser Support
 
-Run workflows in [Browser-Use Cloud](https://cloud.browser-use.com) with semantic abstraction (no AI):
+Run workflows in [Browser-Use Cloud](https://cloud.browser-use.com) (new signups get $10 free credits via OAuth or $1 via email) with semantic abstraction (no AI):
 (NOTE: Set BROWSER_USE_API_KEY environment variable)
 ```python
 from workflow_use import Workflow
