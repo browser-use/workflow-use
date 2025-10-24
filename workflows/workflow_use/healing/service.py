@@ -201,7 +201,7 @@ class HealingService:
 		2. Converting the agent history into a workflow definition
 		"""
 
-		browser = Browser()
+		browser = Browser(use_cloud=use_cloud)
 
 		# Note: HealingController's custom action has compatibility issues with current browser-use version
 		# Using standard Controller for now
