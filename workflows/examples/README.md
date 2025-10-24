@@ -6,7 +6,7 @@
 ```bash
 python run_complete_test.py
 ```
-Expected: "✅ TEST PASSED - Pure semantic workflow (0 agent steps)"
+Expected: "✅ TEST PASSED - Pure semantic workflow generated!"
 
 ---
 
