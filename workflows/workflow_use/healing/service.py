@@ -12,6 +12,8 @@ from workflow_use.builder.service import BuilderService
 from workflow_use.healing._agent.controller import HealingController
 from workflow_use.healing.prompts import HEALING_AGENT_SYSTEM_PROMPT
 from workflow_use.healing.views import ParsedAgentStep, SimpleDomElement, SimpleResult
+from workflow_use.healing.variable_extractor import VariableExtractor
+from workflow_use.healing.deterministic_converter import DeterministicWorkflowConverter
 from workflow_use.schema.views import SelectorWorkflowSteps, WorkflowDefinitionSchema
 
 
@@ -19,8 +21,14 @@ class HealingService:
 	def __init__(
 		self,
 		llm: BaseChatModel,
+		enable_variable_extraction: bool = True,
+		use_deterministic_conversion: bool = False,
 	):
 		self.llm = llm
+		self.enable_variable_extraction = enable_variable_extraction
+		self.use_deterministic_conversion = use_deterministic_conversion
+		self.variable_extractor = VariableExtractor(llm=llm) if enable_variable_extraction else None
+		self.deterministic_converter = DeterministicWorkflowConverter() if use_deterministic_conversion else None
 
 		self.interacted_elements_hash_map: dict[str, DOMInteractedElement] = {}
 
@@ -93,6 +101,28 @@ class HealingService:
 
 		return messages
 
+	def _validate_workflow_quality(self, workflow_definition: WorkflowDefinitionSchema) -> None:
+		"""Validate the generated workflow and warn about quality issues."""
+		agent_steps = []
+		for i, step in enumerate(workflow_definition.steps):
+			if hasattr(step, 'type') and step.type == 'agent':
+				agent_steps.append((i, step))
+
+		if agent_steps:
+			print(f"\n⚠️  WARNING: Generated workflow contains {len(agent_steps)} agent step(s)!")
+			print("   Agent steps are 10-30x slower and cost money per execution.")
+			print("   Consider these alternatives:\n")
+			for i, step in agent_steps:
+				task = getattr(step, 'task', 'Unknown task')
+				print(f"   Step {i+1}: {task}")
+
+				# Suggest semantic alternatives
+				if 'search' in task.lower() or 'input' in task.lower():
+					print(f"     → Suggestion: Use 'input' + 'keypress' steps instead")
+				elif 'click' in task.lower():
+					print(f"     → Suggestion: Use 'click' step with 'target_text' instead")
+				print()
+
 	def _populate_selector_fields(self, workflow_definition: WorkflowDefinitionSchema) -> WorkflowDefinitionSchema:
 		"""Populate cssSelector, xpath, and elementTag fields from interacted_elements_hash_map"""
 		# Process each step to add back the selector fields
@@ -108,7 +138,9 @@ class HealingService:
 		# Create the full WorkflowDefinitionSchema with populated fields
 		return workflow_definition
 
-	async def create_workflow_definition(self, task: str, history_list: AgentHistoryList) -> WorkflowDefinitionSchema:
+	async def create_workflow_definition(
+		self, task: str, history_list: AgentHistoryList, extract_variables: bool = True
+	) -> WorkflowDefinitionSchema:
 		async with aiofiles.open('workflow_use/healing/prompts/workflow_creation_prompt.md', mode='r') as f:
 			prompt_content = await f.read()
 
@@ -137,6 +169,26 @@ class HealingService:
 
 		workflow_definition = self._populate_selector_fields(workflow_definition)
 
+		# Validate workflow quality - warn about agent steps
+		self._validate_workflow_quality(workflow_definition)
+
+		# Post-process to extract additional variables if enabled
+		if extract_variables and self.variable_extractor:
+			# The LLM already identified variables in the initial generation
+			# But we can optionally run a second pass for validation/enhancement
+			try:
+				print("\nAnalyzing workflow for additional variable opportunities...")
+				result = await self.variable_extractor.suggest_variables(workflow_definition)
+				if result.suggestions:
+					print(f"Found {len(result.suggestions)} variable suggestions:")
+					for suggestion in result.suggestions:
+						print(f"  - {suggestion.name} ({suggestion.type}): {suggestion.reasoning}")
+					# Note: We don't auto-apply these suggestions, just log them
+					# The initial LLM generation should have already identified the main variables
+			except Exception as e:
+				print(f"Warning: Variable extraction analysis failed: {e}")
+				# Continue with the original workflow
+
 		return workflow_definition
 
 	# Generate workflow from prompt
@@ -149,7 +201,7 @@ class HealingService:
 		2. Converting the agent history into a workflow definition
 		"""
 
-		browser = Browser(use_cloud_browser=use_cloud)
+		browser = Browser()
 
 		# Note: HealingController's custom action has compatibility issues with current browser-use version
 		# Using standard Controller for now

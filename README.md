@@ -82,7 +82,7 @@ from workflow_use.healing.service import HealingService
 from workflow_use.storage.service import WorkflowStorageService
 from browser_use.llm import ChatOpenAI
 
-healing_service = HealingService(llm=ChatOpenAI(model='gpt-4o'))
+healing_service = HealingService(llm=ChatOpenAI(model='gpt-4.1'))
 storage_service = WorkflowStorageService()
 
 # Generate workflow

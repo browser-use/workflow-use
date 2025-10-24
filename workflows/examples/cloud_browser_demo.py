@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from browser_use.llm import ChatOpenAI
+
 from workflow_use.workflow.service import Workflow
 
 # Dummy LLM (not used in run_with_no_ai)

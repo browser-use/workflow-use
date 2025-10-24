@@ -1175,7 +1175,7 @@ def run_workflow_command(
 		try:
 			# Instantiate Browser and WorkflowController for the Workflow instance
 			# Pass llm_instance for potential agent fallbacks or agentic steps
-			browser = Browser(use_cloud_browser=use_cloud)
+			browser = Browser(use_cloud=use_cloud)
 			controller_instance = WorkflowController()  # Add any necessary config if required
 			workflow_obj = Workflow.load_from_file(
 				str(workflow_path),
@@ -1293,7 +1293,7 @@ def run_workflow_no_ai_command(
 
 		try:
 			# Instantiate Browser for the Workflow instance
-			browser = Browser(use_cloud_browser=use_cloud)
+			browser = Browser(use_cloud=use_cloud)
 			# Create a dummy LLM instance since it's required by the constructor but won't be used for interactions
 			dummy_llm = None
 			extraction_llm = None
@@ -1748,7 +1748,7 @@ def run_workflow_csv_command(
 
 		# Load workflow
 		try:
-			browser = Browser(use_cloud_browser=use_cloud)
+			browser = Browser(use_cloud=use_cloud)
 
 			dummy_llm = None
 			if use_ai and llm_instance:
