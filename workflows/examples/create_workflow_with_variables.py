@@ -5,7 +5,7 @@ This example shows two ways to create workflows that use variables:
 1. Manual JSON - Write JSON with {placeholders} directly
 2. Automatic LLM - Let LLM identify and create variables automatically
 
-Run: uv run python examples/create_workflow_with_variables.py
+Run: cd workflows && uv run python examples/create_workflow_with_variables.py
 """
 
 import json
