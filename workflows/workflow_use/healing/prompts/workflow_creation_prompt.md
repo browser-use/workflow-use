@@ -14,12 +14,13 @@ You are a master at building re-executable workflows from browser automation ste
 
 2. **ALWAYS use semantic `target_text` for element targeting!**
    - Look for visible text, labels, placeholders, aria-labels
-   - Use `{{variable}}` syntax (single braces) in `target_text` for dynamic values
+   - Use `{{variable}}` syntax (one pair of curly braces) in `target_text` for dynamic values
    - Example: `{{"type": "click", "target_text": "{{repo_name}}"}}`
 
-3. **Variables MUST use single braces: `{{variable_name}}`**
+3. **Variables MUST use {variable} syntax (one pair of curly braces)**
    - ✅ CORRECT: `"value": "{{email}}"` or `"target_text": "{{repo_name}}"`
    - ❌ WRONG: `"value": "{{{{email}}}}"` or `"value": "email"`
+   - Python's str.format() substitutes {variable} with actual values at runtime
 
 4. **Prefer direct navigation over search engines!**
    - If task involves "search GitHub" → Navigate directly to https://github.com
@@ -131,14 +132,14 @@ Each step must include a `"type"` field and a brief `"description"`.
     - Example (variable in value): `{{"type": "input", "target_text": "Email", "value": "{{email}}", "description": "Enter email address"}}`
     - Example (variable in target_text): `{{"type": "click", "target_text": "{{repo_name}}", "container_hint": "Repositories", "description": "Click repository - works for ANY repo name!"}}`
     - **PRO TIP**: Using variables in `target_text` allows the same workflow to work with different search terms, product names, button labels, etc. WITHOUT needing agent steps!
-    - **CRITICAL**: Variables use SINGLE braces `{{var}}` not double `{{{{var}}}}` or quadruple `{{{{{{{{var}}}}}}}}`
+    - **CRITICAL**: Variables use `{{var}}` syntax (one pair of curly braces) - NOT `{{{{var}}}}` (double braces) or `{{{{{{{{var}}}}}}}}` (quadruple braces)
   - **ALTERNATIVE: Use `elementHash` from `interacted_elements`** (only if target_text is not available)
     - `elementHash` can NOT be a variable (`{{{{ }}}}` is not allowed) or guessed
     - If you are not sure about element hash, use semantic `target_text` instead
   - **LAST RESORT: Use `agent` step** only when neither target_text nor elementHash works
-- **CRITICAL**: Reference workflow inputs using `{{input_name}}` syntax (SINGLE braces) in parameter values **AND in target_text fields**
+- **CRITICAL**: Reference workflow inputs using `{{input_name}}` syntax (one pair of curly braces) in parameter values **AND in target_text fields**
   - ✅ CORRECT: `"value": "{{email}}"` or `"target_text": "{{repo_name}}"`
-  - ❌ WRONG: `"value": "{{{{email}}}}"` or `"value": "{{{{{{{{email}}}}}}}}"`
+  - ❌ WRONG: `"value": "{{{{email}}}}"` (double braces) or `"value": "{{{{{{{{email}}}}}}}}"` (quadruple braces)
 - Please NEVER output `cssSelector`, `xpath`, `elementTag` fields in the output. They are not needed. (ALWAYS leave them empty/None).
 - **For input elements with format requirements**: Include specific format instructions in the step description (e.g., "Enter email in format: user@domain.com", "Enter date in MM/DD/YYYY format", "Enter phone number as (xxx) xxx-xxxx")
 
@@ -196,9 +197,10 @@ Each step must include a `"type"` field and a brief `"description"`.
 
 ### Parameter Syntax
 
-- Reference inputs using `{{{{input_name}}}}` syntax (no prefixes)
+- Reference inputs using `{{input_name}}` syntax (no prefixes) - one pair of curly braces
 - Quote all placeholder values for JSON parsing
 - Extract variables from actual values in the steps, not defaults
+- Python's str.format() will substitute `{{variable}}` with actual input values at runtime
 
 ### Step Descriptions
 

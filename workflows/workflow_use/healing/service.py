@@ -191,6 +191,53 @@ class HealingService:
 
 		return workflow_definition
 
+	async def _create_workflow_deterministically(
+		self, task: str, history_list: AgentHistoryList, extract_variables: bool = True
+	) -> WorkflowDefinitionSchema:
+		"""
+		Create workflow definition using deterministic conversion (no LLM for step creation).
+
+		This method converts browser actions directly to semantic steps without LLM inference,
+		resulting in faster generation and guaranteed semantic steps (no agent steps).
+		"""
+		if not self.deterministic_converter:
+			raise ValueError("Deterministic converter not initialized. Set use_deterministic_conversion=True in constructor.")
+
+		print("🔧 Using deterministic workflow conversion (no LLM for step creation)")
+
+		# Convert history to steps deterministically
+		steps = self.deterministic_converter.convert_history_to_steps(history_list)
+
+		# Create workflow definition dict
+		workflow_dict = self.deterministic_converter.create_workflow_definition(
+			name=task,
+			description=f"Workflow for: {task}",
+			steps=steps,
+			input_schema=[]
+		)
+
+		# Convert to WorkflowDefinitionSchema
+		workflow_definition = WorkflowDefinitionSchema(**workflow_dict)
+
+		workflow_definition = self._populate_selector_fields(workflow_definition)
+
+		# Validate workflow quality - should have zero agent steps
+		self._validate_workflow_quality(workflow_definition)
+
+		# Post-process to extract variables if enabled
+		if extract_variables and self.variable_extractor:
+			try:
+				print("\nAnalyzing workflow for variable opportunities...")
+				result = await self.variable_extractor.suggest_variables(workflow_definition)
+				if result.suggestions:
+					print(f"Found {len(result.suggestions)} variable suggestions:")
+					for suggestion in result.suggestions:
+						print(f"  - {suggestion.name} ({suggestion.type}): {suggestion.reasoning}")
+			except Exception as e:
+				print(f"Warning: Variable extraction analysis failed: {e}")
+
+		return workflow_definition
+
 	# Generate workflow from prompt
 	async def generate_workflow_from_prompt(
 		self, prompt: str, agent_llm: BaseChatModel, extraction_llm: BaseChatModel, use_cloud: bool = False
@@ -222,6 +269,14 @@ class HealingService:
 		history = await agent.run()
 
 		# Create workflow definition from the history
-		workflow_definition = await self.create_workflow_definition(prompt, history)
+		# Route to deterministic or LLM-based conversion based on flag
+		if self.use_deterministic_conversion:
+			workflow_definition = await self._create_workflow_deterministically(
+				prompt, history, extract_variables=self.enable_variable_extraction
+			)
+		else:
+			workflow_definition = await self.create_workflow_definition(
+				prompt, history, extract_variables=self.enable_variable_extraction
+			)
 
 		return workflow_definition

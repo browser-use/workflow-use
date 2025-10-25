@@ -294,6 +294,6 @@ class VariableExtractor:
             old_value: Value to replace
             new_value: Replacement value
         """
-        for key in ['value', 'selectedText', 'url', 'task']:
+        for key in ['value', 'selectedText', 'url', 'task', 'target_text']:
             if key in step_dict and step_dict[key] == old_value:
                 step_dict[key] = new_value

@@ -5,18 +5,25 @@
 Generate workflows **without LLM for step creation** - directly map browser actions to semantic steps:
 
 ```python
+import asyncio
 from workflow_use.healing.service import HealingService
 from langchain_anthropic import ChatAnthropic
 
-llm = ChatAnthropic(model_name="claude-3-5-sonnet-20241022")
+async def main():
+    llm = ChatAnthropic(model_name="claude-3-5-sonnet-20241022")
 
-service = HealingService(llm=llm, use_deterministic_conversion=True)
+    service = HealingService(llm=llm, use_deterministic_conversion=True)
 
-workflow = await service.generate_workflow_from_prompt(
-    prompt="Go to GitHub, search for browser-use, get star count",
-    agent_llm=llm,
-    extraction_llm=llm
-)
+    workflow = await service.generate_workflow_from_prompt(
+        prompt="Go to GitHub, search for browser-use, get star count",
+        agent_llm=llm,
+        extraction_llm=llm
+    )
+
+    return workflow
+
+if __name__ == "__main__":
+    workflow = asyncio.run(main())
 ```
 
 ## Test It
