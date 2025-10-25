@@ -6,25 +6,32 @@ import json as _json
 import logging
 from pathlib import Path
 from typing import Any, Dict, List, TypeVar
-from typing import cast as _cast
 
 from browser_use import Agent, Browser
 from browser_use.agent.views import ActionResult, AgentHistoryList
-from browser_use.llm.base import BaseChatModel
-from browser_use.llm import SystemMessage, UserMessage
-from pydantic import BaseModel, Field, create_model
+from langchain.agents import AgentExecutor, create_tool_calling_agent
+from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.tools import StructuredTool
+from pydantic import BaseModel, create_model
 
 from workflow_use.controller.service import WorkflowController
 from workflow_use.controller.utils import get_best_element_handle
 from workflow_use.schema.views import (
 	AgenticWorkflowStep,
+	ClickStep,
 	DeterministicWorkflowStep,
+	InputStep,
+	KeyPressStep,
+	NavigationStep,
+	ScrollStep,
+	SelectChangeStep,
 	WorkflowDefinitionSchema,
 	WorkflowInputSchemaDefinition,
 	WorkflowStep,
 )
-from workflow_use.workflow.prompts import AGENT_STEP_SYSTEM_PROMPT, STRUCTURED_OUTPUT_PROMPT
-from workflow_use.workflow.step_agent.controller import WorkflowStepAgentController
+from workflow_use.workflow.prompts import STRUCTURED_OUTPUT_PROMPT, WORKFLOW_FALLBACK_PROMPT_TEMPLATE
 from workflow_use.workflow.views import WorkflowRunOutput
 
 logger = logging.getLogger(__name__)
@@ -40,13 +47,12 @@ class Workflow:
 	def __init__(
 		self,
 		workflow_schema: WorkflowDefinitionSchema,
-		llm: BaseChatModel,
 		*,
 		controller: WorkflowController | None = None,
 		browser: Browser | None = None,
+		llm: BaseChatModel | None = None,
 		page_extraction_llm: BaseChatModel | None = None,
 		fallback_to_agent: bool = True,
-		use_cloud: bool = False,
 	) -> None:
 		"""Initialize a new Workflow instance from a schema object.
 
@@ -56,16 +62,20 @@ class Workflow:
 			browser: Optional Browser instance to use for browser automation
 			llm: Optional language model for fallback agent functionality
 			fallback_to_agent: Whether to fall back to agent-based execution on step failure
-			use_cloud: Whether to use browser-use cloud browser service instead of local browser
 
 		Raises:
 			ValueError: If the workflow schema is invalid (though Pydantic handles most).
 		"""
 		self.schema = workflow_schema  # Store the schema object
 
+		self.name = self.schema.name
+		self.description = self.schema.description
+		self.version = self.schema.version
+		self.steps = self.schema.steps
+
 		self.controller = controller or WorkflowController()
 
-		self.browser = browser or Browser(use_cloud=use_cloud)
+		self.browser = browser or Browser()
 
 		# Hack to not close it after agent kicks in
 		self.browser.browser_profile.keep_alive = True
@@ -85,12 +95,11 @@ class Workflow:
 	def load_from_file(
 		cls,
 		file_path: str | Path,
-		llm: BaseChatModel,
 		*,
 		controller: WorkflowController | None = None,
 		browser: Browser | None = None,
+		llm: BaseChatModel | None = None,
 		page_extraction_llm: BaseChatModel | None = None,
-		use_cloud: bool = False,
 	) -> Workflow:
 		"""Load a workflow from a file."""
 		with open(file_path, 'r', encoding='utf-8') as f:
@@ -102,7 +111,6 @@ class Workflow:
 			browser=browser,
 			llm=llm,
 			page_extraction_llm=page_extraction_llm,
-			use_cloud=use_cloud,
 		)
 
 	# --- Runners ---
@@ -127,167 +135,125 @@ class Workflow:
 
 		# Determine if this is not the last step, and extract next step's cssSelector if available
 		current_index = step_index
-		if current_index < len(self.schema.steps) - 1:
-			next_step = self.schema.steps[current_index + 1]
+		if current_index < len(self.steps) - 1:
+			next_step = self.steps[current_index + 1]
 			next_step_resolved = self._resolve_placeholders(next_step)
 			css_selector = getattr(next_step_resolved, 'cssSelector', None)
 			if css_selector:
 				try:
+					await self.browser._wait_for_stable_network()
 					page = await self.browser.get_current_page()
 
-					logger.info(f'Waiting for element with selector: {truncate_selector(css_selector)}')
-					locator, selector_used = await get_best_element_handle(
-						page, css_selector, next_step_resolved, timeout_ms=WAIT_FOR_ELEMENT_TIMEOUT
-					)
-					logger.info(f'Element with selector found: {truncate_selector(selector_used)}')
+					# If the next step declares a URL/frameUrl and it does not match the current page URL,
+					# skip waiting for its element on the current page (prevents false failures like step 7).
+					curr_url = (page.url or '').split('#')[0]
+					declared_next_url = (getattr(next_step_resolved, 'url', None) or getattr(next_step_resolved, 'frameUrl', None) or '').split('#')[0]
+					if declared_next_url and declared_next_url != curr_url:
+						logger.info(
+							f"Skipping pre-wait for next selector because declared next URL ({truncate_selector(declared_next_url)}) != current URL ({truncate_selector(curr_url)})"
+						)
+					else:
+						logger.info(f'Waiting for element with selector: {truncate_selector(css_selector)}')
+						locator, selector_used = await get_best_element_handle(
+							page, css_selector, next_step_resolved, timeout_ms=WAIT_FOR_ELEMENT_TIMEOUT
+						)
+						logger.info(f'Element with selector found: {truncate_selector(selector_used)}')
 				except Exception as e:
 					logger.error(f'Failed to wait for element with selector: {truncate_selector(css_selector)}. Error: {e}')
 					raise Exception(f'Failed to wait for element. Selector: {css_selector}') from e
 
 		return result
 
-	def _format_agent_step_context(self, current_step: AgenticWorkflowStep, step_index: int) -> str:
-		"""Format the workflow step context for the agent with extended context (last 2, current, next 2 steps)."""
-
-		def format_step_info(step: WorkflowStep, step_num: int) -> str:
-			"""Format step information consistently."""
-			info = [f'Step {step_num}: Type: {step.type}']
-			if step.description:
-				info.append(f'Description: {step.description}')
-			# For agent steps, show the task
-			if isinstance(step, AgenticWorkflowStep):
-				info.append(f'Task: {step.task}')
-			return '\n'.join(info)
-
-		sections = []
-		total_steps = len(self.schema.steps)
-
-		# Add previous steps context (last 2 steps)
-		prev_steps = []
-		for i in range(max(0, step_index - 2), step_index):
-			prev_step = self.schema.steps[i]
-			prev_steps.append(format_step_info(prev_step, i + 1))
-
-		if prev_steps:
-			sections.extend(['=== PREVIOUS STEPS (FOR CONTEXT ONLY) ===', '\n\n'.join(prev_steps), ''])
-
-		# Add current step context
-		sections.extend(['=== CURRENT STEP (YOUR TASK) ===', format_step_info(current_step, step_index + 1), ''])
-
-		# Add next steps context (next 2 steps)
-		next_steps = []
-		for i in range(step_index + 1, min(total_steps, step_index + 3)):
-			next_step = self.schema.steps[i]
-			next_steps.append(format_step_info(next_step, i + 1))
-
-		if next_steps:
-			sections.extend(
-				[
-					'=== NEXT STEPS (FOR CONTEXT ONLY) ===',
-					'\n\n'.join(next_steps),
-				]
-			)
-
-		return '\n'.join(sections)
-
-	async def _run_agent_step(self, step: AgenticWorkflowStep, step_index: int) -> AgentHistoryList:
+	async def _run_agent_step(self, step: AgenticWorkflowStep) -> AgentHistoryList:
 		"""Spin-up an Agent based on step dictionary."""
-		# Create contextual task with extended context (last 2, current, next 2 steps)
-		contextual_task = self._format_agent_step_context(step, step_index)
+		if self.llm is None:
+			raise ValueError("An 'llm' instance must be supplied for agent-based steps")
 
-		# logger.info(f'Contextual task: {contextual_task}')
-
-		# 		task = """
-		# {step.task}
-
-		# Please do not make up any fake data.
-		# """
+		task: str = step.task
+		max_steps: int = step.max_steps or 5
 
 		agent = Agent(
-			task=step.task,  # Only the current step task goes into ultimate task
-			message_context=contextual_task,  # Extended context with surrounding steps
+			task=task,
 			llm=self.llm,
 			browser_session=self.browser,
-			controller=WorkflowStepAgentController(),
-			# use_vision=True,  # Consider making this configurable via WorkflowStep schema
-			override_system_message=AGENT_STEP_SYSTEM_PROMPT,
+			use_vision=True,  # Consider making this configurable via WorkflowStep schema
+		)
+		return await agent.run(max_steps=max_steps)
+
+	async def _fallback_to_agent(
+		self,
+		step_resolved: WorkflowStep,
+		step_index: int,
+		error: Exception | str | None = None,
+	) -> AgentHistoryList:
+		"""Handle step failure by delegating to an agent."""
+		if self.llm is None:
+			raise ValueError("Cannot fall back to agent: An 'llm' instance must be supplied")
+		# print('Workflow steps:', step_resolved)
+		# Extract details from the failed step dictionary
+		failed_action_name = step_resolved.type
+		failed_params = step_resolved.model_dump()
+		step_description = step_resolved.description or 'No description provided'
+		error_msg = str(error) if error else 'Unknown error'
+		total_steps = len(self.steps)
+		fail_details = (
+			f"step={step_index + 1}/{total_steps}, action='{failed_action_name}', "
+			f"description='{step_description}', params={str(failed_params)}, error='{error_msg}'"
 		)
 
-		return await agent.run()
+		# Determine the failed_value based on step type and attributes
+		failed_value = None
+		description_prefix = f'Purpose: {step_description}. ' if step_description else ''
 
-	# async def _fallback_to_agent(
-	# 	self,
-	# 	step_resolved: WorkflowStep,
-	# 	step_index: int,
-	# 	error: Exception | str | None = None,
-	# ) -> AgentHistoryList:
-	# 	"""Handle step failure by delegating to an agent."""
+		if isinstance(step_resolved, NavigationStep):
+			failed_value = f'{description_prefix}Navigate to URL: {step_resolved.url}'
+		elif isinstance(step_resolved, ClickStep):
+			# element_info = step_resolved.elementText or step_resolved.cssSelector
+			# failed_value = f"{description_prefix}Click element: {element_info}"
+			failed_value = f'Find and click element with description: {step_resolved.description}'
+		elif isinstance(step_resolved, InputStep):
+			failed_value = f"{description_prefix}Input text: '{step_resolved.value}' into element."
+		elif isinstance(step_resolved, SelectChangeStep):
+			failed_value = f"{description_prefix}Select option: '{step_resolved.selectedText}' in dropdown."
+		elif isinstance(step_resolved, KeyPressStep):
+			failed_value = f"{description_prefix}Press key: '{step_resolved.key}'"
+		elif isinstance(step_resolved, ScrollStep):
+			failed_value = f'{description_prefix}Scroll to position: (x={step_resolved.scrollX}, y={step_resolved.scrollY})'
+		else:
+			failed_value = f"{description_prefix}No specific target value available for action '{failed_action_name}'"
 
-	# 	# print('Workflow steps:', step_resolved)
-	# 	# Extract details from the failed step dictionary
-	# 	failed_action_name = step_resolved.type
-	# 	failed_params = step_resolved.model_dump()
-	# 	step_description = step_resolved.description or 'No description provided'
-	# 	error_msg = str(error) if error else 'Unknown error'
-	# 	total_steps = len(self.steps)
-	# 	fail_details = (
-	# 		f"step={step_index + 1}/{total_steps}, action='{failed_action_name}', "
-	# 		f"description='{step_description}', params={str(failed_params)}, error='{error_msg}'"
-	# 	)
+		# Build workflow overview using the stored dictionaries
+		workflow_overview_lines: list[str] = []
+		for idx, step in enumerate(self.steps):
+			desc = step.description or ''
+			step_type_info = step.type
+			details = step.model_dump()
+			workflow_overview_lines.append(f'  {idx + 1}. ({step_type_info}) {desc} - {details}')
+		workflow_overview = '\n'.join(workflow_overview_lines)
+		# print(workflow_overview)
 
-	# 	# Determine the failed_value based on step type and attributes
-	# 	failed_value = None
-	# 	description_prefix = f'Purpose: {step_description}. ' if step_description else ''
+		# Build the fallback task with the failed_value
+		fallback_task = WORKFLOW_FALLBACK_PROMPT_TEMPLATE.format(
+			step_index=step_index + 1,
+			total_steps=len(self.steps),
+			workflow_details=workflow_overview,
+			action_type=failed_action_name,
+			fail_details=fail_details,
+			failed_value=failed_value,
+			step_description=step_description,
+		)
+		logger.info(f'Agent fallback task: {fallback_task}')
 
-	# 	if isinstance(step_resolved, NavigationStep):
-	# 		failed_value = f'{description_prefix}Navigate to URL: {step_resolved.url}'
-	# 	elif isinstance(step_resolved, ClickStep):
-	# 		# element_info = step_resolved.elementText or step_resolved.cssSelector
-	# 		# failed_value = f"{description_prefix}Click element: {element_info}"
-	# 		failed_value = f'Find and click element with description: {step_resolved.description}'
-	# 	elif isinstance(step_resolved, InputStep):
-	# 		failed_value = f"{description_prefix}Input text: '{step_resolved.value}' into element."
-	# 	elif isinstance(step_resolved, SelectChangeStep):
-	# 		failed_value = f"{description_prefix}Select option: '{step_resolved.selectedText}' in dropdown."
-	# 	elif isinstance(step_resolved, KeyPressStep):
-	# 		failed_value = f"{description_prefix}Press key: '{step_resolved.key}'"
-	# 	elif isinstance(step_resolved, ScrollStep):
-	# 		failed_value = f'{description_prefix}Scroll to position: (x={step_resolved.scrollX}, y={step_resolved.scrollY})'
-	# 	else:
-	# 		failed_value = f"{description_prefix}No specific target value available for action '{failed_action_name}'"
+		# Prepare agent step config based on the failed step, adding task
+		agent_step_config = AgenticWorkflowStep(
+			type='agent',
+			task=fallback_task,
+			max_steps=5,
+			output=None,
+			description='Fallback agent to handle step failure',
+		)
 
-	# 	# Build workflow overview using the stored dictionaries
-	# 	workflow_overview_lines: list[str] = []
-	# 	for idx, step in enumerate(self.steps):
-	# 		desc = step.description or ''
-	# 		step_type_info = step.type
-	# 		details = step.model_dump()
-	# 		workflow_overview_lines.append(f'  {idx + 1}. ({step_type_info}) {desc} - {details}')
-	# 	workflow_overview = '\n'.join(workflow_overview_lines)
-	# 	# print(workflow_overview)
-
-	# 	# Build the fallback task with the failed_value
-	# 	fallback_task = WORKFLOW_FALLBACK_PROMPT_TEMPLATE.format(
-	# 		step_index=step_index + 1,
-	# 		total_steps=len(self.steps),
-	# 		workflow_details=workflow_overview,
-	# 		action_type=failed_action_name,
-	# 		fail_details=fail_details,
-	# 		failed_value=failed_value,
-	# 		step_description=step_description,
-	# 	)
-	# 	logger.info(f'Agent fallback task: {fallback_task}')
-
-	# 	# Prepare agent step config based on the failed step, adding task
-	# 	agent_step_config = AgenticWorkflowStep(
-	# 		type='agent',
-	# 		task=fallback_task,
-	# 		max_steps=5,
-	# 		output=None,
-	# 		description='Fallback agent to handle step failure',
-	# 	)
-
-	# 	return await self._run_agent_step(agent_step_config)
+		return await self._run_agent_step(agent_step_config)
 
 	def _validate_inputs(self, inputs: dict[str, Any]) -> None:
 		"""Validate provided inputs against the workflow's input schema definition."""
@@ -421,35 +387,31 @@ class Workflow:
 				logger.warning(
 					f'Deterministic step {step_index + 1} ({action_name}) failed: {e}. Attempting fallback with agent.'
 				)
-
-				raise ValueError(f'Deterministic step {step_index + 1} ({action_name}) failed: {e}')
-
-				# if self.fallback_to_agent:
-				# 	result = await self._fallback_to_agent(step_resolved, step_index, e)
-				# 	if not result.is_successful():
-				# 		raise ValueError(f'Deterministic step {step_index + 1} ({action_name}) failed even after fallback')
-				# else:
-				# 	raise ValueError(f'Deterministic step {step_index + 1} ({action_name}) failed: {e}')
-
+				if self.llm is None:
+					raise ValueError('Cannot fall back to agent: LLM instance required.')
+				if self.fallback_to_agent:
+					result = await self._fallback_to_agent(step_resolved, step_index, e)
+					if not result.is_successful():
+						raise ValueError(f'Deterministic step {step_index + 1} ({action_name}) failed even after fallback')
+				else:
+					raise ValueError(f'Deterministic step {step_index + 1} ({action_name}) failed: {e}')
 		elif isinstance(step_resolved, AgenticWorkflowStep):
 			# Use task key from step dictionary
 			task_description = step_resolved.task
 			logger.info(f'Running agent task: {task_description}')
 			try:
-				result = await self._run_agent_step(step_resolved, step_index)
+				result = await self._run_agent_step(step_resolved)
 				if not result.is_successful():
 					logger.warning(f'Agent step {step_index + 1} failed evaluation.')
 					raise ValueError(f'Agent step {step_index + 1} failed evaluation.')
-
 			except Exception as e:
-				raise ValueError(f'Agent step {step_index + 1} failed: {e}. (Agent fallback is disabled)')
-
 				if self.fallback_to_agent:
 					logger.warning(f'Agent step {step_index + 1} failed: {e}. Attempting fallback with agent.')
-
-					# result = await self._fallback_to_agent(step_resolved, step_index, e)
-					# if not result.is_successful():
-					# 	raise ValueError(f'Agent step {step_index + 1} failed even after fallback')
+					if self.llm is None:
+						raise ValueError('Cannot fall back to agent: LLM instance required.')
+					result = await self._fallback_to_agent(step_resolved, step_index, e)
+					if not result.is_successful():
+						raise ValueError(f'Agent step {step_index + 1} failed even after fallback')
 				else:
 					raise ValueError(f'Agent step {step_index + 1} failed: {e}')
 
@@ -463,7 +425,7 @@ class Workflow:
 	) -> T:
 		"""Convert workflow results to a specified output model.
 
-		Filters ActionResults with extracted_content, then uses LLM to parse
+		Filters ActionResults with extracted_content, then uses LangChain to parse
 		all extracted texts into the structured output model.
 
 		Args:
@@ -475,6 +437,9 @@ class Workflow:
 		"""
 		if not results:
 			raise ValueError('No results to convert')
+
+		if self.llm is None:
+			raise ValueError('LLM is required for structured output conversion')
 
 		# Extract all content from ActionResults
 		extracted_contents = []
@@ -496,13 +461,15 @@ class Workflow:
 		# Combine all extracted contents
 		combined_text = '\n\n'.join(extracted_contents)
 
-		messages = [
+		messages: list[BaseMessage] = [
 			SystemMessage(content=STRUCTURED_OUTPUT_PROMPT),
-			UserMessage(content=combined_text),
+			HumanMessage(content=combined_text),
 		]
 
-		response = await self.llm.ainvoke(messages, output_format=output_model)
-		return response.completion
+		chain = self.llm.with_structured_output(output_model)
+		chain_result: T = await chain.ainvoke(messages)  # type: ignore
+
+		return chain_result
 
 	async def run_step(self, step_index: int, inputs: dict[str, Any] | None = None):
 		"""Run a *single* workflow step asynchronously and return its result.
@@ -516,8 +483,8 @@ class Workflow:
 				are validated and injected into :pyattr:`context`.  Subsequent
 				calls can omit *inputs* as :pyattr:`context` is already populated.
 		"""
-		if not (0 <= step_index < len(self.schema.steps)):
-			raise IndexError(f'step_index {step_index} is out of range for workflow with {len(self.schema.steps)} steps')
+		if not (0 <= step_index < len(self.steps)):
+			raise IndexError(f'step_index {step_index} is out of range for workflow with {len(self.steps)} steps')
 
 		# Initialise/augment context once with the provided inputs
 		if inputs is not None or not self.context:
@@ -531,7 +498,7 @@ class Workflow:
 				self.context.update(runtime_inputs)
 
 		async with self.browser:
-			raw_step_cfg = self.schema.steps[step_index]
+			raw_step_cfg = self.steps[step_index]
 			step_resolved = self._resolve_placeholders(raw_step_cfg)
 			result = await self._execute_step(step_index, step_resolved)
 			# Persist outputs (if declared) for future steps
@@ -573,8 +540,9 @@ class Workflow:
 
 		await self.browser.start()
 		try:
-			for step_index, step_dict in enumerate(self.schema.steps):  # self.steps now holds dictionaries
+			for step_index, step_dict in enumerate(self.steps):  # self.steps now holds dictionaries
 				await asyncio.sleep(0.1)
+				await self.browser._wait_for_stable_network()
 
 				# Check if cancellation was requested
 				if cancel_event and cancel_event.is_set():
@@ -583,7 +551,7 @@ class Workflow:
 
 				# Use description from the step dictionary
 				step_description = step_dict.description or 'No description provided'
-				logger.info(f'--- Running Step {step_index + 1}/{len(self.schema.steps)} -- {step_description} ---')
+				logger.info(f'--- Running Step {step_index + 1}/{len(self.steps)} -- {step_description} ---')
 				# Resolve placeholders using the current context (works on the dictionary)
 				step_resolved = self._resolve_placeholders(step_dict)
 
@@ -604,67 +572,39 @@ class Workflow:
 			# Clean-up browser after finishing workflow
 			if close_browser_at_end:
 				self.browser.browser_profile.keep_alive = False
-				await self.browser.stop()
+				await self.browser.close()
 
 		return WorkflowRunOutput(step_results=results, output_model=output_model_result)
 
 	# ------------------------------------------------------------------
-	# LLM tool wrapper
+	# LangChain tool wrapper
 	# ------------------------------------------------------------------
 
 	def _build_input_model(self) -> type[BaseModel]:
-		"""Return a *pydantic* model matching the workflow's ``input_schema`` section.
-
-		This creates a dynamic Pydantic model that includes format information in field
-		descriptions, making format requirements visible to LLMs when workflows are used as tools.
-		"""
-
+		"""Return a *pydantic* model matching the workflow's ``input_schema`` section."""
 		if not self.inputs_def:
 			# No declared inputs -> generate an empty model
 			# Use schema name for uniqueness, fallback if needed
 			model_name = f'{(self.schema.name or "Workflow").replace(" ", "_")}_NoInputs'
 			return create_model(model_name)
 
-		# Map workflow input types to Python types
 		type_mapping = {
 			'string': str,
 			'number': float,
-			'bool': bool,
+			'bool': bool,  # Added boolean type
 		}
-
-		# Build fields dictionary for create_model()
 		fields: Dict[str, tuple[type, Any]] = {}
-
 		for input_def in self.inputs_def:
 			name = input_def.name
 			type_str = input_def.type
 			py_type = type_mapping.get(type_str)
-
 			if py_type is None:
 				raise ValueError(f'Unsupported input type: {type_str!r} for field {name!r}')
-
-			# Create field description with format information if available
-			# This helps LLMs understand expected input formats when workflow is used as a tool
-			field_description = None
-			if hasattr(input_def, 'format') and input_def.format:
-				field_description = f'Format: {input_def.format}'
-
-			# Build field tuple: (type, default_or_field_info)
 			# Pydantic's create_model uses ... (Ellipsis) to mark required fields
-			if input_def.required:
-				if field_description:
-					# Required field with format description
-					fields[name] = (py_type, Field(..., description=field_description))
-				else:
-					# Required field without format description
-					fields[name] = (py_type, ...)
-			else:
-				if field_description:
-					# Optional field with format description
-					fields[name] = (py_type, Field(None, description=field_description))
-				else:
-					# Optional field without format description
-					fields[name] = (py_type, None)
+			default = ... if input_def.required else None
+			fields[name] = (py_type, default)
+
+		from typing import cast as _cast
 
 		# The raw ``create_model`` helper from Pydantic deliberately uses *dynamic*
 		# signatures, which the static type checker cannot easily verify.  We cast
@@ -674,119 +614,65 @@ class Workflow:
 			**_cast(Dict[str, Any], fields),
 		)
 
+	def as_tool(self, *, name: str | None = None, description: str | None = None):  # noqa: D401
+		"""Expose the entire workflow as a LangChain *StructuredTool* instance.
+
+		The generated tool validates its arguments against the workflow's input
+		schema (if present) and then returns the JSON-serialised output of
+		:py:meth:`run`.
+		"""
+
+		InputModel = self._build_input_model()
+		# Use schema name as default, sanitize for tool name requirements
+		default_name = ''.join(c if c.isalnum() else '_' for c in self.name)
+		tool_name = name or default_name[:50]
+		doc = description or self.description  # Use schema description
+
+		# `self` is closed over via the inner function so we can keep state.
+		async def _invoke(**kwargs):  # type: ignore[override]
+			logger.info(f'Running workflow as tool with inputs: {kwargs}')
+			augmented_inputs = kwargs.copy() if kwargs else {}
+			for input_def in self.inputs_def:
+				if not input_def.required and input_def.name not in augmented_inputs:
+					augmented_inputs[input_def.name] = None
+			result = await self.run(inputs=augmented_inputs)
+			# Serialise non-string output so models that expect a string tool
+			# response still work.
+			try:
+				return _json.dumps(result, default=str)
+			except Exception:
+				return str(result)
+
+		return StructuredTool.from_function(
+			coroutine=_invoke,
+			name=tool_name,
+			description=doc,
+			args_schema=InputModel,
+		)
+
 	async def run_as_tool(self, prompt: str) -> str:
-		"""Run the workflow with inputs parsed from a natural language prompt.
-
-		Args:
-			prompt: Natural language description of the task and inputs
-
-		Returns:
-			JSON string with workflow results
 		"""
+		Run the workflow with a prompt and automatically parse the required variables.
+
+		@dev Uses AgentExecutor to properly handle the tool invocation loop.
+		"""
+
+		# For now I kept it simple but one could think of using a react agent here.
 		if self.llm is None:
-			raise ValueError("LLM is required for run_as_tool to parse inputs from prompt")
+			raise ValueError("Cannot run as tool: An 'llm' instance must be supplied for tool-based steps")
 
-		# Parse inputs from prompt using LLM
-		input_model = self._build_input_model()
+		prompt_template = ChatPromptTemplate.from_messages(
+			[
+				('system', 'You are a helpful assistant'),
+				('human', '{input}'),
+				# Placeholders fill up a **list** of messages
+				('placeholder', '{agent_scratchpad}'),
+			]
+		)
 
-		system_prompt = f"""You are a helpful assistant that extracts workflow input parameters from user prompts.
-The workflow requires the following inputs:
-{json.dumps(input_model.model_json_schema(), indent=2)}
-
-Extract the values from the user's prompt and return them in the required format."""
-
-		messages = [
-			SystemMessage(content=system_prompt),
-			UserMessage(content=prompt)
-		]
-
-		response = await self.llm.ainvoke(messages, output_format=input_model)
-		inputs = response.completion.model_dump()
-
-		# Run the workflow with parsed inputs
-		result = await self.run(inputs=inputs, close_browser_at_end=True)
-
-		# Return results as JSON
-		output = {
-			"success": True,
-			"steps_executed": len(result.step_results),
-			"inputs_used": inputs,
-			"context": self.context
-		}
-
-		return json.dumps(output, indent=2)
-
-	async def run_with_no_ai(
-		self,
-		inputs: dict[str, Any] | None = None,
-		close_browser_at_end: bool = True,
-		cancel_event: asyncio.Event | None = None,
-		output_model: type[T] | None = None,
-	) -> WorkflowRunOutput[T]:
-		"""Execute the workflow using semantic abstraction without any AI/LLM involvement.
-
-		This method uses semantic mapping to convert visible text to deterministic selectors,
-		avoiding expensive LLM calls and fragile CSS selectors.
-
-		Args:
-			inputs: Optional dictionary of workflow inputs
-			close_browser_at_end: Whether to close the browser when done
-			cancel_event: Optional event to signal cancellation
-			output_model: Optional Pydantic model class to convert results to
-
-		Returns:
-			WorkflowRunOutput containing all step results
-		"""
-		from workflow_use.workflow.semantic_executor import SemanticWorkflowExecutor
-
-		runtime_inputs = inputs or {}
-		# 1. Validate inputs against definition
-		self._validate_inputs(runtime_inputs)
-		# 2. Initialize context with validated inputs
-		self.context = runtime_inputs.copy()  # Start with a fresh context
-
-		results: List[ActionResult | AgentHistoryList] = []
-
-		await self.browser.start()
-		semantic_executor = SemanticWorkflowExecutor(self.browser, page_extraction_llm=self.page_extraction_llm)
-
-		try:
-			for step_index, step_dict in enumerate(self.schema.steps):
-				await asyncio.sleep(0.1)
-
-				# Check if cancellation was requested
-				if cancel_event and cancel_event.is_set():
-					logger.info('Cancellation requested - stopping workflow execution')
-					break
-
-				# Use description from the step dictionary
-				step_description = step_dict.description or 'No description provided'
-				logger.info(f'--- Running Step {step_index + 1}/{len(self.schema.steps)} -- {step_description} ---')
-
-				# Resolve placeholders using the current context (works on the dictionary)
-				step_resolved = self._resolve_placeholders(step_dict)
-
-				# Only process deterministic steps (no agent steps)
-				if step_resolved.type == 'agent':
-					raise Exception(f"Agent steps are not supported in run_with_no_ai mode. Step {step_index + 1} is an agent step.")
-
-				# Execute step using semantic executor
-				result = await semantic_executor.execute_step(step_resolved)
-
-				results.append(result)
-				# Persist outputs using the resolved step dictionary
-				self._store_output(step_resolved, result)
-				logger.info(f'--- Finished Step {step_index + 1} ---\n')
-
-			# Convert results to output model if requested
-			output_model_result: T | None = None
-			if output_model:
-				output_model_result = await self._convert_results_to_output_model(results, output_model)
-
-		finally:
-			# Clean-up browser after finishing workflow
-			if close_browser_at_end:
-				self.browser.browser_profile.keep_alive = False
-				await self.browser.stop()
-
-		return WorkflowRunOutput(step_results=results, output_model=output_model_result)
+		# Create the workflow tool
+		workflow_tool = self.as_tool()
+		agent = create_tool_calling_agent(self.llm, [workflow_tool], prompt_template)
+		agent_executor = AgentExecutor(agent=agent, tools=[workflow_tool])
+		result = await agent_executor.ainvoke({'input': prompt})
+		return result['output']

@@ -2,11 +2,13 @@ import asyncio
 import json
 import pathlib
 from typing import Optional
+from urllib.parse import urlparse
 
 import uvicorn
 from browser_use import Browser
 from browser_use.browser.profile import BrowserProfile
 from fastapi import FastAPI
+from patchright.async_api import async_playwright as patchright_async_playwright
 
 # Assuming views.py is correctly located for this import path
 from workflow_use.recorder.views import (
@@ -84,7 +86,36 @@ class RecordingService:
 		async with self.final_workflow_processed_lock:
 			if not self.final_workflow_processed_flag and self.last_workflow_update_event:
 				print(f'[Service] Capturing final workflow (Trigger: {trigger_reason}).')
-				self.final_workflow_output = self.last_workflow_update_event.payload
+				wf = self.last_workflow_update_event.payload
+				# Backend safety filter: drop about:blank and obvious ad/analytics iframe navigations
+				try:
+					def _step_field(step, field: str):
+						if isinstance(step, dict):
+							return step.get(field)
+						return getattr(step, field, None)
+
+					clean_steps = []
+					for s in wf.steps:
+						st = _step_field(s, 'type')
+						url = _step_field(s, 'url')
+						if st == 'navigation':
+							if not url or url == 'about:blank':
+								continue
+							host = urlparse(url).hostname or ''
+							blocked = any(
+								pat in host for pat in (
+									'doubleclick.net', 'googlesyndication.com', 'googleadservices.com',
+									'amazon-adsystem.com', '2mdn.net', 'recaptcha.google.com', 'recaptcha.net',
+									'googletagmanager.com', 'indexww.com', 'adtrafficquality.google'
+								)
+							)
+							if blocked:
+								continue
+						clean_steps.append(s)
+					wf.steps = clean_steps
+				except Exception as e:
+					print(f'[Service] Backend filter failed: {e}')
+				self.final_workflow_output = wf
 				self.final_workflow_processed_flag = True
 				processed_this_call = True
 
@@ -96,7 +127,7 @@ class RecordingService:
 			if trigger_reason == 'RecordingStoppedEvent' and self.browser:
 				print('[Service] Attempting to close browser due to RecordingStoppedEvent...')
 				try:
-					await self.browser.stop()
+					await self.browser.close()
 					print('[Service] Browser close command issued.')
 				except Exception as e_close:
 					print(f'[Service] Error closing browser on recording stop: {e_close}')
@@ -127,7 +158,8 @@ class RecordingService:
 			)
 
 			# Create and configure browser
-			self.browser = Browser(browser_profile=profile)
+			playwright = await patchright_async_playwright().start()
+			self.browser = Browser(browser_profile=profile, playwright=playwright)
 
 			print('[Service] Starting browser with extensions...')
 			await self.browser.start()
@@ -150,7 +182,7 @@ class RecordingService:
 			print('[Service] Browser task cancelled.')
 			if self.browser:
 				try:
-					await self.browser.stop()
+					await self.browser.close()
 				except:
 					pass  # Best effort
 			raise  # Re-raise to be caught by gather
@@ -218,7 +250,7 @@ class RecordingService:
 				print('[Service] Ensuring browser is closed in cleanup...')
 				try:
 					self.browser.browser_profile.keep_alive = False
-					await self.browser.stop()
+					await self.browser.close()
 				except Exception as e_browser_close:
 					print(f'[Service] Error closing browser in final cleanup: {e_browser_close}')
 				# self.browser = None

@@ -1,0 +1,101 @@
+{
+  "name": "Recorded Workflow",
+  "description": "Recorded on 8/11/2025, 4:20:47 AM",
+  "version": "1.0.0",
+  "input_schema": [],
+  "steps": [
+    {
+      "type": "navigation",
+      "timestamp": 1754866228439,
+      "tabId": 388342781,
+      "url": "https://www.w3schools.com/tags/tryit.asp?filename=tryhtml_iframe"
+    },
+    {
+      "type": "scroll",
+      "timestamp": 1754866228608,
+      "tabId": 388342781,
+      "targetId": 219,
+      "scrollX": 0,
+      "scrollY": 7,
+      "url": "https://www.w3schools.com/tags/tryit.asp?filename=tryhtml_iframe"
+    },
+    {
+      "type": "navigation",
+      "timestamp": 1754866228634,
+      "tabId": 388342781,
+      "url": "https://www.w3schools.com/tags/tryit.asp?filename=tryhtml_iframe"
+    },
+    {
+      "type": "click",
+      "timestamp": 1754866228849,
+      "tabId": 388342781,
+      "url": "https://www.w3schools.com/tags/tryit.asp?filename=tryhtml_iframe",
+      "frameUrl": "https://www.w3schools.com/tags/tryit.asp?filename=tryhtml_iframe",
+      "frameIdPath": "0",
+      "xpath": "id(\"textareawrapper\")/div[1]/div[6]",
+      "cssSelector": "div.CodeMirror-scroll",
+      "elementTag": "DIV",
+      "elementText": "<!DOCTYPE html><html><body>​<h1>The iframe element</h1>​<iframe src=\"https://www.w3schools.com\" title=\"W3Schools Free Online Web Tutorials\"></iframe>​</body></html>​"
+    },
+    {
+      "type": "navigation",
+      "timestamp": 1754866230495,
+      "tabId": 388342781,
+      "url": "https://www.w3schools.com/tags/tryit.asp?filename=tryhtml_iframe"
+    },
+    {
+      "type": "click",
+      "timestamp": 1754866231531,
+      "tabId": 388342781,
+      "url": "https://www.w3schools.com/tags/tryit.asp?filename=tryhtml_iframe",
+      "frameUrl": "https://www.w3schools.com/tags/tryit.asp?filename=tryhtml_iframe",
+      "frameIdPath": "0",
+      "xpath": "body/div[2]/div[1]/a[4]",
+      "cssSelector": "a.w3-button.w3-bar-item.w3-hide-small.topnav-icons.fa.fa-rotate.ga-tryit[href=\"javascript:void(0);\"][title*=\"Change Orientation\"]",
+      "elementTag": "A",
+      "elementText": ""
+    },
+    {
+      "type": "navigation",
+      "timestamp": 1754866237707,
+      "tabId": 388342781,
+      "url": "https://www.w3schools.com/tags/tryit.asp?filename=tryhtml_iframe"
+    },
+    {
+      "type": "click",
+      "timestamp": 1754866238574,
+      "tabId": 388342781,
+      "url": "https://www.w3schools.com/",
+      "frameUrl": "https://www.w3schools.com/",
+      "frameIdPath": "0.0",
+      "xpath": "id(\"subtopnav\")/a[3]",
+      "cssSelector": "a.ga-nav[href=\"/js/default.asp\"][title*=\"JavaScript Tutorial\"]",
+      "elementTag": "A",
+      "elementText": "JAVASCRIPT"
+    },
+    {
+      "type": "navigation",
+      "timestamp": 1754866242778,
+      "tabId": 388342781,
+      "url": "https://www.w3schools.com/tags/tryit.asp?filename=tryhtml_iframe"
+    },
+    {
+      "type": "click",
+      "timestamp": 1754866242882,
+      "tabId": 388342781,
+      "url": "https://www.w3schools.com/js/default.asp",
+      "frameUrl": "https://www.w3schools.com/js/default.asp",
+      "frameIdPath": "0.0",
+      "xpath": "id(\"subtopnav\")/a[1]",
+      "cssSelector": "a.ga-nav.subtopnav_firstitem[href=\"/html/default.asp\"][title*=\"HTML Tutorial\"]",
+      "elementTag": "A",
+      "elementText": "HTML"
+    },
+    {
+      "type": "navigation",
+      "timestamp": 1754866246395,
+      "tabId": 388342781,
+      "url": "https://www.w3schools.com/tags/tryit.asp?filename=tryhtml_iframe"
+    }
+  ]
+}
