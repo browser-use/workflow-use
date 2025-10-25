@@ -1,4 +1,0 @@
-row_number,status,error,duration,steps_executed,failure_type,first_name,last_name,ssn_last4,gender,marital_status,phone_number,phone_type,email,address_line1,city,state,zip_code,county,housing_status,employment_status,contact_preference
-1,success,,0:01:14.049082,38,,John,Doe,1234,Male,Single,9177046644,Work,john@example.com,123 Main St,San Francisco,CA,94101,San Francisco,Rent,Student,Phone
-2,failed,Step verification failed,0:05:15.016683,0,other,Jane,Smith,5678,Female,Married,5551234567,Mobile,jane@example.com,456 Oak Ave,Los Angeles,CA,90210,Los Angeles,Own,Employed,Email
-3,success,,0:01:12.124127,38,,Bob,Johnson,9012,Male,Single,3331234567,Home,bob@example.com,789 Pine Rd,San Diego,CA,92101,San Diego,Rent,Unemployed,Phone 

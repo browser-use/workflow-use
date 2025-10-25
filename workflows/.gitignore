@@ -140,6 +140,9 @@ myenv
 # Rope project settings
 .ropeproject
 
+# Ruff cache
+.ruff_cache/
+
 # mkdocs documentation
 /site
 
@@ -183,11 +186,16 @@ AgentHistoryList.json
 .gradio/
 
 # For Docker
-data/
+# Note: data/test_data/ is tracked, but runtime data should be ignored
+data/storage/
+data/tmp/
 
 # For Config Files (Current Settings)
 .config.pkl
 *.pdf
 
 user_data_dir
-.claude
+
+# IDE-specific files
+.vscode/
+.idea/

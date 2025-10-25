@@ -1,3 +1,0 @@
-first_name,last_name,ssn_last4,gender,marital_status,phone_number,phone_type,email,address_line1,city,state,zip_code,county,housing_status,employment_status,contact_preference
-John Doe,John Doe,ssn_last4_value_1,gender_value_1,marital_status_value_1,+1-555-000-1000,+1-555-000-1000,user1@example.com,address_line1_value_1,city_value_1,state_value_1,zip_code_value_1,county_value_1,housing_status_value_1,employment_status_value_1,contact_preference_value_1
-Jane Smith,Jane Smith,ssn_last4_value_2,gender_value_2,marital_status_value_2,+1-555-000-1001,+1-555-000-1001,user2@example.com,address_line1_value_2,city_value_2,state_value_2,zip_code_value_2,county_value_2,housing_status_value_2,employment_status_value_2,contact_preference_value_2

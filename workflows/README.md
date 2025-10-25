@@ -6,8 +6,7 @@ Semantic browser automation with deterministic workflow generation and variables
 
 ### 1. Test Deterministic Workflow Generation (NEW!)
 ```bash
-cd examples
-python run_complete_test.py
+python examples/scripts/deterministic/run_complete_test.py
 ```
 
 Generate workflows **without LLM for step creation** - 10-100x faster, guaranteed semantic steps.
@@ -55,8 +54,8 @@ python cli.py run-workflow-no-ai my_workflow.json
 
 ## Documentation
 
-- **[README_DETERMINISTIC.md](README_DETERMINISTIC.md)** - Deterministic workflow generation
-- **[README_VARIABLES.md](README_VARIABLES.md)** - Variables guide
+- **[docs/DETERMINISTIC.md](docs/DETERMINISTIC.md)** - Deterministic workflow generation
+- **[docs/VARIABLES.md](docs/VARIABLES.md)** - Variables guide
 - **[examples/README.md](examples/README.md)** - Example scripts
 
 ---
@@ -65,18 +64,55 @@ python cli.py run-workflow-no-ai my_workflow.json
 
 ```
 workflows/
-├── workflow_use/
-│   ├── healing/
+├── workflow_use/              # Main package
+│   ├── healing/              # Workflow generation & healing
 │   │   ├── deterministic_converter.py   # NEW: Deterministic conversion
 │   │   ├── variable_extractor.py        # Auto variable detection
 │   │   └── service.py                   # Main workflow generation
-│   └── workflow/
-│       └── semantic_executor.py         # Semantic step execution
-├── examples/
-│   ├── run_complete_test.py            # ⭐ Test deterministic generation
-│   ├── create_deterministic_workflow.py # Simple example
-│   └── test_variable_features.py       # Test variables
-└── README.md                            # This file
+│   ├── workflow/             # Workflow execution
+│   │   └── semantic_executor.py         # Semantic step execution
+│   ├── controller/           # Workflow controller
+│   ├── recorder/             # Workflow recording
+│   ├── storage/              # Storage logic
+│   ├── mcp/                  # MCP integration
+│   ├── schema/               # Schema definitions
+│   └── builder/              # Workflow builder
+│
+├── backend/                  # FastAPI backend service
+│   ├── api.py               # API entry point
+│   ├── routers.py           # API routes
+│   └── service.py           # Business logic
+│
+├── examples/                 # Examples organized by feature
+│   ├── scripts/
+│   │   ├── deterministic/   # Deterministic workflow examples
+│   │   │   ├── run_complete_test.py        # ⭐ Test deterministic generation
+│   │   │   └── create_deterministic_workflow.py
+│   │   ├── variables/       # Variable feature examples
+│   │   ├── demos/           # Advanced demos
+│   │   └── runner.py        # Generic workflow runner
+│   └── workflows/           # Example workflow JSON files
+│       ├── basic/           # Basic workflow examples
+│       ├── form_filling/    # Form filling examples
+│       ├── parameterized/   # Parameterized workflows
+│       └── advanced/        # Advanced workflows
+│
+├── tests/                    # Test files
+│   ├── test_button_click.py
+│   └── test_recorded_workflow.py
+│
+├── docs/                     # Documentation
+│   ├── DETERMINISTIC.md     # Deterministic workflows
+│   └── VARIABLES.md         # Variables guide
+│
+├── data/                     # Runtime & test data
+│   └── test_data/           # Test data (tracked in git)
+│       ├── form-filling/
+│       └── flight-test/
+│
+├── cli.py                   # CLI entry point
+├── pyproject.toml          # Project configuration
+└── README.md               # This file
 ```
 
 ---
@@ -99,16 +135,14 @@ workflows/
 ## Testing
 
 ```bash
-cd examples
-
 # Test deterministic generation
-python run_complete_test.py
+python examples/scripts/deterministic/run_complete_test.py
 
 # Test variables
-python create_workflow_with_variables.py
+python examples/scripts/variables/create_workflow_with_variables.py
 
 # Compare approaches
-python test_deterministic_workflow.py
+python examples/scripts/deterministic/test_deterministic_workflow.py
 ```
 
 ---
