@@ -2671,7 +2671,7 @@ EXTRACTED INFORMATION:"""
                 dt.strftime('%B'),  # Just the month
             ])
         except Exception as e:
-            print(f"Error parsing date: {e}")
+            logger.error(f"Error parsing date: {e}")
             pass
 
         return patterns
