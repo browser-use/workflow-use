@@ -22,7 +22,7 @@ export const PlayButton: React.FC<PlayButtonProps> = ({
     setError(null);
 
     if (workflowMetadata && workflowMetadata.input_schema) {
-      const fields = workflowMetadata.input_schema.map((input: any) => ({
+      const fields = workflowMetadata.input_schema.map((input: { name: string; type: string; required: boolean }) => ({
         name: input.name,
         type: input.type,
         required: input.required,
@@ -56,7 +56,7 @@ export const PlayButton: React.FC<PlayButtonProps> = ({
     setWorkflowStatus("idle");
   };
 
-  const handleInputChange = (index: number, value: any) => {
+  const handleInputChange = (index: number, value: string | number | boolean) => {
     const updatedFields = [...inputFields];
     if (updatedFields[index]) {
       updatedFields[index].value = value;
@@ -86,7 +86,7 @@ export const PlayButton: React.FC<PlayButtonProps> = ({
     setWorkflowStatus("idle");
 
     try {
-      const inputs: Record<string, any> = {};
+      const inputs: Record<string, string | number | boolean> = {};
       inputFields.forEach((field) => {
         inputs[field.name] = field.value;
       });

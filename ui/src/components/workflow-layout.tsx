@@ -43,7 +43,10 @@ const WorkflowLayout: React.FC = () => {
   const { data: workflowsResponse, isLoading: isLoadingWorkflows } =
     $api.useQuery("get", "/api/workflows");
 
-  const workflows: string[] = workflowsResponse?.workflows ?? [];
+  const workflows: string[] = React.useMemo(
+    () => workflowsResponse?.workflows ?? [],
+    [workflowsResponse?.workflows]
+  );
 
   // Fetch a specific workflow (enabled only when selected is truthy)
   const { data: selectedWorkflow, isLoading: isLoadingSelectedWorkflow } =
@@ -54,7 +57,7 @@ const WorkflowLayout: React.FC = () => {
         ? {
             params: { path: { name: selected } },
           }
-        : ({} as any),
+        : { params: { path: { name: "" } } },
       {
         enabled: !!selected,
       }
@@ -69,7 +72,7 @@ const WorkflowLayout: React.FC = () => {
   const updateWorkflowMetadata = useCallback(
     async (name: string, metadata: WorkflowMetadata) => {
       await updateMetadataMutation.mutateAsync({
-        body: { name, metadata } as any,
+        body: { name, metadata },
       });
     },
     [updateMetadataMutation]
@@ -109,7 +112,7 @@ const WorkflowLayout: React.FC = () => {
       // Apply saved positions if available
       if (selected && savedNodePositions[selected]) {
         const savedPositionsForWorkflow = savedNodePositions[selected] || {};
-        const nodesWithSavedPositions = flowData.nodes.map((node: any) => {
+        const nodesWithSavedPositions = flowData.nodes.map((node: Node) => {
           const savedPosition = savedPositionsForWorkflow[node.id];
           if (savedPosition) {
             return {
@@ -119,12 +122,12 @@ const WorkflowLayout: React.FC = () => {
           }
           return node;
         });
-        setNodes(nodesWithSavedPositions as any);
+        setNodes(nodesWithSavedPositions);
       } else {
-        setNodes(flowData.nodes as any);
+        setNodes(flowData.nodes);
       }
 
-      setEdges(flowData.edges as any);
+      setEdges(flowData.edges);
       setWorkflowMetadata(flowData.metadata);
     }
   }, [selectedWorkflow, selected, savedNodePositions, setNodes, setEdges]);

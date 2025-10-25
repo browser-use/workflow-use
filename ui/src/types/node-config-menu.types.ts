@@ -2,7 +2,7 @@ import type { Node } from '@xyflow/react';
 
 export interface StepData {
   description: string;
-  output: any | null;
+  output: Record<string, unknown> | null;
   timestamp: number | null;
   tabId: number | null;
   type: 'navigation' | 'click' | 'select_change' | 'input';

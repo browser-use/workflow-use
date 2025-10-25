@@ -22,8 +22,8 @@ export const NodeConfigMenu: React.FC<NodeConfigMenuProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [localStepData, setLocalStepData] = useState<StepData | null>(null);
-
-  if (!node || !node.data || !node.data.stepData) return null;
+  const [cssSelectors, setCssSelectors] = useState<string[]>([]);
+  const [newSelector, setNewSelector] = useState("");
 
   useEffect(() => {
     if (node && node.data && node.data.stepData) {
@@ -49,20 +49,25 @@ export const NodeConfigMenu: React.FC<NodeConfigMenuProps> = ({
     };
   }, [onClose]);
 
+  useEffect(() => {
+    if (isEditing && editedStepData?.cssSelector && cssSelectors.length === 0) {
+      setCssSelectors(editedStepData.cssSelector.split(" "));
+    }
+  }, [isEditing, editedStepData?.cssSelector, cssSelectors.length]);
+
+  useEffect(() => {
+    if (isEditing && !editedStepData && localStepData) {
+      setEditedStepData({ ...localStepData });
+    } else if (isEditing && !editedStepData && node?.data?.stepData) {
+      setEditedStepData({ ...node.data.stepData });
+    }
+  }, [isEditing, editedStepData, localStepData, node]);
+
+  if (!node || !node.data || !node.data.stepData) return null;
+
   const stepData: StepData = localStepData || node.data.stepData;
 
-  if (isEditing && !editedStepData) {
-    setEditedStepData({ ...stepData });
-  }
-
-  const [cssSelectors, setCssSelectors] = useState<string[]>([]);
-  const [newSelector, setNewSelector] = useState("");
-
-  if (isEditing && editedStepData?.cssSelector && cssSelectors.length === 0) {
-    setCssSelectors(editedStepData.cssSelector.split(" "));
-  }
-
-  const handleInputChange = (field: keyof StepData, value: any) => {
+  const handleInputChange = (field: keyof StepData, value: string) => {
     if (editedStepData) {
       setEditedStepData({
         ...editedStepData,

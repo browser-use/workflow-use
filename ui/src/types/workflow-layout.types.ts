@@ -20,7 +20,7 @@ const stepSchema = z.object({
   tabId: z.number().int().nullable(),
   type: z.enum(['navigation', 'click', 'select_change', 'input']),
 
-  /* optional fields (vary by step type) */
+  /* optional fields (vary by step type) */
   url: z.string().url().optional(),
   cssSelector: z.string().optional(),
   xpath: z.string().optional(),
@@ -40,20 +40,20 @@ export const workflowSchema = z.object({
   input_schema: z.array(inputFieldSchema),
 });
 
-/* ── Inferred TypeScript type ───────────────────────────────────────– */
+/* -- Inferred TypeScript type ---------------------------------------- */
 export type Workflow = z.infer<typeof workflowSchema>;
 
 export interface WorkflowStep {
   description: string;
   type: string;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface WorkflowMetadata {
   name: string;
   description: string;
   version: string;
-  input_schema: any[];
+  input_schema: Array<{ name: string; type: string; required: boolean }>;
   workflow_analysis?: string;
 }
 
