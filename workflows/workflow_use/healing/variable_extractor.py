@@ -101,8 +101,9 @@ class VariableExtractor:
     """Service for extracting variables from workflows."""
 
     # Pattern for manual variable markers: VAR:variable_name:value
-    # Simple pattern: entire value should be VAR:name:value
-    MANUAL_MARKER_PATTERN = re.compile(r'^VAR:([a-z_][a-z0-9_]*):(.*)$')
+    # Matches one or more markers anywhere in the text
+    # Value is captured until whitespace or end of string
+    MANUAL_MARKER_PATTERN = re.compile(r'VAR:([a-z_][a-z0-9_]*):(\S+)')
 
     def __init__(self, llm: Optional[BaseChatModel] = None):
         """Initialize the variable extractor.
@@ -121,10 +122,10 @@ class VariableExtractor:
         Returns:
             List of (marker_text, variable_name, value) tuples
         """
-        match = self.MANUAL_MARKER_PATTERN.match(text)
-        if match:
-            return [(match.group(0), match.group(1), match.group(2))]
-        return []
+        markers = []
+        for match in self.MANUAL_MARKER_PATTERN.finditer(text):
+            markers.append((match.group(0), match.group(1), match.group(2)))
+        return markers
 
     def process_workflow_with_markers(
         self, workflow: WorkflowDefinitionSchema

@@ -105,7 +105,7 @@ cd examples
 python run_complete_test.py
 
 # Test variables
-python test_variable_features.py
+python create_workflow_with_variables.py
 
 # Compare approaches
 python test_deterministic_workflow.py
