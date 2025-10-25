@@ -1,11 +1,9 @@
 import logging
 import os
-from typing import TYPE_CHECKING
 
 from browser_use import ActionResult, Controller
-from browser_use.actor.page import Page
-from browser_use.llm.base import BaseChatModel
 from browser_use.llm import ChatOpenAI
+from browser_use.llm.base import BaseChatModel
 from pydantic import BaseModel, Field, SecretStr
 
 logger = logging.getLogger(__name__)

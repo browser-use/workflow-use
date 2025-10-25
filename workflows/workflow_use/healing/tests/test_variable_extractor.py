@@ -1,14 +1,15 @@
 """Tests for variable extraction functionality."""
 
 import pytest
+
 from workflow_use.healing.variable_extractor import VariableExtractor
 from workflow_use.schema.views import (
-    WorkflowDefinitionSchema,
-    WorkflowInputSchemaDefinition,
+    ClickStep,
     InputStep,
     NavigationStep,
-    ClickStep,
     SelectChangeStep,
+    WorkflowDefinitionSchema,
+    WorkflowInputSchemaDefinition,
 )
 
 

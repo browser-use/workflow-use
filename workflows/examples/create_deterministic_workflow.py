@@ -10,7 +10,9 @@ Usage:
 
 import asyncio
 import json
+
 from langchain_anthropic import ChatAnthropic
+
 from workflow_use.healing.service import HealingService
 
 
@@ -136,11 +138,11 @@ async def main():
     print("\n" + "=" * 80)
     print("NEXT STEPS")
     print("=" * 80)
-    print(f"\nTo run this workflow:")
+    print("\nTo run this workflow:")
     print(f"  python -m workflow_use.cli run-workflow-no-ai {output_file}")
 
     if input_schema:
-        print(f"\nWith variables:")
+        print("\nWith variables:")
         var_examples = " ".join([f"--{v['name']} <value>" for v in input_schema])
         print(f"  python -m workflow_use.cli run-workflow-no-ai {output_file} {var_examples}")
 

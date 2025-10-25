@@ -1,22 +1,23 @@
 import asyncio
 import logging
-from typing import Any, Dict, Optional, List, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 from browser_use import Browser
 
 if TYPE_CHECKING:
-	from browser_use.actor.page import Page
+	pass
 from browser_use.agent.views import ActionResult
 from browser_use.llm.base import BaseChatModel
+
 from workflow_use.schema.views import (
-    ClickStep,
-    InputStep,
-    KeyPressStep,
-    NavigationStep,
-    ScrollStep,
-    SelectChangeStep,
-    WorkflowStep,
-    ExtractStep,
+	ClickStep,
+	ExtractStep,
+	InputStep,
+	KeyPressStep,
+	NavigationStep,
+	ScrollStep,
+	SelectChangeStep,
+	WorkflowStep,
 )
 from workflow_use.workflow.semantic_extractor import SemanticExtractor
 
@@ -433,11 +434,11 @@ class SemanticWorkflowExecutor:
                     pass
 
                 # For radio buttons, cannot resolve automatically, let the calling code handle it
-                logger.warning(f"Cannot automatically resolve radio button selector, returning None")
+                logger.warning("Cannot automatically resolve radio button selector, returning None")
                 return None
 
             # For other elements, cannot resolve automatically either
-            logger.warning(f"Cannot automatically resolve selector, returning None")
+            logger.warning("Cannot automatically resolve selector, returning None")
             return None
 
         except Exception as e:
@@ -677,7 +678,7 @@ class SemanticWorkflowExecutor:
 
                         # Handle Radix UI / ARIA radio buttons (button with role="radio")
                         if tag_name == 'button' and role == 'radio':
-                            logger.info(f"Detected Radix UI / ARIA radio button, clicking directly")
+                            logger.info("Detected Radix UI / ARIA radio button, clicking directly")
                             await element.click()
                             logger.info(f"Successfully clicked ARIA radio button: {selector}")
                             return True
@@ -712,7 +713,7 @@ class SemanticWorkflowExecutor:
                                         '(function() { return window.getComputedStyle(this).pointerEvents; })'
                                     )
                                     if pointer_events == 'none':
-                                        logger.info(f"Input has pointer-events: none, clicking container instead")
+                                        logger.info("Input has pointer-events: none, clicking container instead")
                                         await element.click()
                                         return True
                                     else:
@@ -766,7 +767,7 @@ class SemanticWorkflowExecutor:
                         matching_buttons = []
                         for i, btn in enumerate(all_buttons):
                             if i > 20:  # Limit to first 20 buttons to avoid timeout
-                                logger.info(f"⚠️ Stopping button search after checking 20 buttons")
+                                logger.info("⚠️ Stopping button search after checking 20 buttons")
                                 break
                             try:
                                 text_content = await asyncio.wait_for(
@@ -837,7 +838,7 @@ class SemanticWorkflowExecutor:
                                             return False
 
                                         # No validation errors but still no navigation - try submitting form directly
-                                        logger.info(f"🔧 Attempting to submit parent form directly via JavaScript")
+                                        logger.info("🔧 Attempting to submit parent form directly via JavaScript")
                                         try:
                                             # Find parent form and submit it
                                             form_submitted = await self._element_evaluate(
@@ -846,7 +847,7 @@ class SemanticWorkflowExecutor:
                                             )
 
                                             if form_submitted:
-                                                logger.info(f"✅ Triggered form.requestSubmit()")
+                                                logger.info("✅ Triggered form.requestSubmit()")
                                                 await asyncio.sleep(2)
                                                 final_url = await page.get_url()
 
@@ -854,10 +855,10 @@ class SemanticWorkflowExecutor:
                                                     logger.info(f"✅ Navigation successful via form submit: {current_url} -> {final_url}")
                                                     return True
                                                 else:
-                                                    logger.error(f"❌ Form submit didn't trigger navigation either")
+                                                    logger.error("❌ Form submit didn't trigger navigation either")
                                                     return False
                                             else:
-                                                logger.warning(f"⚠️ Could not find parent form to submit")
+                                                logger.warning("⚠️ Could not find parent form to submit")
                                                 return False
                                         except Exception as submit_error:
                                             logger.error(f"❌ Error submitting form directly: {submit_error}")
@@ -1508,7 +1509,7 @@ class SemanticWorkflowExecutor:
                 if validation_errors:
                     logger.warning(f"⚠️ Form validation errors detected after step execution: {validation_errors}")
                     if attempt < self.max_retries:
-                        logger.warning(f"⚠️ Step caused validation errors, will retry...")
+                        logger.warning("⚠️ Step caused validation errors, will retry...")
                         continue
                     else:
                         logger.error(f"❌ Step caused validation errors after {self.max_retries} retries")
@@ -1534,9 +1535,9 @@ class SemanticWorkflowExecutor:
 
                     if attempt < self.max_retries:
                         if validation_errors:
-                            logger.warning(f"⚠️ Step caused validation errors, will retry...")
+                            logger.warning("⚠️ Step caused validation errors, will retry...")
                         else:
-                            logger.warning(f"⚠️ Step verification failed, will retry...")
+                            logger.warning("⚠️ Step verification failed, will retry...")
                         continue
                     else:
                         # This is the final attempt and it failed
@@ -1956,7 +1957,7 @@ class SemanticWorkflowExecutor:
 
                         # Try to verify by checking if expected next step elements are available
                         if await self._verify_navigation_success_by_next_step(current_step):
-                            logger.info(f"Verification: Navigation successful - next step elements found")
+                            logger.info("Verification: Navigation successful - next step elements found")
                             return True
 
                         # Fallback: If URL changed or title changed, likely successful navigation
@@ -1985,11 +1986,11 @@ class SemanticWorkflowExecutor:
             else:
                 elements = await self._get_elements_by_selector(selector)
                 if len(elements) > 0:
-                    logger.info(f"Verification: Click target still exists and accessible")
+                    logger.info("Verification: Click target still exists and accessible")
                     return True
                 else:
                     # Element might have disappeared due to click (like dropdown items), which could be success
-                    logger.info(f"Verification: Click target disappeared (may be expected)")
+                    logger.info("Verification: Click target disappeared (may be expected)")
                     return True
 
         except Exception as e:
@@ -2294,7 +2295,7 @@ EXTRACTED INFORMATION:"""
                 return None
 
             # Step 2: Find the target element within the container
-            target_elements = await container_element.query_selector_all(f"button, input, select, a, [role='button']")
+            target_elements = await container_element.query_selector_all("button, input, select, a, [role='button']")
 
             for element in target_elements:
                 element_text = await element.text_content()
@@ -2617,8 +2618,6 @@ EXTRACTED INFORMATION:"""
 
     def _date_matches(self, target_date: str, element_date: str) -> bool:
         """Check if two date strings match allowing for different formats."""
-        import re
-        from datetime import datetime
 
         try:
             # Normalize both dates
@@ -2671,7 +2670,8 @@ EXTRACTED INFORMATION:"""
                 dt.strftime('%d'),  # Just the day
                 dt.strftime('%B'),  # Just the month
             ])
-        except:
+        except Exception as e:
+            print(f"Error parsing date: {e}")
             pass
 
         return patterns

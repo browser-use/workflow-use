@@ -5,15 +5,13 @@ from typing import Any, Dict, List, Sequence, Union
 import aiofiles
 from browser_use import Agent, AgentHistoryList, Browser
 from browser_use.dom.views import DOMInteractedElement
+from browser_use.llm import SystemMessage, UserMessage
 from browser_use.llm.base import BaseChatModel, BaseMessage
-from browser_use.llm import UserMessage, SystemMessage
 
 from workflow_use.builder.service import BuilderService
-from workflow_use.healing._agent.controller import HealingController
-from workflow_use.healing.prompts import HEALING_AGENT_SYSTEM_PROMPT
-from workflow_use.healing.views import ParsedAgentStep, SimpleDomElement, SimpleResult
-from workflow_use.healing.variable_extractor import VariableExtractor
 from workflow_use.healing.deterministic_converter import DeterministicWorkflowConverter
+from workflow_use.healing.variable_extractor import VariableExtractor
+from workflow_use.healing.views import ParsedAgentStep, SimpleDomElement, SimpleResult
 from workflow_use.schema.views import SelectorWorkflowSteps, WorkflowDefinitionSchema
 
 
@@ -118,9 +116,9 @@ class HealingService:
 
 				# Suggest semantic alternatives
 				if 'search' in task.lower() or 'input' in task.lower():
-					print(f"     → Suggestion: Use 'input' + 'keypress' steps instead")
+					print("     → Suggestion: Use 'input' + 'keypress' steps instead")
 				elif 'click' in task.lower():
-					print(f"     → Suggestion: Use 'click' step with 'target_text' instead")
+					print("     → Suggestion: Use 'click' step with 'target_text' instead")
 				print()
 
 	def _populate_selector_fields(self, workflow_definition: WorkflowDefinitionSchema) -> WorkflowDefinitionSchema:
@@ -156,12 +154,12 @@ class HealingService:
 			response = await self.llm.ainvoke(all_messages, output_format=WorkflowDefinitionSchema)
 			workflow_definition: WorkflowDefinitionSchema = response.completion  # type: ignore
 		except Exception as e:
-			print(f"ERROR: Failed to generate structured workflow definition")
+			print("ERROR: Failed to generate structured workflow definition")
 			print(f"Error details: {e}")
 			# Try to get the raw response
 			try:
 				raw_response = await self.llm.ainvoke(all_messages)
-				print(f"\nRaw LLM response:")
+				print("\nRaw LLM response:")
 				print(raw_response)
 			except:
 				pass

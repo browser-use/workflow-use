@@ -10,8 +10,8 @@ from typing import cast as _cast
 
 from browser_use import Agent, Browser
 from browser_use.agent.views import ActionResult, AgentHistoryList
-from browser_use.llm.base import BaseChatModel
 from browser_use.llm import SystemMessage, UserMessage
+from browser_use.llm.base import BaseChatModel
 from pydantic import BaseModel, Field, create_model
 
 from workflow_use.controller.service import WorkflowController

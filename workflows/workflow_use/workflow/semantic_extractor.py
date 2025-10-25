@@ -1,7 +1,7 @@
-import re
-import logging
-from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
 import asyncio
+import logging
+import re
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 if TYPE_CHECKING:
 	from browser_use.actor.page import Page
@@ -103,18 +103,18 @@ class SemanticExtractor:
         tag = element_info.get('tag', '').lower()
         
         if tag == 'button' or element_type == 'button':
-            return f"[Button]"
+            return "[Button]"
         elif element_type == 'input':
             input_type = element_info.get('type', 'text').lower()
             return f"[Input Field - {input_type}]"
         elif element_type == 'select':
-            return f"[Dropdown]"
+            return "[Dropdown]"
         elif element_type == 'textarea':
-            return f"[Text Area]"
+            return "[Text Area]"
         elif element_type == 'radio':
-            return f"[Radio Button]"
+            return "[Radio Button]"
         elif element_type == 'checkbox':
-            return f"[Checkbox]"
+            return "[Checkbox]"
         else:
             return f"[{tag.upper()} Element]"
     

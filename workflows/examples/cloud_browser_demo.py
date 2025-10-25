@@ -41,7 +41,7 @@ async def main():
 	try:
 		# Run with semantic abstraction (no AI/LLM)
 		result = await workflow.run_with_no_ai(close_browser_at_end=True)
-		print(f'✅ Workflow completed with semantic abstraction')
+		print('✅ Workflow completed with semantic abstraction')
 		print(f'📊 Steps executed: {len(result.step_results)}')
 	except Exception as e:
 		print(f'❌ Error: {e}')

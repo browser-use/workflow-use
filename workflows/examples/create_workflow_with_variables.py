@@ -65,25 +65,25 @@ def example_1_manual_json():
         json.dump(workflow, f, indent=2)
 
     print(f"✅ Created: {output_file}")
-    print(f"\n📋 Workflow structure:")
+    print("\n📋 Workflow structure:")
     print(f"   Name: {workflow['name']}")
     print(f"   Variables: {[inp['name'] for inp in workflow['input_schema']]}")
     print(f"   Steps: {len(workflow['steps'])}")
 
-    print(f"\n🎯 Key feature - Step 3:")
+    print("\n🎯 Key feature - Step 3:")
     print(f"   {workflow['steps'][2]}")
-    print(f"   └─> target_text uses {{repo_name}} variable!")
+    print("   └─> target_text uses {repo_name} variable!")
 
-    print(f"\n💡 Usage:")
-    print(f"   workflow.run(inputs={{'repo_name': 'browser-use/browser-use'}})")
-    print(f"   workflow.run(inputs={{'repo_name': 'anthropics/anthropic-sdk-python'}})")
+    print("\n💡 Usage:")
+    print("   workflow.run(inputs={'repo_name': 'browser-use/browser-use'})")
+    print("   workflow.run(inputs={'repo_name': 'anthropics/anthropic-sdk-python'})")
 
-    print(f"\n✅ Best Practices:")
-    print(f"   • Use variables in target_text for dynamic content")
-    print(f"   • Add format hints for complex inputs (e.g., 'MM/DD/YYYY')")
-    print(f"   • Use descriptive names (user_email, not email)")
-    print(f"   • Mark required fields as required: true")
-    print(f"   • Avoid agent steps for simple text variations")
+    print("\n✅ Best Practices:")
+    print("   • Use variables in target_text for dynamic content")
+    print("   • Add format hints for complex inputs (e.g., 'MM/DD/YYYY')")
+    print("   • Use descriptive names (user_email, not email)")
+    print("   • Mark required fields as required: true")
+    print("   • Avoid agent steps for simple text variations")
 
 
 def example_2_automatic_llm():

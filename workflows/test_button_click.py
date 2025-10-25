@@ -1,8 +1,10 @@
 """Test button click with text filtering"""
 import asyncio
 import logging
-from workflow_use.workflow.semantic_executor import SemanticWorkflowExecutor
+
 from browser_use import Browser
+
+from workflow_use.workflow.semantic_executor import SemanticWorkflowExecutor
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

@@ -9,8 +9,8 @@ from pathlib import Path
 import pandas as pd
 import typer
 from browser_use import Browser
-from browser_use.llm.base import BaseChatModel
 from browser_use.llm import ChatOpenAI
+from browser_use.llm.base import BaseChatModel
 
 from workflow_use.builder.service import BuilderService
 from workflow_use.controller.service import WorkflowController
@@ -155,7 +155,6 @@ def _build_and_save_semantic_workflow_from_recording(
 	auto_fix_navigation: bool = False,
 ) -> Path | None:
 	"""Builds a semantic workflow from a recording file using visible text mappings."""
-	from workflow_use.workflow.semantic_extractor import SemanticExtractor
 
 	prompt_subject = 'recorded' if is_temp_recording else 'provided'
 	typer.echo()  # Add space
@@ -514,7 +513,7 @@ async def _convert_recording_to_semantic_workflow(recording_data, description, s
 
 	# Build the semantic workflow
 	semantic_workflow = {
-		'workflow_analysis': f'Semantic version of recorded workflow. Uses visible text to identify elements instead of CSS selectors for improved reliability.',
+		'workflow_analysis': 'Semantic version of recorded workflow. Uses visible text to identify elements instead of CSS selectors for improved reliability.',
 		'name': f'{workflow_name} (Semantic)',
 		'description': description,
 		'version': '1.0',
@@ -758,9 +757,9 @@ async def _convert_step_to_semantic(step, semantic_mapping, browser, simulate_in
 	elif css_selector:
 		# Fallback to original CSS selector if no semantic mapping available
 		semantic_step['cssSelector'] = css_selector
-		typer.echo(f"Warning: No semantic target found, using CSS selector fallback")
+		typer.echo("Warning: No semantic target found, using CSS selector fallback")
 	else:
-		typer.echo(f"Warning: No target method available for step, may need manual adjustment")
+		typer.echo("Warning: No target method available for step, may need manual adjustment")
 
 	# Add step-specific fields
 	if step_type == 'input' and 'value' in step:
@@ -1405,7 +1404,7 @@ def run_workflow_no_ai_command(
 						# Limit display length for readability
 						if len(content) > 500:
 							content = content[:500] + "... [truncated]"
-						typer.echo(f'  Result:')
+						typer.echo('  Result:')
 						# Indent the content for better readability
 						for line in content.split('\n'):
 							typer.echo(f'    {line}')
@@ -1440,8 +1439,9 @@ def generate_semantic_mapping_command(
 		typer.echo()
 
 		try:
-			from workflow_use.workflow.semantic_extractor import SemanticExtractor
 			from browser_use import Browser
+
+			from workflow_use.workflow.semantic_extractor import SemanticExtractor
 
 			browser = Browser()
 			extractor = SemanticExtractor()
@@ -1533,8 +1533,9 @@ def create_semantic_workflow_command(
 		typer.echo()
 
 		try:
-			from workflow_use.workflow.semantic_extractor import SemanticExtractor
 			from browser_use import Browser
+
+			from workflow_use.workflow.semantic_extractor import SemanticExtractor
 
 			browser = Browser()
 			extractor = SemanticExtractor()
@@ -1699,9 +1700,9 @@ def run_workflow_csv_command(
 	"""
 
 	async def _run_workflow_csv():
-		import csv
-		import pandas as pd
 		from datetime import datetime
+
+		import pandas as pd
 
 		typer.echo(
 			typer.style(f'Loading workflow from: {typer.style(str(workflow_path.resolve()), fg=typer.colors.MAGENTA)}', bold=True)
@@ -2153,7 +2154,7 @@ def generate_csv_template_command(
 
 		template_df.to_csv(output_file, index=False)
 
-		typer.secho(f'CSV template generated successfully!', fg=typer.colors.GREEN, bold=True)
+		typer.secho('CSV template generated successfully!', fg=typer.colors.GREEN, bold=True)
 		typer.echo(f'Template saved to: {typer.style(str(output_file.resolve()), fg=typer.colors.CYAN)}')
 		typer.echo()
 
@@ -2169,7 +2170,7 @@ def generate_csv_template_command(
 		typer.echo()
 		typer.echo(typer.style('Usage:', bold=True))
 		typer.echo(f'1. Edit the CSV file: {output_file}')
-		typer.echo(f'2. Add your data rows (replace the example values)')
+		typer.echo('2. Add your data rows (replace the example values)')
 		typer.echo(f'3. Run: python cli.py run-workflow-csv {workflow_path} {output_file}')
 
 	except Exception as e:
@@ -2274,7 +2275,7 @@ def generate_workflow_from_task(
 	except Exception as e:
 		typer.secho(f'Error generating workflow: {e}', fg=typer.colors.RED)
 		import traceback
-		typer.echo(f'\nFull error traceback:')
+		typer.echo('\nFull error traceback:')
 		typer.echo(traceback.format_exc())
 		raise typer.Exit(code=1)
 

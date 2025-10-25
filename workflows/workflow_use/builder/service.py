@@ -5,8 +5,8 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, cast
 
-from browser_use.llm.base import BaseChatModel
 from browser_use.llm import UserMessage
+from browser_use.llm.base import BaseChatModel
 from pydantic import ValidationError
 
 from workflow_use.builder.prompts import WORKFLOW_BUILDER_PROMPT_TEMPLATE

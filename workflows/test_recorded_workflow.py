@@ -1,8 +1,10 @@
 """Test recorded workflow execution"""
 import asyncio
 import logging
-from workflow_use.workflow.service import Workflow
+
 from browser_use.llm import ChatOpenAI
+
+from workflow_use.workflow.service import Workflow
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

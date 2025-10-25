@@ -7,7 +7,9 @@ Usage:
 
 import asyncio
 import json
+
 from langchain_anthropic import ChatAnthropic
+
 from workflow_use.healing.service import HealingService
 
 
@@ -79,7 +81,7 @@ async def main():
             else:
                 semantic_steps += 1
 
-        print(f"\n" + "=" * 80)
+        print("\n" + "=" * 80)
         print("SUMMARY")
         print("=" * 80)
         print(f"Semantic steps: {semantic_steps}")
@@ -90,7 +92,7 @@ async def main():
         else:
             print(f"\n❌ FAILED! Found {agent_steps} agent steps (slow, expensive)")
 
-        print(f"\nWorkflow saved to: test_output.workflow.json")
+        print("\nWorkflow saved to: test_output.workflow.json")
         print("\nTo run it:")
         print("  python -m workflow_use.cli run-workflow-no-ai test_output.workflow.json")
 

@@ -7,11 +7,13 @@ using hierarchical context and intelligent disambiguation.
 """
 
 import asyncio
-import logging
-from browser_use import Browser
-from workflow_use.workflow.semantic_executor import SemanticWorkflowExecutor
 import json
+import logging
 from datetime import datetime
+
+from browser_use import Browser
+
+from workflow_use.workflow.semantic_executor import SemanticWorkflowExecutor
 
 # Set up logging to see the hierarchical context in action
 logging.basicConfig(level=logging.INFO)
@@ -295,12 +297,12 @@ async def highlight_element(page, selector: str, description: str, element_info:
         """)
         
         if element_count == 0:
-            print(f"   ❌ Selector matches no elements")
+            print("   ❌ Selector matches no elements")
             return False
         elif element_count > 1:
             print(f"   ⚠️  Selector matches {element_count} elements (may highlight wrong one)")
         else:
-            print(f"   ✅ Selector matches exactly 1 element")
+            print("   ✅ Selector matches exactly 1 element")
         
         # Try to highlight the element
         await page.evaluate(f"""
@@ -487,7 +489,7 @@ async def demonstrate_interactive_selection():
             )
 
             if not success:
-                print(f"   ⚠️  Row selector highlighting failed, trying alternative...")
+                print("   ⚠️  Row selector highlighting failed, trying alternative...")
                 # Method 2: Find by user name in the row
                 alt_edit_button = await executor.find_element_in_container("Edit", container_text=user_name)
                 if alt_edit_button:
@@ -523,7 +525,7 @@ async def demonstrate_interactive_selection():
             input(f"     ⏸️  Press Enter to find Edit button for {users[i][0]}...")
 
     # Also demonstrate Delete buttons
-    print(f"\n   🗑️  Now finding Delete buttons in the same rows...")
+    print("\n   🗑️  Now finding Delete buttons in the same rows...")
 
     for i, (user_name, row_num) in enumerate(users, 1):
         if i > 1:  # Skip first one to save time
@@ -641,7 +643,7 @@ async def demonstrate_interactive_selection():
     print("\nDetailed selector hierarchy for table Edit button:")
     edit_element = await executor.find_element_with_context("Edit", ["item 2"])
     if edit_element:
-        print(f"  Element text: 'Edit (item 2 of 3)'")
+        print("  Element text: 'Edit (item 2 of 3)'")
         print(f"  Primary selector: {edit_element.get('selectors', 'N/A')}")
         print(f"  Hierarchical selector: {edit_element.get('hierarchical_selector', 'N/A')}")
         print(f"  Fallback selector: {edit_element.get('fallback_selector', 'N/A')}")
@@ -659,7 +661,7 @@ async def demonstrate_interactive_selection():
     if mapping:
         print(f"\n📊 Found {len(mapping)} elements with hierarchical context")
     else:
-        print(f"\n📊 Semantic mapping completed")
+        print("\n📊 Semantic mapping completed")
     print("🎯 All repeated text elements are now uniquely identifiable")
 
     # Generate the comprehensive interaction mapping

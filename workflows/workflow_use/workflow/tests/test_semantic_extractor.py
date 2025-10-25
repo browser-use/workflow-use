@@ -2,9 +2,6 @@
 Tests for SemanticExtractor functionality.
 """
 import asyncio
-import json
-from pathlib import Path
-from typing import Dict, Any
 
 import pytest
 from browser_use import Browser

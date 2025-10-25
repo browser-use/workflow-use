@@ -1,8 +1,8 @@
 # Enhanced recorder with comprehensive event types and intelligent merging
 import asyncio
 import json
-from typing import Dict, List, Optional, Union
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
+from typing import Dict, List, Optional
 
 from workflow_use.recorder.service import RecordingService  # Adjust import path if necessary
 

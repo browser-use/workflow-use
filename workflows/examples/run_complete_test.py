@@ -13,8 +13,9 @@ Usage:
 
 import asyncio
 import json
-import os
+
 from langchain_anthropic import ChatAnthropic
+
 from workflow_use.healing.service import HealingService
 
 
@@ -205,9 +206,9 @@ async def main():
     else:
         print("\n✅ TEST PASSED - Pure semantic workflow generated!")
         print(f"   - {semantic_count} semantic steps")
-        print(f"   - 0 agent steps")
-        print(f"   - Workflow will execute instantly")
-        print(f"   - Cost: $0 per run")
+        print("   - 0 agent steps")
+        print("   - Workflow will execute instantly")
+        print("   - Cost: $0 per run")
 
     if warnings:
         print(f"\n⚠️  {len(warnings)} warning(s) - review recommended")
@@ -218,12 +219,12 @@ async def main():
     print("=" * 80)
 
     if test_passed:
-        print(f"\nTo run the workflow:")
+        print("\nTo run the workflow:")
         print(f"  python -m workflow_use.cli run-workflow-no-ai {output_file}")
 
         input_schema = workflow_dict.get('input_schema', [])
         if input_schema:
-            print(f"\nWith variables:")
+            print("\nWith variables:")
             var_examples = " ".join([f"--{v['name']} <value>" for v in input_schema])
             print(f"  python -m workflow_use.cli run-workflow-no-ai {output_file} {var_examples}")
     else:

@@ -4,8 +4,8 @@ without relying on LLM for step creation. LLM is only used for variable identifi
 """
 
 from typing import Any, Dict, List, Optional
+
 from browser_use.agent.views import AgentHistoryList
-from workflow_use.schema.views import WorkflowDefinitionSchema
 
 
 class DeterministicWorkflowConverter:

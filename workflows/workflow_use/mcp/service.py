@@ -3,8 +3,8 @@ from inspect import Parameter, Signature
 from pathlib import Path
 from typing import Any
 
-from fastmcp import FastMCP
 from browser_use.llm.base import BaseChatModel
+from fastmcp import FastMCP
 
 from workflow_use.schema.views import WorkflowDefinitionSchema
 from workflow_use.workflow.service import Workflow

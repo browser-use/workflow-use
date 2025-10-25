@@ -9,17 +9,18 @@ Usage:
     python semantic_extraction_demo.py [--url URL] [--html-file PATH] [--demo]
 """
 
-import asyncio
 import argparse
+import asyncio
 import json
 import sys
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any, Dict
 
 # Add the workflow_use package to the path
 sys.path.append(str(Path(__file__).parent.parent))
 
 from browser_use import Browser
+
 from workflow_use.workflow.semantic_extractor import SemanticExtractor
 
 

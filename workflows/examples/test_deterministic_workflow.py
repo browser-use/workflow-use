@@ -13,7 +13,9 @@ Benefits:
 
 import asyncio
 import json
+
 from langchain_anthropic import ChatAnthropic
+
 from workflow_use.healing.service import HealingService
 
 
@@ -68,7 +70,7 @@ async def test_deterministic_generation():
             step_types[step_type] = step_types.get(step_type, 0) + 1
             print(f"  - {step_type}: {step.get('description', 'No description')}")
 
-        print(f"\nStep type breakdown:")
+        print("\nStep type breakdown:")
         for step_type, count in step_types.items():
             print(f"  {step_type}: {count}")
 
@@ -122,7 +124,7 @@ async def test_deterministic_generation():
             step_types_llm[step_type] = step_types_llm.get(step_type, 0) + 1
             print(f"  - {step_type}: {step.get('description', 'No description')}")
 
-        print(f"\nStep type breakdown:")
+        print("\nStep type breakdown:")
         for step_type, count in step_types_llm.items():
             print(f"  {step_type}: {count}")
 

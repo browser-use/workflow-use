@@ -41,7 +41,7 @@ def show_workflow_info(workflow: WorkflowDefinitionSchema):
     print(f"\n📋 Workflow: {workflow.name}")
     print(f"   Description: {workflow.description}")
 
-    print(f"\n📝 Required Inputs:")
+    print("\n📝 Required Inputs:")
     for inp in workflow.input_schema:
         required = "required" if inp.required else "optional"
         format_str = f" (format: {inp.format})" if inp.format else ""
@@ -100,10 +100,10 @@ def example_1_github_stars():
 
     for i, repo in enumerate(repos, 1):
         print(f"{i}. Run with repo_name='{repo}'")
-        print(f"   → Navigates to GitHub")
+        print("   → Navigates to GitHub")
         print(f"   → Searches for: {repo}")
         print(f"   → Clicks element with text: {repo}")
-        print(f"   → Extracts star count")
+        print("   → Extracts star count")
         print()
 
     print("✅ Same workflow works for ALL repositories!")
@@ -172,7 +172,7 @@ def example_2_product_search():
         print(f"{i}. product_name='{product}'")
         print(f"   → Searches: {product}")
         print(f"   → Clicks first result matching: {product}")
-        print(f"   → Extracts price")
+        print("   → Extracts price")
         print()
 
     print("✅ One workflow, compare unlimited products!")
@@ -220,8 +220,8 @@ def example_3_form_filling():
     for i, user in enumerate(users, 1):
         print(f"{i}. User: {user['first_name']} {user['last_name']}")
         print(f"   Inputs: {user}")
-        print(f"   → Fills all form fields")
-        print(f"   → Submits form")
+        print("   → Fills all form fields")
+        print("   → Submits form")
         print()
 
     print("✅ Same workflow, test with any user!")
