@@ -109,7 +109,7 @@ export default defineBackground(() => {
         ...step,
         description: generateStepDescription(step),
       };
-      
+
       // Remove internal fields that shouldn't be in the final workflow
       delete semanticStep.timestamp;
       delete semanticStep.tabId;
@@ -118,7 +118,7 @@ export default defineBackground(() => {
       delete semanticStep.elementTag;
       delete semanticStep.elementText;
       delete semanticStep.screenshot;
-      
+
       // Handle different step types specifically
       if (step.type === "scroll") {
         delete semanticStep.targetId;
@@ -129,7 +129,7 @@ export default defineBackground(() => {
         // Already removed: timestamp, tabId, screenshot (these are correct to remove)
         console.log(`🤖 Processing extraction step:`, semanticStep);
       }
-      
+
       // Convert targetText to target_text for semantic workflow compatibility
       if (semanticStep.targetText) {
         semanticStep.target_text = semanticStep.targetText;
@@ -138,8 +138,8 @@ export default defineBackground(() => {
         // Ensure target_text field exists (set to null if no semantic text available)
         semanticStep.target_text = null;
       }
-      
-      return semanticStep;
+
+      return semanticStep as Step;
     });
 
     const semanticExtractionSteps = semanticSteps.filter(s => s.type === 'extract');
@@ -232,11 +232,11 @@ export default defineBackground(() => {
         sessionLogs[tabId] = [];
       }
       sessionLogs[tabId].push({
-        messageType: type,
+        messageType: type as StoredEvent["messageType"],
         timestamp: Date.now(),
         tabId: tabId,
         ...payload,
-      });
+      } as StoredEvent);
       broadcastWorkflowDataUpdate(); // Call is async, will not block
     } else {
       console.warn(
@@ -601,12 +601,12 @@ export default defineBackground(() => {
           }
         }
 
-        const eventWithMeta = {
+        const eventWithMeta: StoredEvent = {
           ...eventPayload,
           tabId: tabId,
           messageType: message.type,
           screenshot: screenshotDataUrl,
-        };
+        } as StoredEvent;
         sessionLogs[tabId].push(eventWithMeta);
         broadcastWorkflowDataUpdate(); // Call is async, will not block
         // console.log(`Stored ${message.type} from tab ${tabId}`);
