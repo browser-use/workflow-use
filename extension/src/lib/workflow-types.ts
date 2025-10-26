@@ -1,4 +1,4 @@
-// --- Workflow Format ---
+﻿// --- Workflow Format ---
 
 export interface Workflow {
   workflow_analysis?: string; // Analysis of the workflow for semantic targeting
@@ -39,12 +39,14 @@ export interface NavigationStep extends BaseStep {
   type: "navigation";
   url: string; // Navigation implies a URL change
   screenshot?: string; // Optional in source
+  frameIdPath?: string; // Optional frame context for iframe navigations
 }
 
 export interface ClickStep extends BaseStep {
   type: "click";
   url: string;
   frameUrl: string;
+  frameIdPath?: string;
   xpath: string;
   cssSelector?: string; // Optional in source
   elementTag: string;
@@ -58,6 +60,7 @@ export interface InputStep extends BaseStep {
   type: "input";
   url: string;
   frameUrl: string;
+  frameIdPath?: string;
   xpath: string;
   cssSelector?: string; // Optional in source
   elementTag: string;
@@ -70,6 +73,7 @@ export interface KeyPressStep extends BaseStep {
   type: "key_press";
   url?: string; // Can be missing if key press happens without element focus? Source is optional.
   frameUrl?: string; // Might be missing
+  frameIdPath?: string;
   key: string;
   xpath?: string; // Optional in source
   cssSelector?: string; // Optional in source
@@ -82,6 +86,7 @@ export interface ScrollStep extends BaseStep {
   targetId: number; // The rrweb ID of the element being scrolled
   scrollX: number;
   scrollY: number;
+  frameIdPath?: string;
   // Note: url might be missing if scroll happens on initial load before meta event?
 }
 
@@ -89,6 +94,7 @@ export interface RadioStep extends BaseStep {
   type: "radio";
   url: string;
   frameUrl: string;
+  frameIdPath?: string;
   xpath: string;
   cssSelector?: string;
   fieldName: string; // The group name (e.g., "Gender")
@@ -102,12 +108,13 @@ export interface SelectStep extends BaseStep {
   type: "select";
   url: string;
   frameUrl: string;
+  frameIdPath?: string;
   xpath: string;
   cssSelector?: string;
   fieldName: string; // The select field name/label
   selectedOption: string; // The selected text
   selectedValue: string; // The selected value
-  options: Array<{text: string, value: string}>; // All options
+  options: Array<{ text: string; value: string }>; // All options
   targetText?: string;
   screenshot?: string;
 }
@@ -116,6 +123,7 @@ export interface CheckboxStep extends BaseStep {
   type: "checkbox";
   url: string;
   frameUrl: string;
+  frameIdPath?: string;
   xpath: string;
   cssSelector?: string;
   fieldName: string;

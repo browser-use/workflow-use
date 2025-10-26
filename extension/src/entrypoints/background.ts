@@ -6,7 +6,6 @@ import {
   StoredCustomKeyEvent,
   StoredEvent,
   StoredRrwebEvent,
-  StoredExtractionEvent,
 } from "../lib/types";
 import {
   ClickStep,
@@ -16,7 +15,6 @@ import {
   ScrollStep,
   Step,
   Workflow,
-  ExtractStep,
 } from "../lib/workflow-types";
 import {
   HttpEvent,
@@ -32,9 +30,21 @@ export default defineBackground(() => {
   // Store tab information (URL, potentially title)
   const tabInfo: { [tabId: number]: { url?: string; title?: string } } = {};
 
-  // Track recent user interactions to distinguish intentional vs side-effect navigation
-  const recentUserInteractions: { [tabId: number]: number } = {}; // timestamp of last user interaction
-  const USER_INTERACTION_TIMEOUT = 5000; // 5 seconds (increased for testing)
+  // Track which tabs have been explicitly activated (brought to foreground) by the user.
+  // We will ignore events originating from tabs that were never activated to reduce noise
+  // (for example: ad / tracker tabs that load in the background).
+  const activatedTabs = new Set<number>();
+
+  // Track user clicks that are likely to open a new tab (Ctrl/Cmd + click, target=_blank etc.).
+  // Content scripts will send a PREPARE_NEW_TAB signal; we keep timestamp to correlate
+  // shortly following chrome.tabs.onCreated events so we can mark those tabs as user initiated.
+  const recentNewTabIntents: { [openerTabId: number]: number } = {};
+  // Record iframe URLs that the user actually interacted with (via custom events) per tab
+  const interactedFrameUrls: Record<number, Set<string>> = {};
+  // Additionally track last interaction time per frame for time-window gating
+  const interactedFrameTimes: Record<number, Record<string, number>> = {};
+  // Heuristic window (ms) within which a created tab following a user intent is considered relevant.
+  const NEW_TAB_INTENT_WINDOW_MS = 4000;
 
   let isRecordingEnabled = true; // Default to disabled (OFF)
   let lastWorkflowHash: string | null = null; // Cache for the last logged workflow hash
@@ -69,100 +79,83 @@ export default defineBackground(() => {
     }
   }
 
-  // Function to generate step descriptions for semantic workflows
-  function generateStepDescription(step: Step): string | null {
-    switch (step.type) {
-      case "click":
-        return "Click element";
-      case "input":
-        return "Input element";
-      case "navigation":
-        return `Navigate to ${step.url}`;
-      case "scroll":
-        return null; // Scroll steps will have null description like in the example
-      case "key_press":
-        return "Key press element";
-      case "extract":
-        return "Extract information with AI";
-      default:
-        return "Unknown action";
-    }
-  }
-
   // Function to broadcast workflow data updates to the console bus
   async function broadcastWorkflowDataUpdate(): Promise<Workflow> {
+    await settingsReady;
     // console.log("[DEBUG] broadcastWorkflowDataUpdate: Entered function"); // Optional: Keep for debugging
-    const allSteps: Step[] = Object.keys(sessionLogs)
+    const rawSteps: Step[] = Object.keys(sessionLogs)
       .flatMap((tabIdStr) => {
         const tabId = parseInt(tabIdStr, 10);
         return convertStoredEventsToSteps(sessionLogs[tabId] || []);
       })
       .sort((a, b) => a.timestamp - b.timestamp); // Sort chronologically
 
-    console.log(`🔄 Processing ${allSteps.length} steps for workflow update`);
-    const extractionSteps = allSteps.filter(s => (s as any).type === 'extract');
-    console.log(`🤖 Found ${extractionSteps.length} extraction steps:`, extractionSteps);
-
-    // Convert steps to semantic format with proper descriptions
-    const semanticSteps = allSteps.map((step, index) => {
-      const semanticStep: any = {
-        ...step,
-        description: generateStepDescription(step),
-      };
-      
-      // Remove internal fields that shouldn't be in the final workflow
-      delete semanticStep.timestamp;
-      delete semanticStep.tabId;
-      delete semanticStep.frameUrl;
-      delete semanticStep.xpath;
-      delete semanticStep.elementTag;
-      delete semanticStep.elementText;
-      delete semanticStep.screenshot;
-      
-      // Handle different step types specifically
-      if (step.type === "scroll") {
-        delete semanticStep.targetId;
-        // Keep scrollX and scrollY for scroll steps
-      } else if (step.type === "extract") {
-        // For extraction steps, preserve extractionGoal and url
-        // Keep: extractionGoal, url, type, description
-        // Already removed: timestamp, tabId, screenshot (these are correct to remove)
-        console.log(`🤖 Processing extraction step:`, semanticStep);
+    // Post-process to collapse consecutive duplicates that only differ by timestamp (e.g. repeated identical navigations)
+    const allSteps: Step[] = [];
+    for (const step of rawSteps) {
+      const last = allSteps.length ? allSteps[allSteps.length - 1] : null;
+      if (!last) {
+        allSteps.push(step);
+        continue;
       }
-      
-      // Convert targetText to target_text for semantic workflow compatibility
-      if (semanticStep.targetText) {
-        semanticStep.target_text = semanticStep.targetText;
-        delete semanticStep.targetText;
+      let isDuplicate = false;
+      if (last.type === step.type) {
+        switch (step.type) {
+          case 'navigation':
+            isDuplicate = (last as NavigationStep).url === (step as NavigationStep).url && last.tabId === step.tabId;
+            break;
+          case 'input':
+            isDuplicate =
+              last.tabId === step.tabId &&
+              (last as any).url === (step as any).url &&
+              (last as any).frameUrl === (step as any).frameUrl &&
+              (last as any).xpath === (step as any).xpath &&
+              (last as any).elementTag === (step as any).elementTag &&
+              (last as any).value === (step as any).value;
+            break;
+          case 'click':
+            isDuplicate =
+              last.tabId === step.tabId &&
+              (last as any).url === (step as any).url &&
+              (last as any).frameUrl === (step as any).frameUrl &&
+              (last as any).xpath === (step as any).xpath &&
+              (last as any).elementTag === (step as any).elementTag &&
+              (last as any).elementText === (step as any).elementText;
+            break;
+          case 'scroll': {
+            const sameXY = (last as any).scrollX === (step as any).scrollX && (last as any).scrollY === (step as any).scrollY;
+            const sameUrl = (last as any).url === (step as any).url;
+            const nearTime = Math.abs(step.timestamp - last.timestamp) < 200;
+            isDuplicate = last.tabId === step.tabId && sameXY && sameUrl && nearTime;
+            break;
+          }
+          case 'key_press':
+            isDuplicate =
+              last.tabId === step.tabId &&
+              (last as any).url === (step as any).url &&
+              (last as any).key === (step as any).key &&
+              (last as any).xpath === (step as any).xpath;
+            break;
+        }
+      }
+      if (isDuplicate) {
+        // Update timestamp (and screenshot if present) to most recent but don't add new step
+        last.timestamp = step.timestamp;
+        if ((step as any).screenshot) {
+          (last as any).screenshot = (step as any).screenshot;
+        }
       } else {
-        // Ensure target_text field exists (set to null if no semantic text available)
-        semanticStep.target_text = null;
+        allSteps.push(step);
       }
-      
-      return semanticStep;
-    });
+    }
 
-    const semanticExtractionSteps = semanticSteps.filter(s => s.type === 'extract');
-    console.log(`✅ Final semantic steps include ${semanticExtractionSteps.length} extraction steps:`, semanticExtractionSteps);
-
-    // Create the workflowData object for the Python server (semantic format)
-    const semanticWorkflowData: Workflow = {
-      workflow_analysis: "Semantic version of recorded workflow. Uses visible text to identify elements instead of CSS selectors for improved reliability.",
-      name: "Recorded Workflow (Semantic)",
+    // Create the workflowData object *after* sorting steps, but hash only steps
+    const workflowData: Workflow = {
+      name: "Recorded Workflow",
       description: `Recorded on ${new Date().toLocaleString()}`,
-      version: "1.0",
+      version: "1.0.0",
       input_schema: [],
-      steps: semanticSteps, // Use processed semantic steps
-    };
-
-    // Create the workflowData object for the UI (with original targetText)
-    const uiWorkflowData: Workflow = {
-      workflow_analysis: "Semantic version of recorded workflow. Uses visible text to identify elements instead of CSS selectors for improved reliability.",
-      name: "Recorded Workflow (Semantic)",
-      description: `Recorded on ${new Date().toLocaleString()}`,
-      version: "1.0",
-      input_schema: [],
-      steps: allSteps, // Use original steps with targetText for UI
+      steps: allSteps, // allSteps is used here
     };
 
     const allStepsString = JSON.stringify(allSteps); // Hash based on allSteps
@@ -173,20 +166,20 @@ export default defineBackground(() => {
     // Condition to skip logging if the hash of steps is the same
     if (lastWorkflowHash !== null && currentWorkflowHash === lastWorkflowHash) {
       // console.log("[DEBUG] broadcastWorkflowDataUpdate: Steps unchanged, skipping log."); // Optional
-      return uiWorkflowData;
+      return workflowData;
     }
 
     lastWorkflowHash = currentWorkflowHash;
-    // console.log("[DEBUG] broadcastWorkflowDataUpdate: Steps changed, workflowData object:", JSON.parse(JSON.stringify(uiWorkflowData))); // Optional
+    // console.log("[DEBUG] broadcastWorkflowDataUpdate: Steps changed, workflowData object:", JSON.parse(JSON.stringify(workflowData))); // Optional
 
-    // Send semantic workflow update to Python server
+    // Send workflow update to Python server
     const eventToSend: HttpWorkflowUpdateEvent = {
       type: "WORKFLOW_UPDATE",
       timestamp: Date.now(),
-      payload: semanticWorkflowData, // Send semantic format to server
+      payload: workflowData,
     };
     sendEventToServer(eventToSend);
-    return uiWorkflowData; // Return UI format to extension
+    return workflowData;
   }
 
   // Function to broadcast the recording status to all content scripts and sidepanel
@@ -227,6 +220,16 @@ export default defineBackground(() => {
     console.log(`Sending ${type}:`, payload);
     const tabId = payload.tabId;
     if (tabId) {
+      // Skip capturing events for tabs that have never been activated AND are not the original opener
+      // unless we have positively identified them as a recent user initiated tab (click intent -> creation).
+      if (
+        type !== "CUSTOM_TAB_ACTIVATED" &&
+        !activatedTabs.has(tabId) &&
+        !(payload.openerTabId && recentNewTabIntents[payload.openerTabId] && Date.now() - recentNewTabIntents[payload.openerTabId] < NEW_TAB_INTENT_WINDOW_MS)
+      ) {
+        // Silently ignore background noise (ad/tracker tabs) until user actually focuses them.
+        return;
+      }
       if (!sessionLogs[tabId]) {
         sessionLogs[tabId] = [];
       }
@@ -254,6 +257,12 @@ export default defineBackground(() => {
       url: tab.pendingUrl || tab.url,
       windowId: tab.windowId,
       index: tab.index,
+      userInitiated:
+        !!(
+          tab.openerTabId &&
+          recentNewTabIntents[tab.openerTabId] &&
+          Date.now() - recentNewTabIntents[tab.openerTabId] < NEW_TAB_INTENT_WINDOW_MS
+        ),
     });
   });
 
@@ -271,6 +280,7 @@ export default defineBackground(() => {
   });
 
   chrome.tabs.onActivated.addListener((activeInfo) => {
+  activatedTabs.add(activeInfo.tabId);
     sendTabEvent("CUSTOM_TAB_ACTIVATED", {
       tabId: activeInfo.tabId,
       windowId: activeInfo.windowId,
@@ -295,119 +305,134 @@ export default defineBackground(() => {
 
   // --- Conversion Function ---
 
+  const DEFAULT_SETTINGS = {
+    enableIframes: true as boolean,
+    iframeWindow: 3000 as number,
+    blocklist: [
+      'doubleclick.net','googlesyndication.com','googleadservices.com',
+      'amazon-adsystem.com','2mdn.net','recaptcha.google.com','recaptcha.net',
+      'googletagmanager.com','indexww.com','adtrafficquality.google','gstaticadssl.googleapis.com'
+    ] as string[],
+    allowlist: [] as string[],
+  };
+  let settings: { enableIframes: boolean; iframeWindow: number; blocklist: string[]; allowlist: string[] } = { ...DEFAULT_SETTINGS };
+  const settingsReady = new Promise<void>((resolve) => {
+    chrome.storage.sync.get(DEFAULT_SETTINGS, (s: any) => {
+      settings = { ...DEFAULT_SETTINGS, ...s };
+      resolve();
+    });
+  });
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'sync') return;
+    const next = { ...settings } as any;
+    for (const k of Object.keys(changes)) (next as any)[k] = (changes as any)[k].newValue;
+    settings = next;
+  });
+
   function convertStoredEventsToSteps(events: StoredEvent[]): Step[] {
     const steps: Step[] = [];
+    const lastNavigationIndexByTab: Record<number, number> = {};
+    const lastInputPerKey: Record<string, { idx: number; ts: number; value: string }> = {};
 
     for (const event of events) {
       switch (event.messageType) {
-        case "CUSTOM_CLICK_EVENT": {
-          const clickEvent = event as StoredCustomClickEvent;
-          // Ensure required fields are present, even if optional in source type for some reason
+        case "CUSTOM_TAB_CREATED":
+        case "CUSTOM_TAB_UPDATED":
+        case "CUSTOM_TAB_ACTIVATED": {
+          const navUrl = (event as any).url || (event as any).changeInfo?.url;
+          if (!navUrl) break;
+          const tabId = (event as any).tabId;
+          const userInitiated = (event as any).userInitiated;
+          if (!activatedTabs.has(tabId) && !userInitiated) break; // suppress background noise
+
+          const existingIdx = lastNavigationIndexByTab[tabId];
           if (
-            clickEvent.url &&
-            clickEvent.frameUrl &&
-            clickEvent.xpath &&
-            clickEvent.elementTag
+            existingIdx !== undefined &&
+            steps[existingIdx] &&
+            steps[existingIdx].type === "navigation"
           ) {
-            const step: ClickStep = {
-              type: "click",
-              timestamp: clickEvent.timestamp,
-              tabId: clickEvent.tabId,
-              url: clickEvent.url,
-              frameUrl: clickEvent.frameUrl,
-              xpath: clickEvent.xpath,
-              elementTag: clickEvent.elementTag,
-              elementText: clickEvent.elementText,
-              screenshot: clickEvent.screenshot,
-            };
-            
-            // Prioritize target_text for semantic workflows, but include cssSelector for complex elements
-            if (clickEvent.targetText && clickEvent.targetText.trim()) {
-              step.targetText = clickEvent.targetText;
-              
-              // For radio buttons, checkboxes, and complex interactive elements, also include cssSelector
-              if (clickEvent.cssSelector && 
-                  (clickEvent.cssSelector.includes('radio') || 
-                   clickEvent.cssSelector.includes('checkbox') ||
-                   clickEvent.cssSelector.includes('role="radio"') ||
-                   clickEvent.cssSelector.includes('role="checkbox"') ||
-                   clickEvent.elementTag.toLowerCase() === 'button')) {
-                step.cssSelector = clickEvent.cssSelector;
-              }
-            } else if (clickEvent.cssSelector) {
-              step.cssSelector = clickEvent.cssSelector;
-            }
-            
-            steps.push(step);
+            // Update existing navigation (redirect / title change)
+            (steps[existingIdx] as NavigationStep).url = navUrl;
+            steps[existingIdx].timestamp = event.timestamp;
           } else {
-            console.warn("Skipping incomplete CUSTOM_CLICK_EVENT:", clickEvent);
+            const nav: NavigationStep = {
+              type: "navigation",
+              timestamp: event.timestamp,
+              tabId,
+              url: navUrl,
+            };
+            steps.push(nav);
+            lastNavigationIndexByTab[tabId] = steps.length - 1;
           }
           break;
         }
-
+        case "CUSTOM_CLICK_EVENT": {
+          const click = event as StoredCustomClickEvent;
+          if (click.url && click.xpath && click.elementTag) {
+            const step: ClickStep = {
+              type: "click",
+              timestamp: click.timestamp,
+              tabId: click.tabId,
+              url: click.url,
+              frameUrl: click.frameUrl,
+              frameIdPath: (click as any).frameIdPath,
+              xpath: click.xpath,
+              cssSelector: click.cssSelector,
+              elementTag: click.elementTag,
+              elementText: click.elementText,
+              targetText: (click as any).targetText,
+              screenshot: click.screenshot,
+            };
+            steps.push(step);
+          } else {
+            console.warn("Skipping incomplete CUSTOM_CLICK_EVENT", click);
+          }
+          break;
+        }
         case "CUSTOM_INPUT_EVENT": {
           const inputEvent = event as StoredCustomInputEvent;
-          if (
-            inputEvent.url &&
-            // inputEvent.frameUrl && // frameUrl might be null/undefined in some cases, let's allow merging if only one is present or both match
-            inputEvent.xpath &&
-            inputEvent.elementTag
-          ) {
+          if (inputEvent.url && inputEvent.xpath && inputEvent.elementTag) {
+            const key = `${inputEvent.tabId}|${inputEvent.xpath}`;
+            const prior = lastInputPerKey[key];
+            const nowTs = inputEvent.timestamp;
+            const isEmpty = (inputEvent as any).value === "";
+            if (isEmpty && prior && prior.value === "" && nowTs - prior.ts < 5000) {
+              // collapse rapid-fire repeated empties
+              steps[prior.idx].timestamp = nowTs;
+              break;
+            }
             const lastStep = steps.length > 0 ? steps[steps.length - 1] : null;
-
-            // Check if the last step was a mergeable input event
             if (
               lastStep &&
               lastStep.type === "input" &&
               lastStep.tabId === inputEvent.tabId &&
               lastStep.url === inputEvent.url &&
-              lastStep.frameUrl === inputEvent.frameUrl && // Ensure frameUrls match if both exist
+              lastStep.frameUrl === inputEvent.frameUrl &&
               lastStep.xpath === inputEvent.xpath &&
-              ((lastStep as InputStep).targetText === inputEvent.targetText || 
-               (lastStep as InputStep).cssSelector === inputEvent.cssSelector) &&
+              lastStep.cssSelector === inputEvent.cssSelector &&
               lastStep.elementTag === inputEvent.elementTag
             ) {
-              // Update the last input step
               (lastStep as InputStep).value = inputEvent.value;
-              lastStep.timestamp = inputEvent.timestamp; // Update to latest timestamp
-              (lastStep as InputStep).screenshot = inputEvent.screenshot; // Update to latest screenshot
-              
-              // Update semantic targeting if available
-              if (inputEvent.targetText && inputEvent.targetText.trim()) {
-                (lastStep as InputStep).targetText = inputEvent.targetText;
-                delete (lastStep as InputStep).cssSelector; // Remove cssSelector when we have targetText
-              }
+              lastStep.timestamp = inputEvent.timestamp;
+              (lastStep as InputStep).screenshot = inputEvent.screenshot;
+              lastInputPerKey[key] = { idx: steps.length - 1, ts: nowTs, value: (inputEvent as any).value };
             } else {
-              // Add a new input step
               const newStep: InputStep = {
                 type: "input",
                 timestamp: inputEvent.timestamp,
                 tabId: inputEvent.tabId,
                 url: inputEvent.url,
                 frameUrl: inputEvent.frameUrl,
+                frameIdPath: (inputEvent as any).frameIdPath,
                 xpath: inputEvent.xpath,
+                cssSelector: inputEvent.cssSelector,
                 elementTag: inputEvent.elementTag,
                 value: inputEvent.value,
+                targetText: (inputEvent as any).targetText,
                 screenshot: inputEvent.screenshot,
               };
-              
-              // Prioritize target_text for semantic workflows, but include cssSelector for complex elements
-              if (inputEvent.targetText && inputEvent.targetText.trim()) {
-                newStep.targetText = inputEvent.targetText;
-                
-                // For radio buttons, checkboxes, and complex input elements, also include cssSelector
-                if (inputEvent.cssSelector && 
-                    (inputEvent.cssSelector.includes('radio') || 
-                     inputEvent.cssSelector.includes('checkbox') ||
-                     inputEvent.cssSelector.includes('role="radio"') ||
-                     inputEvent.cssSelector.includes('role="checkbox"'))) {
-                  newStep.cssSelector = inputEvent.cssSelector;
-                }
-              } else if (inputEvent.cssSelector) {
-                newStep.cssSelector = inputEvent.cssSelector;
-              }
-              
               steps.push(newStep);
+              lastInputPerKey[key] = { idx: steps.length - 1, ts: nowTs, value: (inputEvent as any).value };
             }
           } else {
             console.warn("Skipping incomplete CUSTOM_INPUT_EVENT:", inputEvent);
@@ -426,6 +451,7 @@ export default defineBackground(() => {
               tabId: keyEvent.tabId,
               url: keyEvent.url,
               frameUrl: keyEvent.frameUrl, // Can be missing
+              frameIdPath: (keyEvent as any).frameIdPath,
               key: keyEvent.key,
               xpath: keyEvent.xpath,
               cssSelector: keyEvent.cssSelector,
@@ -452,14 +478,21 @@ export default defineBackground(() => {
               y: number;
             }; // Type assertion for clarity
             const currentTabInfo = tabInfo[rrEvent.tabId]; // Get associated tab info for URL
-
+            // Drop internal chrome pages like chrome://newtab/
+            if (currentTabInfo?.url?.startsWith('chrome://')) {
+              break;
+            }
             // Check if the last step added was a mergeable scroll event
             const lastStep = steps.length > 0 ? steps[steps.length - 1] : null;
             if (
               lastStep &&
               lastStep.type === "scroll" &&
               lastStep.tabId === rrEvent.tabId &&
-              (lastStep as ScrollStep).targetId === scrollData.id
+              // Treat same XY within a short time window as duplicate, regardless of targetId
+              (lastStep as ScrollStep).scrollX === scrollData.x &&
+              (lastStep as ScrollStep).scrollY === scrollData.y &&
+              Math.abs(rrEvent.timestamp - lastStep.timestamp) < 200 &&
+              (lastStep as any).url === currentTabInfo?.url
             ) {
               // Update the last scroll step
               (lastStep as ScrollStep).scrollX = scrollData.x;
@@ -479,34 +512,49 @@ export default defineBackground(() => {
               };
               steps.push(newStep);
             }
-          } else if ((rrEvent.type === EventType.Meta || rrEvent.type === EventType.FullSnapshot) && rrEvent.data?.href) {
-            // Handle rrweb meta and fullsnapshot events as navigation (filtering now happens at storage level)
+          } else if (rrEvent.type === EventType.Meta && rrEvent.data?.href) {
+            // Also handle rrweb meta events as navigation
             const metaData = rrEvent.data as { href: string };
+            const href = metaData.href;
+            // Drop about:blank always
+            if (href === 'about:blank') {
+              break;
+            }
+            try {
+              const urlObj = new URL(href);
+              const host = urlObj.hostname;
+              // Allowlist overrides blocklist
+              const inAllow = settings.allowlist.some(d => host.endsWith(d));
+              const inBlock = settings.blocklist.some(d => host.endsWith(d));
+              if (!inAllow && inBlock) {
+                break;
+              }
+              if (!settings.enableIframes && !(rrEvent as any).isTopFrame) {
+                break; // user disabled iframe recording
+              }
+              // If top frame, allow
+              if ((rrEvent as any).isTopFrame) {
+                // allowed
+              } else {
+                const fUrl = (rrEvent as any).frameUrl as string | undefined;
+                if (!fUrl) break;
+                const times = interactedFrameTimes[rrEvent.tabId] || {};
+                const lastTs = times[fUrl];
+                if (!lastTs) break;
+                const eventTimestamp = typeof (rrEvent as any).timestamp === "number" ? (rrEvent as any).timestamp : Date.now();
+                if (eventTimestamp - lastTs > settings.iframeWindow) break;
+              }
+            } catch {
+              break;
+            }
             const step: NavigationStep = {
               type: "navigation",
               timestamp: rrEvent.timestamp,
               tabId: rrEvent.tabId,
               url: metaData.href,
+              // frameIdPath could be attached if needed
             };
             steps.push(step);
-          }
-          break;
-        }
-
-        case "EXTRACTION_STEP": {
-          const extractEvent = event as any; // Type assertion for extraction event
-          if (extractEvent.url && extractEvent.extractionGoal) {
-            const step: ExtractStep = {
-              type: "extract",
-              timestamp: extractEvent.timestamp,
-              tabId: extractEvent.tabId,
-              url: extractEvent.url,
-              extractionGoal: extractEvent.extractionGoal,
-              screenshot: extractEvent.screenshot,
-            };
-            steps.push(step);
-          } else {
-            console.warn("Skipping incomplete EXTRACTION_STEP:", extractEvent);
           }
           break;
         }
@@ -537,6 +585,8 @@ export default defineBackground(() => {
       "CUSTOM_INPUT_EVENT",
       "CUSTOM_SELECT_EVENT",
       "CUSTOM_KEY_EVENT",
+  // Synthetic event we will emit from content script just before an expected new tab open.
+  "PREPARE_NEW_TAB",
     ];
     if (
       message.type === "RRWEB_EVENT" ||
@@ -553,6 +603,13 @@ export default defineBackground(() => {
       const tabId = sender.tab.id;
       const isCustomEvent = customEventTypes.includes(message.type);
 
+      // Record intent for new tab opening to correlate with onCreated event.
+      if (message.type === "PREPARE_NEW_TAB") {
+        recentNewTabIntents[sender.tab.id] = Date.now();
+        // We do not store this as a workflow step; it's only heuristic metadata.
+        return false;
+      }
+
       // Function to store the event
       const storeEvent = (eventPayload: any, screenshotDataUrl?: string) => {
         if (!sessionLogs[tabId]) {
@@ -568,37 +625,6 @@ export default defineBackground(() => {
           tabInfo[tabId].title = sender.tab.title;
         }
 
-        // Track user interactions for navigation filtering
-        if (customEventTypes.includes(message.type)) {
-          recentUserInteractions[tabId] = eventPayload.timestamp || Date.now();
-          console.log(`[NAV_FILTER] Tracked ${message.type} on tab ${tabId} at ${recentUserInteractions[tabId]}`);
-        }
-
-        // Log all rrweb events for debugging
-        if (message.type === "RRWEB_EVENT") {
-          console.log(`[NAV_FILTER] RRWEB event type ${eventPayload.type} (Meta=${EventType.Meta})`, eventPayload.data);
-        }
-
-        // Filter out side-effect navigation from rrweb meta and fullsnapshot events
-        if (message.type === "RRWEB_EVENT" && 
-            (eventPayload.type === EventType.Meta || eventPayload.type === EventType.FullSnapshot) && 
-            eventPayload.data?.href) {
-          const lastUserInteraction = recentUserInteractions[tabId] || 0;
-          const currentTime = eventPayload.timestamp || Date.now();
-          const timeSinceLastInteraction = currentTime - lastUserInteraction;
-          
-          // Check if this is the first event in the session (initial page load)
-          const isFirstEvent = !sessionLogs[tabId] || sessionLogs[tabId].length === 0;
-          
-          // Only store navigation if it's the first event (initial page load) or no user interaction has happened
-          if (lastUserInteraction === 0 || isFirstEvent) {
-            console.log(`[NAV_FILTER] STORING navigation: ${eventPayload.data.href} (lastInteraction: ${lastUserInteraction}, isFirst: ${isFirstEvent})`);
-          } else {
-            console.log(`[NAV_FILTER] FILTERED navigation: ${eventPayload.data.href} (${timeSinceLastInteraction}ms after interaction - always filter post-interaction navigation)`);
-            return; // Don't store this event
-          }
-        }
-
         const eventWithMeta = {
           ...eventPayload,
           tabId: tabId,
@@ -606,6 +632,14 @@ export default defineBackground(() => {
           screenshot: screenshotDataUrl,
         };
         sessionLogs[tabId].push(eventWithMeta);
+        // Mark frame as interacted so subsequent iframe meta navigations can be allowed
+        if (message.type.startsWith("CUSTOM_") && eventPayload.frameUrl) {
+          if (!interactedFrameUrls[tabId]) interactedFrameUrls[tabId] = new Set();
+          interactedFrameUrls[tabId].add(eventPayload.frameUrl);
+          if (!interactedFrameTimes[tabId]) interactedFrameTimes[tabId] = {};
+          const interactionTimestamp = typeof eventPayload.timestamp === "number" ? eventPayload.timestamp : Date.now();
+          interactedFrameTimes[tabId][eventPayload.frameUrl] = interactionTimestamp;
+        }
         broadcastWorkflowDataUpdate(); // Call is async, will not block
         // console.log(`Stored ${message.type} from tab ${tabId}`);
       };
@@ -663,9 +697,6 @@ export default defineBackground(() => {
         (key) => delete sessionLogs[parseInt(key)]
       );
       Object.keys(tabInfo).forEach((key) => delete tabInfo[parseInt(key)]);
-      Object.keys(recentUserInteractions).forEach(
-        (key) => delete recentUserInteractions[parseInt(key)]
-      );
       console.log("Cleared previous recording data.");
 
       // Start recording
@@ -699,83 +730,6 @@ export default defineBackground(() => {
         sendEventToServer(eventToSend);
       }
       sendResponse({ status: "stopped" }); // Send simple confirmation
-    }
-    // --- Add Extraction Step from Sidepanel ---
-    else if (message.type === "ADD_EXTRACTION_STEP") {
-      console.log("🤖 Received ADD_EXTRACTION_STEP request:", message.payload);
-      
-      if (!isRecordingEnabled) {
-        console.error("❌ Recording is not enabled");
-        sendResponse({ status: "error", message: "Recording is not active" });
-        return false;
-      }
-
-      try {
-        // For sidepanel messages, we need to get the active tab
-        // Since this is from sidepanel, sender.tab will be undefined
-        // Let's use a direct approach with chrome.tabs.query but handle it synchronously
-        
-        isAsync = true;
-        
-        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-          try {
-            console.log("📋 Active tabs found:", tabs?.length || 0);
-            
-            if (chrome.runtime.lastError) {
-              console.error("❌ Chrome tabs query error:", chrome.runtime.lastError);
-              sendResponse({ status: "error", message: "Chrome tabs query failed" });
-              return;
-            }
-            
-            if (!tabs || tabs.length === 0 || !tabs[0]?.id) {
-              console.error("❌ No active tab found");
-              sendResponse({ status: "error", message: "No active tab found" });
-              return;
-            }
-
-            const tabId = tabs[0].id;
-            const tabUrl = tabs[0].url || "";
-            
-            console.log("✅ Using tab ID:", tabId, "URL:", tabUrl);
-            
-            const extractionStep: StoredExtractionEvent = {
-              timestamp: message.payload.timestamp,
-              tabId: tabId,
-              url: tabUrl,
-              extractionGoal: message.payload.extractionGoal,
-              messageType: "EXTRACTION_STEP",
-            };
-
-            console.log("📝 Creating extraction step:", extractionStep);
-
-            if (!sessionLogs[tabId]) {
-              console.log("🆕 Initializing sessionLogs for tab:", tabId);
-              sessionLogs[tabId] = [];
-            }
-            
-            sessionLogs[tabId].push(extractionStep);
-            console.log("✅ Added extraction step to sessionLogs. Total events for tab:", sessionLogs[tabId].length);
-            
-            // Broadcast update (don't await to avoid blocking)
-            broadcastWorkflowDataUpdate();
-            console.log("✅ Broadcasted workflow update");
-            
-            // Send success response
-            sendResponse({ status: "added" });
-            
-          } catch (error) {
-            console.error("❌ Error in tabs.query callback:", error);
-            sendResponse({ status: "error", message: `Callback error: ${error}` });
-          }
-        });
-        
-        return true; // Keep message channel open
-        
-      } catch (error) {
-        console.error("❌ Error setting up extraction step:", error);
-        sendResponse({ status: "error", message: `Setup error: ${error}` });
-        return false;
-      }
     }
     // --- Status Request from Content Script ---
     else if (message.type === "REQUEST_RECORDING_STATUS" && sender.tab?.id) {

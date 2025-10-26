@@ -1,7 +1,8 @@
-export interface StoredCustomClickEvent {
+﻿export interface StoredCustomClickEvent {
   timestamp: number;
   url: string;
   frameUrl: string;
+  frameIdPath?: string;
   xpath: string;
   cssSelector?: string;
   elementTag: string;
@@ -16,6 +17,7 @@ export interface StoredCustomInputEvent {
   timestamp: number;
   url: string;
   frameUrl: string;
+  frameIdPath?: string;
   xpath: string;
   cssSelector?: string;
   elementTag: string;
@@ -30,6 +32,7 @@ export interface StoredCustomSelectEvent {
   timestamp: number;
   url: string;
   frameUrl: string;
+  frameIdPath?: string;
   xpath: string;
   cssSelector?: string;
   elementTag: string;
@@ -44,6 +47,7 @@ export interface StoredCustomKeyEvent {
   timestamp: number;
   url: string;
   frameUrl: string;
+  frameIdPath?: string;
   key: string;
   xpath?: string; // XPath of focused element
   cssSelector?: string;
@@ -84,6 +88,7 @@ export interface StoredRrwebEvent {
   data: any;
   timestamp: number;
   tabId: number;
+  frameUrl?: string; // URL of the frame where the rrweb event originated (when injected per-frame)
   messageType: "RRWEB_EVENT";
 }
 

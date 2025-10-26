@@ -13,9 +13,15 @@ export default defineConfig({
       // WXT-specific overrides (optional)
     }),
   manifest: {
-    permissions: ["tabs", "sidePanel", "<all_urls>"],
-    host_permissions: ["http://127.0.0.1/*"],
-    // options_page: "options.html",
+    permissions: ["tabs", "sidePanel", "storage", "<all_urls>"],
+    // Broaden host permissions so content script can inject into iframes on external sites.
+    // Note: <all_urls> in permissions allows some access, but host_permissions explicitly grants injection rights.
+    host_permissions: [
+      "http://127.0.0.1/*",
+      "https://*/*",
+      "http://*/*"
+    ],
+    options_page: "options.html",
     // action: {
     //   default_popup: "popup.html",
     // },

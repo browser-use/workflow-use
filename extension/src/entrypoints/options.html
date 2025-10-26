@@ -1,0 +1,80 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Workflow Use - Options</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 16px; }
+      label { display: block; margin: 8px 0 4px; font-weight: 600; }
+      textarea { width: 100%; height: 100px; font-family: ui-monospace, monospace; }
+      input[type="number"] { width: 160px; }
+      .row { margin-bottom: 12px; }
+      .hint { color: #555; font-size: 12px; }
+      .section { border: 1px solid #ddd; padding: 12px; border-radius: 8px; margin-bottom: 16px; }
+    </style>
+  </head>
+  <body>
+    <h2>Recording Settings</h2>
+    <div class="section">
+      <div class="row">
+        <label>
+          <input type="checkbox" id="enableIframes" /> Enable recording from iframes
+        </label>
+        <div class="hint">When disabled, iframe-originated navigation/meta events are ignored.</div>
+      </div>
+      <div class="row">
+        <label for="iframeWindow">Iframe allow window (ms)</label>
+        <input type="number" id="iframeWindow" min="0" step="100" />
+        <div class="hint">Time after a user interaction in an iframe during which rrweb meta navigations are allowed.</div>
+      </div>
+      <div class="row">
+        <label for="blocklist">Blocked domains (newline separated)</label>
+        <textarea id="blocklist" placeholder="example.com\nads.example.org"></textarea>
+      </div>
+      <div class="row">
+        <label for="allowlist">Allowed domains (newline separated)</label>
+        <textarea id="allowlist" placeholder="Optional allowlist overrides blocklist"></textarea>
+      </div>
+      <button id="save">Save</button>
+      <span id="status" class="hint"></span>
+    </div>
+
+    <script>
+      const DEFAULTS = {
+        enableIframes: true,
+        iframeWindow: 3000,
+        blocklist: [
+          'doubleclick.net','googlesyndication.com','googleadservices.com',
+          'amazon-adsystem.com','2mdn.net','recaptcha.google.com','recaptcha.net',
+          'googletagmanager.com','indexww.com','adtrafficquality.google'
+        ],
+        allowlist: [],
+      };
+
+      function toLines(str){ return (str||'').split(/\r?\n/).map(s=>s.trim()).filter(Boolean); }
+      function fromLines(arr){ return (arr||[]).join('\n'); }
+
+      async function load() {
+        const store = await chrome.storage.sync.get(DEFAULTS);
+        document.getElementById('enableIframes').checked = !!store.enableIframes;
+        document.getElementById('iframeWindow').value = store.iframeWindow;
+        document.getElementById('blocklist').value = fromLines(store.blocklist);
+        document.getElementById('allowlist').value = fromLines(store.allowlist);
+      }
+
+      async function save() {
+        const enableIframes = document.getElementById('enableIframes').checked;
+        const iframeWindow = parseInt(document.getElementById('iframeWindow').value || '0', 10);
+        const blocklist = toLines(document.getElementById('blocklist').value);
+        const allowlist = toLines(document.getElementById('allowlist').value);
+        await chrome.storage.sync.set({ enableIframes, iframeWindow, blocklist, allowlist });
+        const el = document.getElementById('status');
+        el.textContent = 'Saved';
+        setTimeout(()=> el.textContent = '', 1500);
+      }
+
+      document.getElementById('save').addEventListener('click', save);
+      load();
+    </script>
+  </body>
+</html>
