@@ -12,7 +12,7 @@ import asyncio
 import json
 
 import aiofiles
-from langchain_anthropic import ChatAnthropic
+from browser_use.llm import ChatAnthropic
 
 from workflow_use.healing.service import HealingService
 
@@ -31,9 +31,8 @@ async def main():
 
     # Initialize LLM (needed for browser agent and optional variable identification)
     llm = ChatAnthropic(
-        model_name="claude-3-5-sonnet-20241022",
-        timeout=25,
-        stop=None
+        model="claude-3-5-sonnet-20241022",
+        timeout=25
     )
 
     # Create HealingService with deterministic conversion enabled

@@ -9,7 +9,7 @@ import asyncio
 import json
 
 import aiofiles
-from langchain_anthropic import ChatAnthropic
+from browser_use.llm import ChatAnthropic
 
 from workflow_use.healing.service import HealingService
 
@@ -25,7 +25,7 @@ async def main():
     print("=" * 80)
     print(f"Task: {task.strip()}\n")
 
-    llm = ChatAnthropic(model_name="claude-3-5-sonnet-20241022", timeout=25, stop=None)
+    llm = ChatAnthropic(model="claude-3-5-sonnet-20241022", timeout=25)
 
     # Create service with deterministic conversion
     service = HealingService(

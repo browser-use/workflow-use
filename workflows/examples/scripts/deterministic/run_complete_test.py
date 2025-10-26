@@ -15,7 +15,7 @@ import asyncio
 import json
 
 import aiofiles
-from langchain_anthropic import ChatAnthropic
+from browser_use.llm import ChatAnthropic
 
 from workflow_use.healing.service import HealingService
 
@@ -79,7 +79,7 @@ async def main():
 
     # Setup
     print("Step 1: Initializing...")
-    llm = ChatAnthropic(model_name="claude-3-5-sonnet-20241022", timeout=25, stop=None)
+    llm = ChatAnthropic(model="claude-3-5-sonnet-20241022", timeout=25)
 
     service = HealingService(
         llm=llm,

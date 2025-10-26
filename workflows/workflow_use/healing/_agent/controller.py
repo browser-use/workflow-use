@@ -4,7 +4,6 @@ import os
 from browser_use import ActionResult, Controller
 from browser_use.llm import ChatOpenAI
 from browser_use.llm.base import BaseChatModel
-from langchain_core.prompts import PromptTemplate
 from pydantic import BaseModel, Field, SecretStr
 
 logger = logging.getLogger(__name__)
@@ -67,11 +66,11 @@ For example:
 
 Page content: {page}"""
 
-		template = PromptTemplate(input_variables=['page'], template=prompt)
+		formatted_prompt = prompt.format(page=content)
 
 		try:
 			structured_llm = self.extraction_llm.with_structured_output(PageContentAnalysis, method='function_calling')
-			output: PageContentAnalysis = await structured_llm.ainvoke(template.format(page=content))  # type: ignore
+			output: PageContentAnalysis = await structured_llm.ainvoke(formatted_prompt)  # type: ignore
 		except Exception as e:
 			logger.error(f'Error extracting content: {e}')
 			return ActionResult(extracted_content=f'Error extracting content: {e}')
