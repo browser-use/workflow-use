@@ -51,9 +51,7 @@ class HealingService:
 				tag_name = element.node_name.lower() if hasattr(element, 'node_name') else ''
 
 				# hash element by hashing the node_name + element_hash
-				element_hash = hashlib.sha256(
-					f'{tag_name}_{element.element_hash}'.encode()
-				).hexdigest()[:10]
+				element_hash = hashlib.sha256(f'{tag_name}_{element.element_hash}'.encode()).hexdigest()[:10]
 
 				if element_hash not in self.interacted_elements_hash_map:
 					self.interacted_elements_hash_map[element_hash] = element
@@ -107,12 +105,12 @@ class HealingService:
 				agent_steps.append((i, step))
 
 		if agent_steps:
-			print(f"\n⚠️  WARNING: Generated workflow contains {len(agent_steps)} agent step(s)!")
-			print("   Agent steps are 10-30x slower and cost money per execution.")
-			print("   Consider these alternatives:\n")
+			print(f'\n⚠️  WARNING: Generated workflow contains {len(agent_steps)} agent step(s)!')
+			print('   Agent steps are 10-30x slower and cost money per execution.')
+			print('   Consider these alternatives:\n')
 			for i, step in agent_steps:
 				task = getattr(step, 'task', 'Unknown task')
-				print(f"   Step {i+1}: {task}")
+				print(f'   Step {i + 1}: {task}')
 
 				# Suggest semantic alternatives
 				if 'search' in task.lower() or 'input' in task.lower():
@@ -154,12 +152,12 @@ class HealingService:
 			response = await self.llm.ainvoke(all_messages, output_format=WorkflowDefinitionSchema)
 			workflow_definition: WorkflowDefinitionSchema = response.completion  # type: ignore
 		except Exception as e:
-			print("ERROR: Failed to generate structured workflow definition")
-			print(f"Error details: {e}")
+			print('ERROR: Failed to generate structured workflow definition')
+			print(f'Error details: {e}')
 			# Try to get the raw response
 			try:
 				raw_response = await self.llm.ainvoke(all_messages)
-				print("\nRaw LLM response:")
+				print('\nRaw LLM response:')
 				print(raw_response)
 			except Exception:
 				pass
@@ -175,16 +173,16 @@ class HealingService:
 			# The LLM already identified variables in the initial generation
 			# But we can optionally run a second pass for validation/enhancement
 			try:
-				print("\nAnalyzing workflow for additional variable opportunities...")
+				print('\nAnalyzing workflow for additional variable opportunities...')
 				result = await self.variable_extractor.suggest_variables(workflow_definition)
 				if result.suggestions:
-					print(f"Found {len(result.suggestions)} variable suggestions:")
+					print(f'Found {len(result.suggestions)} variable suggestions:')
 					for suggestion in result.suggestions:
-						print(f"  - {suggestion.name} ({suggestion.type}): {suggestion.reasoning}")
+						print(f'  - {suggestion.name} ({suggestion.type}): {suggestion.reasoning}')
 					# Note: We don't auto-apply these suggestions, just log them
 					# The initial LLM generation should have already identified the main variables
 			except Exception as e:
-				print(f"Warning: Variable extraction analysis failed: {e}")
+				print(f'Warning: Variable extraction analysis failed: {e}')
 				# Continue with the original workflow
 
 		return workflow_definition
@@ -199,19 +197,16 @@ class HealingService:
 		resulting in faster generation and guaranteed semantic steps (no agent steps).
 		"""
 		if not self.deterministic_converter:
-			raise ValueError("Deterministic converter not initialized. Set use_deterministic_conversion=True in constructor.")
+			raise ValueError('Deterministic converter not initialized. Set use_deterministic_conversion=True in constructor.')
 
-		print("🔧 Using deterministic workflow conversion (no LLM for step creation)")
+		print('🔧 Using deterministic workflow conversion (no LLM for step creation)')
 
 		# Convert history to steps deterministically
 		steps = self.deterministic_converter.convert_history_to_steps(history_list)
 
 		# Create workflow definition dict
 		workflow_dict = self.deterministic_converter.create_workflow_definition(
-			name=task,
-			description=f"Workflow for: {task}",
-			steps=steps,
-			input_schema=[]
+			name=task, description=f'Workflow for: {task}', steps=steps, input_schema=[]
 		)
 
 		# Convert to WorkflowDefinitionSchema
@@ -225,14 +220,14 @@ class HealingService:
 		# Post-process to extract variables if enabled
 		if extract_variables and self.variable_extractor:
 			try:
-				print("\nAnalyzing workflow for variable opportunities...")
+				print('\nAnalyzing workflow for variable opportunities...')
 				result = await self.variable_extractor.suggest_variables(workflow_definition)
 				if result.suggestions:
-					print(f"Found {len(result.suggestions)} variable suggestions:")
+					print(f'Found {len(result.suggestions)} variable suggestions:')
 					for suggestion in result.suggestions:
-						print(f"  - {suggestion.name} ({suggestion.type}): {suggestion.reasoning}")
+						print(f'  - {suggestion.name} ({suggestion.type}): {suggestion.reasoning}')
 			except Exception as e:
-				print(f"Warning: Variable extraction analysis failed: {e}")
+				print(f'Warning: Variable extraction analysis failed: {e}')
 
 		return workflow_definition
 

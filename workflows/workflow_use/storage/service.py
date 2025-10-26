@@ -2,6 +2,7 @@
 Simple file-based storage service for workflows.
 This can be extended to use a proper database (SQLite, PostgreSQL, etc.) in the future.
 """
+
 import json
 import logging
 from datetime import datetime
@@ -18,21 +19,22 @@ logger = logging.getLogger(__name__)
 
 class WorkflowMetadata(BaseModel):
 	"""Metadata for a stored workflow."""
+
 	id: str = Field(default_factory=lambda: str(uuid4()))
 	name: str
 	description: str
-	version: str = "1.0"
+	version: str = '1.0'
 	created_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
 	updated_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
 	file_path: str
-	generation_mode: str = "manual"  # "manual" or "browser_use"
+	generation_mode: str = 'manual'  # "manual" or "browser_use"
 	original_task: Optional[str] = None  # The task prompt used for generation
 
 
 class WorkflowStorageService:
 	"""Service for storing and retrieving workflows."""
 
-	def __init__(self, storage_dir: str | Path = "./workflows/storage"):
+	def __init__(self, storage_dir: str | Path = './workflows/storage'):
 		"""
 		Initialize the workflow storage service.
 
@@ -40,8 +42,8 @@ class WorkflowStorageService:
 			storage_dir: Directory to store workflow files and metadata
 		"""
 		self.storage_dir = Path(storage_dir)
-		self.workflows_dir = self.storage_dir / "workflows"
-		self.metadata_file = self.storage_dir / "metadata.json"
+		self.workflows_dir = self.storage_dir / 'workflows'
+		self.metadata_file = self.storage_dir / 'metadata.json'
 
 		# Create directories if they don't exist
 		self.workflows_dir.mkdir(parents=True, exist_ok=True)
@@ -56,37 +58,30 @@ class WorkflowStorageService:
 			try:
 				with open(self.metadata_file, 'r') as f:
 					data = json.load(f)
-					self.metadata = {
-						wf_id: WorkflowMetadata(**wf_data)
-						for wf_id, wf_data in data.items()
-					}
-				logger.info(f"Loaded {len(self.metadata)} workflow metadata entries")
+					self.metadata = {wf_id: WorkflowMetadata(**wf_data) for wf_id, wf_data in data.items()}
+				logger.info(f'Loaded {len(self.metadata)} workflow metadata entries')
 			except Exception as e:
-				logger.error(f"Error loading metadata: {e}")
+				logger.error(f'Error loading metadata: {e}')
 				self.metadata = {}
 		else:
-			logger.info("No existing metadata file, starting fresh")
+			logger.info('No existing metadata file, starting fresh')
 
 	def _save_metadata(self) -> None:
 		"""Save workflow metadata to disk."""
 		try:
 			with open(self.metadata_file, 'w') as f:
-				json.dump(
-					{wf_id: wf.model_dump() for wf_id, wf in self.metadata.items()},
-					f,
-					indent=2
-				)
-			logger.info(f"Saved metadata for {len(self.metadata)} workflows")
+				json.dump({wf_id: wf.model_dump() for wf_id, wf in self.metadata.items()}, f, indent=2)
+			logger.info(f'Saved metadata for {len(self.metadata)} workflows')
 		except Exception as e:
-			logger.error(f"Error saving metadata: {e}")
+			logger.error(f'Error saving metadata: {e}')
 			raise
 
 	def save_workflow(
 		self,
 		workflow: WorkflowDefinitionSchema,
-		generation_mode: str = "manual",
+		generation_mode: str = 'manual',
 		original_task: Optional[str] = None,
-		workflow_id: Optional[str] = None
+		workflow_id: Optional[str] = None,
 	) -> WorkflowMetadata:
 		"""
 		Save a workflow to storage.
@@ -108,11 +103,11 @@ class WorkflowStorageService:
 			metadata.description = workflow.description
 			metadata.version = workflow.version
 			metadata.updated_at = datetime.utcnow().isoformat()
-			logger.info(f"Updating existing workflow: {workflow_id}")
+			logger.info(f'Updating existing workflow: {workflow_id}')
 		else:
 			# Create new workflow
 			workflow_id = workflow_id or str(uuid4())
-			filename = f"{workflow_id}.workflow.json"
+			filename = f'{workflow_id}.workflow.json'
 			file_path = str(self.workflows_dir / filename)
 
 			metadata = WorkflowMetadata(
@@ -122,9 +117,9 @@ class WorkflowStorageService:
 				version=workflow.version,
 				file_path=file_path,
 				generation_mode=generation_mode,
-				original_task=original_task
+				original_task=original_task,
 			)
-			logger.info(f"Creating new workflow: {workflow_id}")
+			logger.info(f'Creating new workflow: {workflow_id}')
 
 		# Save workflow file
 		with open(metadata.file_path, 'w') as f:
@@ -148,7 +143,7 @@ class WorkflowStorageService:
 			The workflow definition or None if not found
 		"""
 		if workflow_id not in self.metadata:
-			logger.warning(f"Workflow not found: {workflow_id}")
+			logger.warning(f'Workflow not found: {workflow_id}')
 			return None
 
 		metadata = self.metadata[workflow_id]
@@ -156,10 +151,10 @@ class WorkflowStorageService:
 			with open(metadata.file_path, 'r') as f:
 				data = json.load(f)
 			workflow = WorkflowDefinitionSchema(**data)
-			logger.info(f"Loaded workflow: {workflow_id}")
+			logger.info(f'Loaded workflow: {workflow_id}')
 			return workflow
 		except Exception as e:
-			logger.error(f"Error loading workflow {workflow_id}: {e}")
+			logger.error(f'Error loading workflow {workflow_id}: {e}')
 			return None
 
 	def get_workflow_by_name(self, name: str) -> Optional[WorkflowDefinitionSchema]:
@@ -176,7 +171,7 @@ class WorkflowStorageService:
 			if metadata.name == name:
 				return self.get_workflow(workflow_id)
 
-		logger.warning(f"Workflow not found with name: {name}")
+		logger.warning(f'Workflow not found with name: {name}')
 		return None
 
 	def list_workflows(self) -> List[WorkflowMetadata]:
@@ -199,7 +194,7 @@ class WorkflowStorageService:
 			True if deleted, False if not found
 		"""
 		if workflow_id not in self.metadata:
-			logger.warning(f"Cannot delete, workflow not found: {workflow_id}")
+			logger.warning(f'Cannot delete, workflow not found: {workflow_id}')
 			return False
 
 		metadata = self.metadata[workflow_id]
@@ -207,22 +202,18 @@ class WorkflowStorageService:
 		# Delete file
 		try:
 			Path(metadata.file_path).unlink()
-			logger.info(f"Deleted workflow file: {metadata.file_path}")
+			logger.info(f'Deleted workflow file: {metadata.file_path}')
 		except Exception as e:
-			logger.warning(f"Error deleting workflow file: {e}")
+			logger.warning(f'Error deleting workflow file: {e}')
 
 		# Remove from metadata
 		del self.metadata[workflow_id]
 		self._save_metadata()
 
-		logger.info(f"Deleted workflow: {workflow_id}")
+		logger.info(f'Deleted workflow: {workflow_id}')
 		return True
 
-	def search_workflows(
-		self,
-		query: Optional[str] = None,
-		generation_mode: Optional[str] = None
-	) -> List[WorkflowMetadata]:
+	def search_workflows(self, query: Optional[str] = None, generation_mode: Optional[str] = None) -> List[WorkflowMetadata]:
 		"""
 		Search workflows by query string or generation mode.
 
@@ -240,9 +231,6 @@ class WorkflowStorageService:
 
 		if query:
 			query_lower = query.lower()
-			results = [
-				w for w in results
-				if query_lower in w.name.lower() or query_lower in w.description.lower()
-			]
+			results = [w for w in results if query_lower in w.name.lower() or query_lower in w.description.lower()]
 
 		return results

@@ -193,7 +193,9 @@ def _build_and_save_semantic_workflow_from_recording(
 
 	# Convert recording to semantic workflow format
 	try:
-		semantic_workflow = asyncio.run(_convert_recording_to_semantic_workflow(recording_data, description, simulate_interactions, auto_fix_navigation))
+		semantic_workflow = asyncio.run(
+			_convert_recording_to_semantic_workflow(recording_data, description, simulate_interactions, auto_fix_navigation)
+		)
 	except Exception as e:
 		typer.secho(f'Error converting to semantic workflow: {e}', fg=typer.colors.RED)
 		return None
@@ -214,7 +216,8 @@ def _build_and_save_semantic_workflow_from_recording(
 
 	default_workflow_filename = f'{file_stem}.semantic.workflow.json'
 	workflow_output_name: str = typer.prompt(
-		typer.style('Enter a name for the generated semantic workflow file', bold=True) + ' (e.g., my_search.semantic.workflow.json):',
+		typer.style('Enter a name for the generated semantic workflow file', bold=True)
+		+ ' (e.g., my_search.semantic.workflow.json):',
 		default=default_workflow_filename,
 	)
 	# Ensure the file name ends with .json
@@ -262,16 +265,14 @@ def _fix_missing_navigation_steps(steps):
 					# Try to infer the missing navigation button
 					navigation_step = _infer_navigation_step(current_page_url, step_url, steps, i)
 					if navigation_step:
-						typer.echo(f"🔧 Auto-fixing: Adding missing navigation from {current_page_url.split('/')[-1]} to {step_url.split('/')[-1]}")
+						typer.echo(
+							f'🔧 Auto-fixing: Adding missing navigation from {current_page_url.split("/")[-1]} to {step_url.split("/")[-1]}'
+						)
 						fixed_steps.append(navigation_step)
 						current_page_url = step_url
 				else:
 					# Add explicit navigation step
-					fixed_steps.append({
-						'description': f"Navigate to {step_url}",
-						'type': 'navigation',
-						'url': step_url
-					})
+					fixed_steps.append({'description': f'Navigate to {step_url}', 'type': 'navigation', 'url': step_url})
 					current_page_url = step_url
 
 			fixed_steps.append(step)
@@ -334,21 +335,21 @@ def _infer_navigation_step(from_url, to_url, all_steps, current_index):
 						'description': 'Click navigation button',
 						'type': 'click',
 						'target_text': step.get('target_text') or step.get('targetText'),
-						'url': from_url
+						'url': from_url,
 					}
 				elif 'employment' in target_text and 'employment' in to_path:
 					return {
 						'description': 'Click navigation button',
 						'type': 'click',
 						'target_text': step.get('target_text') or step.get('targetText'),
-						'url': from_url
+						'url': from_url,
 					}
 				elif 'review' in target_text and 'review' in to_path:
 					return {
 						'description': 'Click navigation button',
 						'type': 'click',
 						'target_text': step.get('target_text') or step.get('targetText'),
-						'url': from_url
+						'url': from_url,
 					}
 
 	# If we can't find a specific button, create a generic navigation step
@@ -357,22 +358,17 @@ def _infer_navigation_step(from_url, to_url, all_steps, current_index):
 			'description': 'Navigate to contact information',
 			'type': 'click',
 			'target_text': 'Next: Contact Information',
-			'url': from_url
+			'url': from_url,
 		}
 	elif 'employment' in to_path:
 		return {
 			'description': 'Navigate to employment information',
 			'type': 'click',
 			'target_text': 'Next: Employment Information',
-			'url': from_url
+			'url': from_url,
 		}
 	elif 'review' in to_path:
-		return {
-			'description': 'Navigate to review',
-			'type': 'click',
-			'target_text': 'Next: Review',
-			'url': from_url
-		}
+		return {'description': 'Navigate to review', 'type': 'click', 'target_text': 'Next: Review', 'url': from_url}
 
 	return None
 
@@ -390,23 +386,22 @@ async def _convert_recording_to_semantic_workflow(recording_data, description, s
 		steps = []
 
 	if not steps:
-		raise Exception("No steps found in recording")
+		raise Exception('No steps found in recording')
 
 	# Filter out redundant click events before processing
 	filtered_steps = _filter_redundant_click_events(steps)
 	if filtered_steps is None:
 		filtered_steps = steps
-	typer.echo(f"Filtered {len(steps) - len(filtered_steps)} redundant click events")
+	typer.echo(f'Filtered {len(steps) - len(filtered_steps)} redundant click events')
 
 	# Auto-fix missing navigation steps (optional)
 	if auto_fix_navigation:
 		fixed_steps = _fix_missing_navigation_steps(filtered_steps)
 		if len(fixed_steps) > len(filtered_steps):
-			typer.echo(f"🔧 Auto-fixed {len(fixed_steps) - len(filtered_steps)} missing navigation steps")
+			typer.echo(f'🔧 Auto-fixed {len(fixed_steps) - len(filtered_steps)} missing navigation steps')
 	else:
 		fixed_steps = filtered_steps
-		typer.echo("⚠️ Skipping auto-fix navigation steps (disabled)")
-
+		typer.echo('⚠️ Skipping auto-fix navigation steps (disabled)')
 
 	# Initialize semantic extractor
 	semantic_extractor = SemanticExtractor()
@@ -426,11 +421,7 @@ async def _convert_recording_to_semantic_workflow(recording_data, description, s
 				# Navigation step - extract semantic mapping for new page
 				current_url = step.get('url')
 				if current_url:
-					semantic_steps.append({
-						'description': f"Navigate to {current_url}",
-						'type': 'navigation',
-						'url': current_url
-					})
+					semantic_steps.append({'description': f'Navigate to {current_url}', 'type': 'navigation', 'url': current_url})
 
 					# Extract semantic mapping for this page
 					try:
@@ -441,9 +432,9 @@ async def _convert_recording_to_semantic_workflow(recording_data, description, s
 						semantic_mapping = await semantic_extractor.extract_semantic_mapping(page)
 						if semantic_mapping is None:
 							semantic_mapping = {}
-						typer.echo(f"Extracted {len(semantic_mapping or {})} semantic elements from {current_url}")
+						typer.echo(f'Extracted {len(semantic_mapping or {})} semantic elements from {current_url}')
 					except Exception as e:
-						typer.echo(f"Warning: Could not extract semantic mapping from {current_url}: {e}")
+						typer.echo(f'Warning: Could not extract semantic mapping from {current_url}: {e}')
 						semantic_mapping = {}
 
 			elif step_type in ['click', 'input', 'select', 'keypress']:
@@ -457,9 +448,9 @@ async def _convert_recording_to_semantic_workflow(recording_data, description, s
 						semantic_mapping = await semantic_extractor.extract_semantic_mapping(page)
 						if semantic_mapping is None:
 							semantic_mapping = {}
-						typer.echo(f"Refreshed semantic mapping: {len(semantic_mapping or {})} elements available")
+						typer.echo(f'Refreshed semantic mapping: {len(semantic_mapping or {})} elements available')
 					except Exception as e:
-						typer.echo(f"Warning: Could not refresh semantic mapping: {e}")
+						typer.echo(f'Warning: Could not refresh semantic mapping: {e}')
 						semantic_mapping = {}
 
 				# Interactive step - convert to semantic format
@@ -472,25 +463,27 @@ async def _convert_recording_to_semantic_workflow(recording_data, description, s
 
 			elif step_type == 'scroll':
 				# Keep scroll steps as-is
-				semantic_steps.append({
-					'description': step.get('description', 'Scroll page'),
-					'type': 'scroll',
-					'scrollX': step.get('scrollX', 0),
-					'scrollY': step.get('scrollY', 0)
-				})
+				semantic_steps.append(
+					{
+						'description': step.get('description', 'Scroll page'),
+						'type': 'scroll',
+						'scrollX': step.get('scrollX', 0),
+						'scrollY': step.get('scrollY', 0),
+					}
+				)
 
 				# After scroll, refresh semantic mapping as new elements might be visible
 				if current_url:
 					try:
 						page = await browser.get_current_page()
-						await page.evaluate(f"() => window.scrollBy({step.get('scrollX', 0)}, {step.get('scrollY', 0)})")
+						await page.evaluate(f'() => window.scrollBy({step.get("scrollX", 0)}, {step.get("scrollY", 0)})')
 						await asyncio.sleep(1)  # Wait for scroll to complete
 						semantic_mapping = await semantic_extractor.extract_semantic_mapping(page)
 						if semantic_mapping is None:
 							semantic_mapping = {}
-						typer.echo(f"Refreshed semantic mapping after scroll: {len(semantic_mapping or {})} elements available")
+						typer.echo(f'Refreshed semantic mapping after scroll: {len(semantic_mapping or {})} elements available')
 					except Exception as e:
-						typer.echo(f"Warning: Could not refresh semantic mapping after scroll: {e}")
+						typer.echo(f'Warning: Could not refresh semantic mapping after scroll: {e}')
 						semantic_mapping = {}
 
 			elif step_type == 'extract':
@@ -499,10 +492,10 @@ async def _convert_recording_to_semantic_workflow(recording_data, description, s
 					'description': step.get('description', 'Extract information with AI'),
 					'type': 'extract',
 					'extractionGoal': step.get('extractionGoal', 'Extract information from the page'),
-					'url': step.get('url', current_url)
+					'url': step.get('url', current_url),
 				}
 				semantic_steps.append(extraction_step)
-				typer.echo(f"Added extraction step: {extraction_step['extractionGoal']}")
+				typer.echo(f'Added extraction step: {extraction_step["extractionGoal"]}')
 
 			else:
 				# Unknown step type - keep as-is but warn
@@ -519,7 +512,7 @@ async def _convert_recording_to_semantic_workflow(recording_data, description, s
 		'description': description,
 		'version': '1.0',
 		'steps': semantic_steps,
-		'input_schema': []  # Can be enhanced later with variable detection
+		'input_schema': [],  # Can be enhanced later with variable detection
 	}
 
 	return semantic_workflow
@@ -530,7 +523,7 @@ def _filter_redundant_click_events(steps):
 	filtered_steps = []
 	i = 0
 
-	typer.echo(f"🔍 Filtering {len(steps)} steps to remove redundant clicks...")
+	typer.echo(f'🔍 Filtering {len(steps)} steps to remove redundant clicks...')
 
 	while i < len(steps):
 		step = steps[i]
@@ -555,32 +548,43 @@ def _filter_redundant_click_events(steps):
 				next_text = str(next_step.get('target_text') or next_step.get('targetText') or '').strip()
 
 				# If they have the same target_text, they're likely duplicates
-				if (next_step.get('type') == 'click' and
-				    step_text and next_text and step_text == next_text and
-				    abs(next_step.get('timestamp', 0) - step.get('timestamp', 0)) <= 2000):  # Increased to 2 seconds
+				if (
+					next_step.get('type') == 'click'
+					and step_text
+					and next_text
+					and step_text == next_text
+					and abs(next_step.get('timestamp', 0) - step.get('timestamp', 0)) <= 2000
+				):  # Increased to 2 seconds
 					click_group.append(next_step)
 					j += 1
 					continue
 
 				# Don't group clicks if one is a navigation button (different target_text)
 				navigation_keywords = ['next', 'submit', 'continue', 'proceed', 'save', 'finish', 'confirm', 'back', 'previous']
-				if (any(keyword in step_text.lower() for keyword in navigation_keywords) or
-				    any(keyword in next_text.lower() for keyword in navigation_keywords)):
+				if any(keyword in step_text.lower() for keyword in navigation_keywords) or any(
+					keyword in next_text.lower() for keyword in navigation_keywords
+				):
 					if step_text != next_text:  # Different navigation buttons
 						break
 
 				# Don't group radio buttons - each radio button selection is meaningful
 				step_css = str(step.get('cssSelector') or '')
 				next_css = str(next_step.get('cssSelector') or '')
-				if ('role="radio"' in step_css and 'role="radio"' in next_css):
+				if 'role="radio"' in step_css and 'role="radio"' in next_css:
 					# Radio buttons are always meaningful choices - don't group them
-					step_text_display = step.get('target_text') or step.get('targetText') or step.get('elementText') or 'radio button'
-					next_text_display = next_step.get('target_text') or next_step.get('targetText') or next_step.get('elementText') or 'radio button'
+					step_text_display = (
+						step.get('target_text') or step.get('targetText') or step.get('elementText') or 'radio button'
+					)
+					next_text_display = (
+						next_step.get('target_text')
+						or next_step.get('targetText')
+						or next_step.get('elementText')
+						or 'radio button'
+					)
 					typer.echo(f"Not grouping radio button selections: '{step_text_display}' vs '{next_text_display}'")
 					break
 
-				if (next_step.get('type') == 'click' and
-				    abs(next_step.get('timestamp', 0) - step.get('timestamp', 0)) <= 500):
+				if next_step.get('type') == 'click' and abs(next_step.get('timestamp', 0) - step.get('timestamp', 0)) <= 500:
 					click_group.append(next_step)
 					j += 1
 				else:
@@ -590,7 +594,9 @@ def _filter_redundant_click_events(steps):
 				# Multiple clicks in rapid succession - pick the best one
 				best_click = _select_best_click_from_group(click_group)
 				filtered_steps.append(best_click)
-				typer.echo(f"Filtered {len(click_group)-1} redundant clicks, kept: {best_click.get('target_text', best_click.get('targetText', best_click.get('elementText', 'unknown')))}")
+				typer.echo(
+					f'Filtered {len(click_group) - 1} redundant clicks, kept: {best_click.get("target_text", best_click.get("targetText", best_click.get("elementText", "unknown")))}'
+				)
 			else:
 				# Single click - keep as is
 				filtered_steps.append(step)
@@ -622,24 +628,30 @@ def _select_best_click_from_group(click_group):
 		element_text = str(click.get('elementText') or '').lower()
 		try:
 			if any(keyword in target_text or keyword in element_text for keyword in navigation_keywords):
-				typer.echo(f"Prioritizing navigation button: '{click.get('target_text') or click.get('targetText') or click.get('elementText', 'unknown')}'")
+				typer.echo(
+					f"Prioritizing navigation button: '{click.get('target_text') or click.get('targetText') or click.get('elementText', 'unknown')}'"
+				)
 				return click
 		except Exception as e:
-			typer.echo(f"DEBUG: Error in navigation check: {e}, target_text={target_text}, element_text={element_text}")
+			typer.echo(f'DEBUG: Error in navigation check: {e}, target_text={target_text}, element_text={element_text}')
 			continue
 
 	# Second priority: Form selections (radio buttons, checkboxes) that change state
 	for click in click_group:
 		try:
 			css_selector = str(click.get('cssSelector') or '')
-			if ('radio' in css_selector or 'checkbox' in css_selector or
-			    'role="radio"' in css_selector or 'type="checkbox"' in css_selector):
+			if (
+				'radio' in css_selector
+				or 'checkbox' in css_selector
+				or 'role="radio"' in css_selector
+				or 'type="checkbox"' in css_selector
+			):
 				target_text = click.get('target_text') or click.get('targetText') or click.get('elementText')
 				if target_text and len(str(target_text).strip()) > 1:
 					typer.echo(f"Prioritizing form selection: '{target_text}'")
 					return click
 		except Exception as e:
-			typer.echo(f"DEBUG: Error in form selection check: {e}")
+			typer.echo(f'DEBUG: Error in form selection check: {e}')
 			continue
 
 	# Third priority: Click with meaningful target_text
@@ -714,7 +726,7 @@ async def _convert_step_to_semantic(step, semantic_mapping, browser, simulate_in
 			semantic_info.get('ariaLabel', ''),
 			semantic_info.get('textContent', ''),
 			semantic_info.get('name', ''),
-			semantic_info.get('id', '')
+			semantic_info.get('id', ''),
 		]
 
 		for text in potential_texts:
@@ -745,22 +757,19 @@ async def _convert_step_to_semantic(step, semantic_mapping, browser, simulate_in
 			'description': description or f"Click button '{target_text}'",
 			'type': 'button',
 			'button_text': step.get('button_text', target_text),
-			'button_type': step.get('button_type', 'button')
+			'button_type': step.get('button_type', 'button'),
 		}
 	else:
-		semantic_step = {
-			'description': description or f'{step_type.title()} element',
-			'type': step_type
-		}
+		semantic_step = {'description': description or f'{step_type.title()} element', 'type': step_type}
 
 	if target_text:
 		semantic_step['target_text'] = target_text
 	elif css_selector:
 		# Fallback to original CSS selector if no semantic mapping available
 		semantic_step['cssSelector'] = css_selector
-		typer.echo("Warning: No semantic target found, using CSS selector fallback")
+		typer.echo('Warning: No semantic target found, using CSS selector fallback')
 	else:
-		typer.echo("Warning: No target method available for step, may need manual adjustment")
+		typer.echo('Warning: No target method available for step, may need manual adjustment')
 
 	# Add step-specific fields
 	if step_type == 'input' and 'value' in step:
@@ -775,7 +784,7 @@ async def _convert_step_to_semantic(step, semantic_mapping, browser, simulate_in
 		try:
 			await _simulate_step_interaction(step, browser)
 		except Exception as e:
-			typer.echo(f"Warning: Could not simulate interaction for step: {e}")
+			typer.echo(f'Warning: Could not simulate interaction for step: {e}')
 
 	return semantic_step
 
@@ -971,7 +980,9 @@ def create_workflow_no_ai():
 			temp_recording_path = Path(tmp_file.name)
 
 		# Use the semantic workflow builder instead of the regular one
-		saved_path = _build_and_save_semantic_workflow_from_recording(temp_recording_path, default_tmp_dir, is_temp_recording=True, simulate_interactions=False, auto_fix_navigation=False)
+		saved_path = _build_and_save_semantic_workflow_from_recording(
+			temp_recording_path, default_tmp_dir, is_temp_recording=True, simulate_interactions=False, auto_fix_navigation=False
+		)
 		if not saved_path:
 			typer.secho(
 				'Failed to complete semantic workflow creation after recording.',
@@ -984,7 +995,9 @@ def create_workflow_no_ai():
 		typer.secho('🎉 Semantic workflow created successfully!', fg=typer.colors.GREEN, bold=True)
 		typer.echo()
 		typer.echo(typer.style('Next steps:', bold=True))
-		typer.echo(f'1. Test your workflow: {typer.style(f"python cli.py run-workflow-no-ai {saved_path.name}", fg=typer.colors.CYAN)}')
+		typer.echo(
+			f'1. Test your workflow: {typer.style(f"python cli.py run-workflow-no-ai {saved_path.name}", fg=typer.colors.CYAN)}'
+		)
 		typer.echo('2. Edit the workflow file to add variables or customize steps')
 		typer.echo('3. The workflow uses visible text mappings for reliable execution!')
 
@@ -1067,11 +1080,19 @@ def build_semantic_from_recording_command(
 	)
 
 	if simulate_interactions:
-		typer.echo(typer.style('⚙️ Interaction simulation enabled - this will be slower but more accurate', fg=typer.colors.YELLOW))
+		typer.echo(
+			typer.style('⚙️ Interaction simulation enabled - this will be slower but more accurate', fg=typer.colors.YELLOW)
+		)
 
 	typer.echo()  # Add space
 
-	saved_path = _build_and_save_semantic_workflow_from_recording(recording_path, default_save_dir, is_temp_recording=False, simulate_interactions=simulate_interactions, auto_fix_navigation=auto_fix_navigation)
+	saved_path = _build_and_save_semantic_workflow_from_recording(
+		recording_path,
+		default_save_dir,
+		is_temp_recording=False,
+		simulate_interactions=simulate_interactions,
+		auto_fix_navigation=auto_fix_navigation,
+	)
 	if not saved_path:
 		typer.secho(f'Failed to build semantic workflow from {recording_path.name}.', fg=typer.colors.RED)
 		raise typer.Exit(code=1)
@@ -1081,7 +1102,9 @@ def build_semantic_from_recording_command(
 	typer.secho('🎉 Semantic workflow created successfully!', fg=typer.colors.GREEN, bold=True)
 	typer.echo()
 	typer.echo(typer.style('Next steps:', bold=True))
-	typer.echo(f'1. Test your workflow: {typer.style(f"python cli.py run-workflow-no-ai {saved_path.name}", fg=typer.colors.CYAN)}')
+	typer.echo(
+		f'1. Test your workflow: {typer.style(f"python cli.py run-workflow-no-ai {saved_path.name}", fg=typer.colors.CYAN)}'
+	)
 	typer.echo('2. Edit the workflow file to add variables or customize steps')
 	typer.echo('3. The workflow uses visible text mappings for reliable execution!')
 
@@ -1126,7 +1149,9 @@ def run_as_tool_command(
 
 	try:
 		# Pass llm_instance to ensure the workflow can use it if needed for as_tool() or run_with_prompt()
-		workflow_obj = Workflow.load_from_file(str(workflow_path), llm=llm_instance, page_extraction_llm=page_extraction_llm, use_cloud=use_cloud)
+		workflow_obj = Workflow.load_from_file(
+			str(workflow_path), llm=llm_instance, page_extraction_llm=page_extraction_llm, use_cloud=use_cloud
+		)
 	except Exception as e:
 		typer.secho(f'Error loading workflow: {e}', fg=typer.colors.RED)
 		raise typer.Exit(code=1)
@@ -1300,6 +1325,7 @@ def run_workflow_no_ai_command(
 
 			try:
 				from browser_use.llm import ChatOpenAI
+
 				dummy_llm = ChatOpenAI(model='gpt-4.1-mini')
 				if enable_extraction:
 					extraction_llm = ChatOpenAI(model='gpt-4.1-mini')
@@ -1404,7 +1430,7 @@ def run_workflow_no_ai_command(
 						content = extracted_data['extracted_content']
 						# Limit display length for readability
 						if len(content) > 500:
-							content = content[:500] + "... [truncated]"
+							content = content[:500] + '... [truncated]'
 						typer.echo('  Result:')
 						# Indent the content for better readability
 						for line in content.split('\n'):
@@ -1494,11 +1520,12 @@ def generate_semantic_mapping_command(
 					output_data[text] = {
 						'class': element_info['class'],
 						'id': element_info['id'],
-						'selectors': element_info['selectors']
+						'selectors': element_info['selectors'],
 					}
 
 				async with aiofiles.open(output_file, 'w') as f:
 					import json
+
 					await f.write(json.dumps(output_data, indent=2))
 
 				typer.secho(f'Semantic mapping saved to: {output_file}', fg=typer.colors.GREEN)
@@ -1575,22 +1602,18 @@ def create_semantic_workflow_command(
 
 			# Create basic workflow template
 			workflow_name = typer.prompt('Enter workflow name', default='Semantic Workflow')
-			workflow_description = typer.prompt('Enter workflow description', default='Automated workflow using semantic text mapping')
+			workflow_description = typer.prompt(
+				'Enter workflow description', default='Automated workflow using semantic text mapping'
+			)
 
 			# Create template workflow
 			template = {
-				"workflow_analysis": f"Semantic workflow for {url}. Uses visible text to identify elements instead of CSS selectors.",
-				"name": workflow_name,
-				"description": workflow_description,
-				"version": "1.0",
-				"steps": [
-					{
-						"description": f"Navigate to {url}",
-						"type": "navigation",
-						"url": url
-					}
-				],
-				"input_schema": []
+				'workflow_analysis': f'Semantic workflow for {url}. Uses visible text to identify elements instead of CSS selectors.',
+				'name': workflow_name,
+				'description': workflow_description,
+				'version': '1.0',
+				'steps': [{'description': f'Navigate to {url}', 'type': 'navigation', 'url': url}],
+				'input_schema': [],
 			}
 
 			# Add some example steps as comments in the JSON
@@ -1599,26 +1622,31 @@ def create_semantic_workflow_command(
 				element_type = element_info['element_type']
 
 				if element_type == 'button':
-					example_steps.append({
-						"description": f"Click {text}",
-						"type": "click",
-						"target_text": text,
-						"_comment": "Remove this line - it's just an example"
-					})
+					example_steps.append(
+						{
+							'description': f'Click {text}',
+							'type': 'click',
+							'target_text': text,
+							'_comment': "Remove this line - it's just an example",
+						}
+					)
 				elif element_type == 'input':
-					example_steps.append({
-						"description": f"Enter value into {text}",
-						"type": "input",
-						"target_text": text,
-						"value": "{variable_name}",
-						"_comment": "Remove this line - it's just an example. Replace {variable_name} with actual variable."
-					})
+					example_steps.append(
+						{
+							'description': f'Enter value into {text}',
+							'type': 'input',
+							'target_text': text,
+							'value': '{variable_name}',
+							'_comment': "Remove this line - it's just an example. Replace {variable_name} with actual variable.",
+						}
+					)
 
-			template["example_steps_to_customize"] = example_steps
+			template['example_steps_to_customize'] = example_steps
 
 			# Save template
 			async with aiofiles.open(output_path, 'w') as f:
 				import json
+
 				await f.write(json.dumps(template, indent=2))
 
 			typer.secho(f'Workflow template created: {output_path}', fg=typer.colors.GREEN, bold=True)
@@ -1734,7 +1762,9 @@ def run_workflow_csv_command(
 		end_idx = end_row if end_row is None else end_row
 
 		if start_idx >= len(df):
-			typer.secho(f'Error: Start row {start_row} is beyond the CSV data (only {len(df)} rows available).', fg=typer.colors.RED)
+			typer.secho(
+				f'Error: Start row {start_row} is beyond the CSV data (only {len(df)} rows available).', fg=typer.colors.RED
+			)
 			raise typer.Exit(code=1)
 
 		if end_idx is not None:
@@ -1756,7 +1786,9 @@ def run_workflow_csv_command(
 			if use_ai and llm_instance:
 				dummy_llm = llm_instance
 			elif use_ai:
-				typer.secho('Warning: AI execution requested but no LLM available. Falling back to semantic mode.', fg=typer.colors.YELLOW)
+				typer.secho(
+					'Warning: AI execution requested but no LLM available. Falling back to semantic mode.', fg=typer.colors.YELLOW
+				)
 
 			workflow_obj = Workflow.load_from_file(
 				str(workflow_path),
@@ -1793,7 +1825,7 @@ def run_workflow_csv_command(
 		if extra_columns:
 			typer.echo(f'Note: Extra columns in CSV will be ignored: {", ".join(extra_columns)}')
 
-		execution_mode = "AI-powered" if use_ai and dummy_llm else "semantic abstraction (no AI)"
+		execution_mode = 'AI-powered' if use_ai and dummy_llm else 'semantic abstraction (no AI)'
 		typer.secho(f'Using {execution_mode} execution mode.', fg=typer.colors.BLUE, bold=True)
 		typer.echo()
 
@@ -1813,7 +1845,9 @@ def run_workflow_csv_command(
 				# Check if we should stop execution due to critical failures
 				if result['failure_type'] in ['global_failure_limit', 'consecutive_failures']:
 					typer.echo()
-					typer.secho('🛑 STOPPING EXECUTION: Critical workflow failure detected.', fg=typer.colors.BRIGHT_RED, bold=True)
+					typer.secho(
+						'🛑 STOPPING EXECUTION: Critical workflow failure detected.', fg=typer.colors.BRIGHT_RED, bold=True
+					)
 					typer.echo(f'Reason: {result["error"]}')
 					typer.echo(f'Completed {len(results)} out of {len(df)} planned executions.')
 					break
@@ -1825,8 +1859,10 @@ def run_workflow_csv_command(
 			# For now, implement as batched sequential to avoid browser conflicts
 			batch_size = max_parallel
 			for i in range(0, len(df), batch_size):
-				batch = df.iloc[i:i + batch_size]
-				typer.echo(f'\n--- Batch {i // batch_size + 1}: Processing rows {i + start_row} to {min(i + batch_size - 1 + start_row, start_row + len(df) - 1)} ---')
+				batch = df.iloc[i : i + batch_size]
+				typer.echo(
+					f'\n--- Batch {i // batch_size + 1}: Processing rows {i + start_row} to {min(i + batch_size - 1 + start_row, start_row + len(df) - 1)} ---'
+				)
 
 				for idx, row in batch.iterrows():
 					typer.echo(f'\nExecution {idx + 1 - start_idx} of {len(df)}')
@@ -1849,9 +1885,9 @@ def run_workflow_csv_command(
 					failure_types[failure_type] = []
 				failure_types[failure_type].append(result)
 
-		typer.echo('\n' + '='*60)
+		typer.echo('\n' + '=' * 60)
 		typer.secho('EXECUTION SUMMARY', fg=typer.colors.CYAN, bold=True)
-		typer.echo('='*60)
+		typer.echo('=' * 60)
 		typer.echo(f'Total executions: {len(results)}')
 		typer.echo(f'Successful: {typer.style(str(successful), fg=typer.colors.GREEN, bold=True)}')
 		if failed > 0:
@@ -1860,9 +1896,9 @@ def run_workflow_csv_command(
 		typer.echo(f'Average per execution: {duration / len(results) if results else "N/A"}')
 
 		if failed > 0:
-			typer.echo('\n' + '-'*40)
+			typer.echo('\n' + '-' * 40)
 			typer.secho('FAILURE ANALYSIS', fg=typer.colors.YELLOW, bold=True)
-			typer.echo('-'*40)
+			typer.echo('-' * 40)
 
 			# Show failure type breakdown
 			for failure_type, failed_results in failure_types.items():
@@ -1879,9 +1915,9 @@ def run_workflow_csv_command(
 					typer.secho(f'  ❓ Other failures: {count}', fg=typer.colors.RED)
 
 			# Provide actionable recommendations
-			typer.echo('\n' + '-'*40)
+			typer.echo('\n' + '-' * 40)
 			typer.secho('RECOMMENDATIONS', fg=typer.colors.CYAN, bold=True)
-			typer.echo('-'*40)
+			typer.echo('-' * 40)
 			if 'global_failure_limit' in failure_types or 'consecutive_failures' in failure_types:
 				typer.secho('  • Check if the form structure has changed significantly', fg=typer.colors.CYAN)
 				typer.secho('  • Verify workflow file is compatible with current form version', fg=typer.colors.CYAN)
@@ -1890,7 +1926,9 @@ def run_workflow_csv_command(
 				typer.secho('  • Update element selectors in workflow file', fg=typer.colors.CYAN)
 				typer.secho('  • Re-record workflow if form layout changed', fg=typer.colors.CYAN)
 			if 'form_validation' in failure_types:
-				typer.secho('  • Check CSV data for invalid values (missing required fields, wrong formats)', fg=typer.colors.CYAN)
+				typer.secho(
+					'  • Check CSV data for invalid values (missing required fields, wrong formats)', fg=typer.colors.CYAN
+				)
 				typer.secho('  • Verify data types match form expectations', fg=typer.colors.CYAN)
 				typer.secho('  • Check for proper validation rules in the target form', fg=typer.colors.CYAN)
 
@@ -1909,6 +1947,7 @@ def run_workflow_csv_command(
 	async def _execute_single_workflow(workflow_obj, row_data, row_number, use_ai_mode):
 		"""Execute a single workflow with the given row data."""
 		from datetime import datetime
+
 		start_time = datetime.now()
 
 		# Convert row data to inputs dictionary
@@ -1928,7 +1967,7 @@ def run_workflow_csv_command(
 							'error': f'Required field "{column_name}" is empty',
 							'duration': 0,
 							'steps_executed': 0,
-							**dict(row_data)
+							**dict(row_data),
 						}
 					else:
 						continue  # Skip optional empty fields
@@ -1942,14 +1981,17 @@ def run_workflow_csv_command(
 					else:  # string or default
 						inputs[column_name] = str(raw_value)
 				except (ValueError, TypeError) as e:
-					typer.secho(f'  Error: Cannot convert "{raw_value}" to {input_def.type} for field "{column_name}"', fg=typer.colors.RED)
+					typer.secho(
+						f'  Error: Cannot convert "{raw_value}" to {input_def.type} for field "{column_name}"',
+						fg=typer.colors.RED,
+					)
 					return {
 						'row_number': row_number,
 						'status': 'failed',
 						'error': f'Type conversion error for field "{column_name}": {e}',
 						'duration': 0,
 						'steps_executed': 0,
-						**dict(row_data)
+						**dict(row_data),
 					}
 
 		typer.echo(f'  Inputs: {inputs}')
@@ -1973,7 +2015,7 @@ def run_workflow_csv_command(
 				'duration': str(duration),
 				'steps_executed': len(result.step_results),
 				'failure_type': None,
-				**dict(row_data)
+				**dict(row_data),
 			}
 
 		except Exception as e:
@@ -2008,7 +2050,7 @@ def run_workflow_csv_command(
 				'duration': str(duration),
 				'steps_executed': 0,
 				'failure_type': failure_type,
-				**dict(row_data)
+				**dict(row_data),
 			}
 
 	return asyncio.run(_run_workflow_csv())
@@ -2112,7 +2154,7 @@ def generate_csv_template_command(
 		if not input_schema:
 			typer.secho('Warning: Workflow has no input schema defined. Creating a basic template.', fg=typer.colors.YELLOW)
 			# Create a basic template anyway
-			template_data = {'example_field': [f'example_value_{i+1}' for i in range(num_examples)]}
+			template_data = {'example_field': [f'example_value_{i + 1}' for i in range(num_examples)]}
 		else:
 			# Create template based on input schema
 			template_data = {}
@@ -2132,16 +2174,16 @@ def generate_csv_template_command(
 						example_values.append(round(10.5 + i * 2.3, 2))
 					else:  # string
 						if 'email' in field_format.lower() or 'email' in column_name.lower():
-							example_values.append(f'user{i+1}@example.com')
+							example_values.append(f'user{i + 1}@example.com')
 						elif 'name' in column_name.lower():
 							names = ['John Doe', 'Jane Smith', 'Bob Johnson']
 							example_values.append(names[i % len(names)])
 						elif 'phone' in column_name.lower():
 							example_values.append(f'+1-555-000-{1000 + i}')
 						elif 'url' in column_name.lower() or 'website' in column_name.lower():
-							example_values.append(f'https://example{i+1}.com')
+							example_values.append(f'https://example{i + 1}.com')
 						else:
-							example_values.append(f'{column_name}_value_{i+1}')
+							example_values.append(f'{column_name}_value_{i + 1}')
 
 				template_data[column_name] = example_values
 
@@ -2165,7 +2207,9 @@ def generate_csv_template_command(
 			column_name = input_def['name']
 			field_type = input_def.get('type', 'string')
 			is_required = input_def.get('required', False)
-			status = typer.style('required', fg=typer.colors.RED) if is_required else typer.style('optional', fg=typer.colors.YELLOW)
+			status = (
+				typer.style('required', fg=typer.colors.RED) if is_required else typer.style('optional', fg=typer.colors.YELLOW)
+			)
 			typer.echo(f'  • {typer.style(column_name, fg=typer.colors.CYAN)} ({field_type}, {status})')
 
 		typer.echo()
@@ -2180,6 +2224,7 @@ def generate_csv_template_command(
 
 
 # ==================== GENERATION MODE COMMANDS ====================
+
 
 @app.command(name='generate-workflow')
 def generate_workflow_from_task(
@@ -2226,10 +2271,7 @@ def generate_workflow_from_task(
 		# Generate workflow from task
 		workflow_definition = asyncio.run(
 			healing_service.generate_workflow_from_prompt(
-				prompt=task,
-				agent_llm=agent_llm,
-				extraction_llm=extraction_llm,
-				use_cloud=use_cloud
+				prompt=task, agent_llm=agent_llm, extraction_llm=extraction_llm, use_cloud=use_cloud
 			)
 		)
 
@@ -2251,9 +2293,7 @@ def generate_workflow_from_task(
 		# Save to storage database
 		if save_to_storage:
 			metadata = storage_service.save_workflow(
-				workflow=workflow_definition,
-				generation_mode='browser_use',
-				original_task=task
+				workflow=workflow_definition, generation_mode='browser_use', original_task=task
 			)
 			typer.secho(f'💾 Saved to storage database with ID: {metadata.id}', fg=typer.colors.GREEN)
 			typer.echo(f'   Storage path: {metadata.file_path}')
@@ -2270,12 +2310,15 @@ def generate_workflow_from_task(
 		typer.echo(typer.style('Next Steps:', bold=True))
 		typer.echo('  1. List workflows: python cli.py list-workflows')
 		if save_to_storage:
-			typer.echo(f'  2. Run workflow: python cli.py run-stored-workflow {metadata.id if save_to_storage else "<workflow-id>"}')
+			typer.echo(
+				f'  2. Run workflow: python cli.py run-stored-workflow {metadata.id if save_to_storage else "<workflow-id>"}'
+			)
 		typer.echo('  3. Run as tool: python cli.py run-as-tool <workflow-file> --prompt "Your task"')
 
 	except Exception as e:
 		typer.secho(f'Error generating workflow: {e}', fg=typer.colors.RED)
 		import traceback
+
 		typer.echo('\nFull error traceback:')
 		typer.echo(traceback.format_exc())
 		raise typer.Exit(code=1)
@@ -2360,7 +2403,9 @@ def run_stored_workflow(
 	try:
 		if prompt:
 			# Run as tool with prompt
-			workflow = Workflow.load_from_file(temp_file, llm_instance, page_extraction_llm=page_extraction_llm, use_cloud=use_cloud)
+			workflow = Workflow.load_from_file(
+				temp_file, llm_instance, page_extraction_llm=page_extraction_llm, use_cloud=use_cloud
+			)
 			result = asyncio.run(workflow.run_as_tool(prompt))
 
 			typer.secho('✅ Workflow completed!', fg=typer.colors.GREEN, bold=True)
@@ -2370,7 +2415,9 @@ def run_stored_workflow(
 		elif not workflow_definition.input_schema:
 			# No inputs needed, run directly
 			typer.secho('▶️  Running workflow (no inputs required)...', fg=typer.colors.CYAN)
-			workflow = Workflow.load_from_file(temp_file, llm_instance, page_extraction_llm=page_extraction_llm, use_cloud=use_cloud)
+			workflow = Workflow.load_from_file(
+				temp_file, llm_instance, page_extraction_llm=page_extraction_llm, use_cloud=use_cloud
+			)
 			result = asyncio.run(workflow.run(inputs={}))
 
 			typer.secho('✅ Workflow completed!', fg=typer.colors.GREEN, bold=True)
@@ -2389,7 +2436,11 @@ def run_stored_workflow(
 			typer.secho('This workflow requires input parameters:', fg=typer.colors.YELLOW)
 			typer.echo()
 			for inp in workflow_definition.input_schema:
-				required = typer.style('required', fg=typer.colors.RED) if inp.required else typer.style('optional', fg=typer.colors.YELLOW)
+				required = (
+					typer.style('required', fg=typer.colors.RED)
+					if inp.required
+					else typer.style('optional', fg=typer.colors.YELLOW)
+				)
 				typer.echo(f'  • {inp.name} ({inp.type}, {required})')
 			typer.echo()
 			typer.echo('Options:')
@@ -2474,7 +2525,9 @@ def workflow_info(
 	if workflow.input_schema:
 		typer.echo(typer.style('Input Schema:', bold=True))
 		for inp in workflow.input_schema:
-			required = typer.style('required', fg=typer.colors.RED) if inp.required else typer.style('optional', fg=typer.colors.YELLOW)
+			required = (
+				typer.style('required', fg=typer.colors.RED) if inp.required else typer.style('optional', fg=typer.colors.YELLOW)
+			)
 			typer.echo(f'  • {typer.style(inp.name, fg=typer.colors.CYAN)} ({inp.type}, {required})')
 		typer.echo()
 

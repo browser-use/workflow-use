@@ -12,218 +12,204 @@ logger = logging.getLogger(__name__)
 
 
 class SemanticExtractor:
-    """Extracts semantic mappings from HTML pages by mapping visible text to deterministic selectors."""
-    
-    def __init__(self):
-        self.element_counters = {
-            'input': 0,
-            'button': 0,
-            'select': 0,
-            'textarea': 0,
-            'a': 0,
-            'radio': 0,
-            'checkbox': 0
-        }
-    
-    def _reset_counters(self):
-        """Reset element counters for a new page."""
-        self.element_counters = {
-            'input': 0,
-            'button': 0,
-            'select': 0,
-            'textarea': 0,
-            'a': 0,
-            'radio': 0,
-            'checkbox': 0
-        }
-    
-    def _get_element_type_and_id(self, element_info: Dict) -> Tuple[str, str]:
-        """Determine element type and generate deterministic ID."""
-        tag = element_info.get('tag', '').lower()
-        input_type = element_info.get('type', '').lower()
-        role = element_info.get('role', '').lower()
+	"""Extracts semantic mappings from HTML pages by mapping visible text to deterministic selectors."""
 
-        # Determine element type
-        # Check role-based types first (ARIA widgets can use any tag)
-        if role == 'radio':
-            element_type = 'radio'
-        elif role == 'checkbox':
-            element_type = 'checkbox'
-        elif tag == 'input':
-            if input_type in ['radio']:
-                element_type = 'radio'
-            elif input_type in ['checkbox']:
-                element_type = 'checkbox'
-            else:
-                element_type = 'input'
-        elif tag == 'button' or role == 'button':
-            element_type = 'button'
-        elif tag == 'select':
-            element_type = 'select'
-        elif tag == 'textarea':
-            element_type = 'textarea'
-        elif tag == 'a':
-            element_type = 'a'
-        else:
-            element_type = 'input'  # fallback
+	def __init__(self):
+		self.element_counters = {'input': 0, 'button': 0, 'select': 0, 'textarea': 0, 'a': 0, 'radio': 0, 'checkbox': 0}
 
-        # Generate ID
-        self.element_counters[element_type] += 1
-        element_id = f"{element_type}_{self.element_counters[element_type]}"
+	def _reset_counters(self):
+		"""Reset element counters for a new page."""
+		self.element_counters = {'input': 0, 'button': 0, 'select': 0, 'textarea': 0, 'a': 0, 'radio': 0, 'checkbox': 0}
 
-        return element_type, element_id
-    
-    def _normalize_text(self, text: str) -> str:
-        """Normalize text for consistent mapping."""
-        if not text:
-            return ""
-        # Remove extra whitespace and normalize
-        return re.sub(r'\s+', ' ', text.strip())
-    
-    def _get_element_text(self, element_info: Dict) -> str:
-        """Extract meaningful text from element information."""
-        # Priority order for text extraction
-        text_sources = [
-            element_info.get('label_text', ''),
-            element_info.get('text_content', ''),
-            element_info.get('placeholder', ''),
-            element_info.get('title', ''),
-            element_info.get('aria_label', ''),
-            element_info.get('value', ''),
-            element_info.get('name', ''),
-            element_info.get('id', '')
-        ]
-        
-        for text in text_sources:
-            if text and text.strip():
-                return self._normalize_text(text)
-        
-        return ""
-    
-    def _create_fallback_text(self, element_info: Dict, element_type: str, element_id: str) -> str:
-        """Create fallback text for elements without meaningful text."""
-        tag = element_info.get('tag', '').lower()
-        
-        if tag == 'button' or element_type == 'button':
-            return "[Button]"
-        elif element_type == 'input':
-            input_type = element_info.get('type', 'text').lower()
-            return f"[Input Field - {input_type}]"
-        elif element_type == 'select':
-            return "[Dropdown]"
-        elif element_type == 'textarea':
-            return "[Text Area]"
-        elif element_type == 'radio':
-            return "[Radio Button]"
-        elif element_type == 'checkbox':
-            return "[Checkbox]"
-        else:
-            return f"[{tag.upper()} Element]"
-    
-    def _get_hierarchical_context(self, element_info: Dict) -> List[str]:
-        """Extract hierarchical context for better duplicate handling."""
-        contexts = []
-        
-        # Add parent context with hierarchy levels
-        parent_text = element_info.get('parent_text', '')
-        if parent_text:
-            # Truncate long parent text but keep meaningful parts
-            if len(parent_text) > 50:
-                parent_text = parent_text[:47] + "..."
-            contexts.append(f"in {parent_text}")
-        
-        # Add container context (section, fieldset, div with meaningful class/id)
-        container_info = element_info.get('container_context', {})
-        if container_info:
-            container_type = container_info.get('type', '')
-            container_text = container_info.get('text', '')
-            container_id = container_info.get('id', '')
-            
-            if container_text:
-                context_desc = f"in {container_type}"
-                if container_text and len(container_text) <= 30:
-                    context_desc = f"in {container_text}"
-                elif container_id:
-                    context_desc = f"in {container_type}#{container_id}"
-                contexts.append(context_desc)
-        
-        # Add sibling context (for elements in lists or tables)
-        sibling_info = element_info.get('sibling_context', {})
-        if sibling_info:
-            sibling_position = sibling_info.get('position', 0)
-            sibling_total = sibling_info.get('total', 0)
-            if sibling_total > 1:
-                contexts.append(f"item {sibling_position + 1} of {sibling_total}")
-        
-        # Add DOM position context
-        dom_path = element_info.get('dom_path', '')
-        if dom_path:
-            # Extract meaningful parts of the DOM path
-            path_parts = dom_path.split(' > ')
-            if len(path_parts) > 3:
-                # Keep first, last, and any parts with meaningful identifiers
-                meaningful_parts = []
-                for part in path_parts:
-                    if any(keyword in part.lower() for keyword in ['form', 'section', 'header', 'nav', 'main', 'aside', 'footer']):
-                        meaningful_parts.append(part)
-                
-                if meaningful_parts:
-                    contexts.append(f"in {' > '.join(meaningful_parts[-2:])}")
-        
-        return contexts
-    
-    def _handle_duplicate_text(self, text: str, existing_keys: set, element_info: Dict) -> str:
-        """Handle duplicate text by adding hierarchical context."""
-        if text not in existing_keys:
-            return text
-        
-        # Get hierarchical contexts
-        contexts = self._get_hierarchical_context(element_info)
-        
-        # Try contexts in order of preference (most specific first)
-        for context in contexts:
-            candidate = f"{text} ({context})"
-            if candidate not in existing_keys:
-                return candidate
-        
-        # Fallback contexts if hierarchical ones don't work
-        fallback_contexts = []
-        
-        # Add position-based context (less preferred but still useful)
-        position = element_info.get('position', {})
-        if position:
-            fallback_contexts.append(f"at {position.get('x', 0)},{position.get('y', 0)}")
-        
-        # Add attribute context
-        if element_info.get('id'):
-            fallback_contexts.append(f"id:{element_info['id']}")
-        elif element_info.get('name'):
-            fallback_contexts.append(f"name:{element_info['name']}")
-        elif element_info.get('class'):
-            class_parts = element_info['class'].split()[:2]  # First two classes
-            if class_parts:
-                fallback_contexts.append(f"class:{'.'.join(class_parts)}")
-        
-        # Try fallback contexts
-        for context in fallback_contexts:
-            candidate = f"{text} ({context})"
-            if candidate not in existing_keys:
-                return candidate
-        
-        # Final fallback with index
-        counter = 2
-        while f"{text} ({counter})" in existing_keys:
-            counter += 1
-        
-        return f"{text} ({counter})"
+	def _get_element_type_and_id(self, element_info: Dict) -> Tuple[str, str]:
+		"""Determine element type and generate deterministic ID."""
+		tag = element_info.get('tag', '').lower()
+		input_type = element_info.get('type', '').lower()
+		role = element_info.get('role', '').lower()
 
-    async def extract_interactive_elements(self, page: 'Page') -> List[Dict]:
-        """Extract interactive elements with enhanced context for complex UI widgets."""
-        
-        # Add debugging flag
-        debug_mode = False  # Set to True for debugging
-        
-        js_code = """
+		# Determine element type
+		# Check role-based types first (ARIA widgets can use any tag)
+		if role == 'radio':
+			element_type = 'radio'
+		elif role == 'checkbox':
+			element_type = 'checkbox'
+		elif tag == 'input':
+			if input_type in ['radio']:
+				element_type = 'radio'
+			elif input_type in ['checkbox']:
+				element_type = 'checkbox'
+			else:
+				element_type = 'input'
+		elif tag == 'button' or role == 'button':
+			element_type = 'button'
+		elif tag == 'select':
+			element_type = 'select'
+		elif tag == 'textarea':
+			element_type = 'textarea'
+		elif tag == 'a':
+			element_type = 'a'
+		else:
+			element_type = 'input'  # fallback
+
+		# Generate ID
+		self.element_counters[element_type] += 1
+		element_id = f'{element_type}_{self.element_counters[element_type]}'
+
+		return element_type, element_id
+
+	def _normalize_text(self, text: str) -> str:
+		"""Normalize text for consistent mapping."""
+		if not text:
+			return ''
+		# Remove extra whitespace and normalize
+		return re.sub(r'\s+', ' ', text.strip())
+
+	def _get_element_text(self, element_info: Dict) -> str:
+		"""Extract meaningful text from element information."""
+		# Priority order for text extraction
+		text_sources = [
+			element_info.get('label_text', ''),
+			element_info.get('text_content', ''),
+			element_info.get('placeholder', ''),
+			element_info.get('title', ''),
+			element_info.get('aria_label', ''),
+			element_info.get('value', ''),
+			element_info.get('name', ''),
+			element_info.get('id', ''),
+		]
+
+		for text in text_sources:
+			if text and text.strip():
+				return self._normalize_text(text)
+
+		return ''
+
+	def _create_fallback_text(self, element_info: Dict, element_type: str, element_id: str) -> str:
+		"""Create fallback text for elements without meaningful text."""
+		tag = element_info.get('tag', '').lower()
+
+		if tag == 'button' or element_type == 'button':
+			return '[Button]'
+		elif element_type == 'input':
+			input_type = element_info.get('type', 'text').lower()
+			return f'[Input Field - {input_type}]'
+		elif element_type == 'select':
+			return '[Dropdown]'
+		elif element_type == 'textarea':
+			return '[Text Area]'
+		elif element_type == 'radio':
+			return '[Radio Button]'
+		elif element_type == 'checkbox':
+			return '[Checkbox]'
+		else:
+			return f'[{tag.upper()} Element]'
+
+	def _get_hierarchical_context(self, element_info: Dict) -> List[str]:
+		"""Extract hierarchical context for better duplicate handling."""
+		contexts = []
+
+		# Add parent context with hierarchy levels
+		parent_text = element_info.get('parent_text', '')
+		if parent_text:
+			# Truncate long parent text but keep meaningful parts
+			if len(parent_text) > 50:
+				parent_text = parent_text[:47] + '...'
+			contexts.append(f'in {parent_text}')
+
+		# Add container context (section, fieldset, div with meaningful class/id)
+		container_info = element_info.get('container_context', {})
+		if container_info:
+			container_type = container_info.get('type', '')
+			container_text = container_info.get('text', '')
+			container_id = container_info.get('id', '')
+
+			if container_text:
+				context_desc = f'in {container_type}'
+				if container_text and len(container_text) <= 30:
+					context_desc = f'in {container_text}'
+				elif container_id:
+					context_desc = f'in {container_type}#{container_id}'
+				contexts.append(context_desc)
+
+		# Add sibling context (for elements in lists or tables)
+		sibling_info = element_info.get('sibling_context', {})
+		if sibling_info:
+			sibling_position = sibling_info.get('position', 0)
+			sibling_total = sibling_info.get('total', 0)
+			if sibling_total > 1:
+				contexts.append(f'item {sibling_position + 1} of {sibling_total}')
+
+		# Add DOM position context
+		dom_path = element_info.get('dom_path', '')
+		if dom_path:
+			# Extract meaningful parts of the DOM path
+			path_parts = dom_path.split(' > ')
+			if len(path_parts) > 3:
+				# Keep first, last, and any parts with meaningful identifiers
+				meaningful_parts = []
+				for part in path_parts:
+					if any(
+						keyword in part.lower() for keyword in ['form', 'section', 'header', 'nav', 'main', 'aside', 'footer']
+					):
+						meaningful_parts.append(part)
+
+				if meaningful_parts:
+					contexts.append(f'in {" > ".join(meaningful_parts[-2:])}')
+
+		return contexts
+
+	def _handle_duplicate_text(self, text: str, existing_keys: set, element_info: Dict) -> str:
+		"""Handle duplicate text by adding hierarchical context."""
+		if text not in existing_keys:
+			return text
+
+		# Get hierarchical contexts
+		contexts = self._get_hierarchical_context(element_info)
+
+		# Try contexts in order of preference (most specific first)
+		for context in contexts:
+			candidate = f'{text} ({context})'
+			if candidate not in existing_keys:
+				return candidate
+
+		# Fallback contexts if hierarchical ones don't work
+		fallback_contexts = []
+
+		# Add position-based context (less preferred but still useful)
+		position = element_info.get('position', {})
+		if position:
+			fallback_contexts.append(f'at {position.get("x", 0)},{position.get("y", 0)}')
+
+		# Add attribute context
+		if element_info.get('id'):
+			fallback_contexts.append(f'id:{element_info["id"]}')
+		elif element_info.get('name'):
+			fallback_contexts.append(f'name:{element_info["name"]}')
+		elif element_info.get('class'):
+			class_parts = element_info['class'].split()[:2]  # First two classes
+			if class_parts:
+				fallback_contexts.append(f'class:{".".join(class_parts)}')
+
+		# Try fallback contexts
+		for context in fallback_contexts:
+			candidate = f'{text} ({context})'
+			if candidate not in existing_keys:
+				return candidate
+
+		# Final fallback with index
+		counter = 2
+		while f'{text} ({counter})' in existing_keys:
+			counter += 1
+
+		return f'{text} ({counter})'
+
+	async def extract_interactive_elements(self, page: 'Page') -> List[Dict]:
+		"""Extract interactive elements with enhanced context for complex UI widgets."""
+
+		# Add debugging flag
+		debug_mode = False  # Set to True for debugging
+
+		js_code = """
         (debugMode = false) => {
             const debugLog = [];
             
@@ -772,314 +758,324 @@ class SemanticExtractor:
             };
         }
         """
-        
-        try:
-            result_str = await page.evaluate(js_code, debug_mode)
 
-            # Parse the JSON result
-            import json
-            result = json.loads(result_str) if isinstance(result_str, str) else result_str
+		try:
+			result_str = await page.evaluate(js_code, debug_mode)
 
-            if debug_mode and 'debugLog' in result:
-                # Save debug information to file
-                debug_file = f"semantic_extraction_debug_{int(asyncio.get_event_loop().time())}.json"
-                import json
-                async with aiofiles.open(debug_file, 'w') as f:
-                    await f.write(json.dumps(result, indent=2))
-                logger.info(f"Debug information saved to: {debug_file}")
-                
-                # Print debug stats
-                stats = result.get('stats', {})
-                logger.info(f"Extraction stats: {stats}")
-                
-                if 'error' in result:
-                    logger.error(f"JavaScript extraction error: {result['error']}")
-            
-            return result.get('elements', [])
-            
-        except Exception as e:
-            logger.error(f"Failed to extract interactive elements: {e}")
-            # Save error information for debugging
-            if debug_mode:
-                error_file = f"semantic_extraction_error_{int(asyncio.get_event_loop().time())}.txt"
-                async with aiofiles.open(error_file, 'w') as f:
-                    await f.write(f"Error: {str(e)}\n")
-                    await f.write(f"URL: {await page.get_url()}\n")
-                    await f.write(f"Timestamp: {asyncio.get_event_loop().time()}\n")
-                logger.info(f"Error information saved to: {error_file}")
-            
-            return []
+			# Parse the JSON result
+			import json
 
-    async def extract_semantic_mapping(self, page: 'Page') -> Dict[str, Dict]:
-        """Extract semantic mapping from the current page.
-        
-        Returns mapping: visible_text -> {"class": "", "id": "", "selectors": ""}
-        """
-        self._reset_counters()
-        
-        # Get all interactive elements with enhanced context
-        elements = await self.extract_interactive_elements(page)
-        
-        mapping = {}
-        existing_keys = set()
-        
-        for element_info in elements:
-            # Determine element type and generate ID
-            element_type, element_id = self._get_element_type_and_id(element_info)
-            
-            # Get meaningful text
-            text = self._get_element_text(element_info)
-            
-            # Use fallback if no meaningful text found
-            if not text:
-                text = self._create_fallback_text(element_info, element_type, element_id)
-            
-            # Handle duplicates with hierarchical context
-            final_text = self._handle_duplicate_text(text, existing_keys, element_info)
-            existing_keys.add(final_text)
-            
-            # Store mapping with enhanced selector options
-            mapping[final_text] = {
-                'class': element_info.get('class', ''),
-                'id': element_info.get('id', ''),
-                'selectors': element_info['css_selector'],
-                'hierarchical_selector': element_info.get('hierarchical_selector', element_info['css_selector']),
-                'fallback_selector': element_info.get('fallback_selector', element_info['css_selector']),
-                'text_xpath': element_info.get('text_xpath', ''),
-                # Additional info for internal use
-                'element_type': element_type,
-                'deterministic_id': element_id,
-                'original_text': text,
-                'dom_path': element_info.get('dom_path', ''),
-                'container_context': element_info.get('container_context', {}),
-                'sibling_context': element_info.get('sibling_context', {}),
-                'position': element_info.get('position', {})
-            }
-            
-            logger.debug(f"Mapped '{final_text}' -> {element_info['css_selector']}")
-        
-        return mapping
+			result = json.loads(result_str) if isinstance(result_str, str) else result_str
 
-    def find_element_by_text(self, mapping: Dict[str, Dict], target_text: str) -> Optional[Dict]:
-        """Find element by text with intelligent fuzzy matching and hierarchical context understanding."""
-        if not target_text or not mapping:
-            return None
-        
-        target_lower = target_text.lower().strip()
-        
-        # Strategy 1: Exact match (case-insensitive)
-        for text, element_info in mapping.items():
-            if text.lower() == target_lower:
-                logger.debug(f"Exact match found: '{target_text}' -> '{text}'")
-                return element_info
-        
-        # Strategy 2: Check if target looks like an element ID or name attribute
-        if target_text.replace('_', '').replace('-', '').isalnum():
-            for text, element_info in mapping.items():
-                selectors = element_info.get('selectors', '')
-                # Check if the selector contains the target as an ID or name
-                if f"#{target_text}" in selectors or f'[name="{target_text}"]' in selectors or f'[id="{target_text}"]' in selectors:
-                    logger.debug(f"ID/name match found: '{target_text}' -> '{text}' (selector: {selectors})")
-                    return element_info
-        
-        # Strategy 3: Hierarchical context matching
-        # If target contains context information like "Submit (in Contact Form)", parse it
-        if '(' in target_text and target_text.endswith(')'):
-            base_text = target_text.split('(')[0].strip()
-            context_part = target_text.split('(')[1].rstrip(')').strip()
-            
-            # Look for elements that match both the base text and context
-            candidates = []
-            for text, element_info in mapping.items():
-                if base_text.lower() in text.lower():
-                    # Check if the context matches
-                    if context_part.lower() in text.lower():
-                        candidates.append((text, element_info, 1.0))  # High score for full context match
-                    else:
-                        # Check if context matches container or DOM path
-                        container_context = element_info.get('container_context', {})
-                        dom_path = element_info.get('dom_path', '')
-                        
-                        context_match = False
-                        if container_context and context_part.lower() in str(container_context).lower():
-                            context_match = True
-                        elif context_part.lower() in dom_path.lower():
-                            context_match = True
-                        
-                        if context_match:
-                            candidates.append((text, element_info, 0.8))  # Good score for context match
-            
-            if candidates:
-                # Return the best candidate
-                candidates.sort(key=lambda x: x[2], reverse=True)
-                best_text, best_element, best_score = candidates[0]
-                logger.debug(f"Hierarchical context match found: '{target_text}' -> '{best_text}' (score: {best_score:.2f})")
-                return best_element
-        
-        # Strategy 4: Enhanced fuzzy text matching with hierarchical scoring
-        best_match = None
-        best_score = 0.0
-        best_text = ""
-        
-        for text, element_info in mapping.items():
-            text_lower = text.lower()
-            original_text = element_info.get('original_text', '').lower()
-            
-            # Calculate different types of matches
-            scores = []
-            
-            # Substring match (both directions)
-            if target_lower in text_lower:
-                scores.append(len(target_lower) / len(text_lower))
-            if text_lower in target_lower:
-                scores.append(len(text_lower) / len(target_lower))
-            
-            # Also check against original text (before context was added)
-            if original_text:
-                if target_lower in original_text:
-                    scores.append(len(target_lower) / len(original_text))
-                if original_text in target_lower:
-                    scores.append(len(original_text) / len(target_lower))
-            
-            # Word-based matching
-            target_words = set(target_lower.split())
-            text_words = set(text_lower.split())
-            original_words = set(original_text.split()) if original_text else set()
-            
-            # Check against both full text and original text
-            for word_set in [text_words, original_words]:
-                if target_words and word_set:
-                    # Calculate Jaccard similarity (intersection over union)
-                    intersection = len(target_words & word_set)
-                    union = len(target_words | word_set)
-                    if union > 0:
-                        jaccard_score = intersection / union
-                        scores.append(jaccard_score)
-                    
-                    # Calculate word overlap score
-                    if len(target_words) > 0 and len(word_set) > 0:
-                        overlap_score = intersection / max(len(target_words), len(word_set))
-                        scores.append(overlap_score)
-            
-            # Take the best score for this element
-            if scores:
-                element_score = max(scores)
-                if element_score > best_score and element_score > 0.3:  # Minimum threshold
-                    best_match = element_info
-                    best_score = element_score
-                    best_text = text
-        
-        if best_match:
-            logger.debug(f"Fuzzy match found: '{target_text}' -> '{best_text}' (score: {best_score:.2f})")
-            return best_match
-        
-        # Strategy 5: Pattern matching with camelCase/snake_case handling
-        target_words = target_lower.split()
-        if len(target_words) == 1:  # Single word target
-            word = target_words[0]
-            
-            for text, element_info in mapping.items():
-                text_lower = text.lower()
-                original_text = element_info.get('original_text', '').lower()
-                
-                # Check both full text and original text for pattern matching
-                for check_text in [text_lower, original_text]:
-                    if not check_text:
-                        continue
-                        
-                    # Split camelCase or snake_case
-                    word_parts = re.findall(r'[a-z]+|[A-Z][a-z]*', word)
-                    word_parts = [part.lower() for part in word_parts if part]
-                    
-                    if word_parts:
-                        # Check if all parts of the target word appear in the element text
-                        parts_found = sum(1 for part in word_parts if part in check_text)
-                        if parts_found >= len(word_parts) * 0.7:  # At least 70% of parts match
-                            score = parts_found / len(word_parts)
-                            if score > best_score:
-                                best_match = element_info
-                                best_score = score
-                                best_text = text
-        
-        if best_match:
-            logger.debug(f"Pattern match found: '{target_text}' -> '{best_text}' (score: {best_score:.2f})")
-            return best_match
-        
-        logger.debug(f"No match found for: '{target_text}'")
-        return None
+			if debug_mode and 'debugLog' in result:
+				# Save debug information to file
+				debug_file = f'semantic_extraction_debug_{int(asyncio.get_event_loop().time())}.json'
+				import json
 
-    def find_element_by_hierarchy(self, mapping: Dict[str, Dict], target_text: str, context_hints: List[str] = None) -> Optional[Dict]:
-        """Find element using hierarchical context hints.
-        
-        Args:
-            mapping: The semantic mapping
-            target_text: The text to find
-            context_hints: List of context hints like ['form', 'contact', 'personal info']
-        """
-        if not target_text or not mapping:
-            return None
-        
-        if not context_hints:
-            return self.find_element_by_text(mapping, target_text)
-        
-        target_lower = target_text.lower().strip()
-        context_lower = [hint.lower() for hint in context_hints]
-        
-        candidates = []
-        
-        for text, element_info in mapping.items():
-            text_lower = text.lower()
-            original_text = element_info.get('original_text', '').lower()
-            
-            # Check if the base text matches
-            base_match_score = 0
-            if text_lower == target_lower or original_text == target_lower:
-                base_match_score = 1.0
-            elif target_lower in text_lower or target_lower in original_text:
-                base_match_score = 0.8
-            elif any(word in text_lower or word in original_text for word in target_lower.split()):
-                base_match_score = 0.6
-            
-            if base_match_score > 0:
-                # Calculate context match score
-                context_score = 0
-                total_context_checks = 0
-                
-                # Check container context
-                container_context = element_info.get('container_context', {})
-                for hint in context_lower:
-                    total_context_checks += 1
-                    if container_context:
-                        container_text = container_context.get('text', '').lower()
-                        container_id = container_context.get('id', '').lower()
-                        if hint in container_text or hint in container_id:
-                            context_score += 1
-                
-                # Check DOM path
-                dom_path = element_info.get('dom_path', '').lower()
-                for hint in context_lower:
-                    if hint in dom_path:
-                        context_score += 0.5  # DOM path matches are less strong
-                
-                # Check full text (including added context)
-                for hint in context_lower:
-                    if hint in text_lower:
-                        context_score += 0.3
-                
-                # Calculate final score
-                context_match_ratio = context_score / max(len(context_lower), 1)
-                final_score = base_match_score * 0.7 + context_match_ratio * 0.3
-                
-                candidates.append((text, element_info, final_score))
-        
-        if candidates:
-            # Sort by score and return the best match
-            candidates.sort(key=lambda x: x[2], reverse=True)
-            best_text, best_element, best_score = candidates[0]
-            
-            if best_score > 0.5:  # Minimum threshold for hierarchical matching
-                logger.debug(f"Hierarchical match found: '{target_text}' with context {context_hints} -> '{best_text}' (score: {best_score:.2f})")
-                return best_element
-        
-        # Fallback to regular text matching
-        return self.find_element_by_text(mapping, target_text) 
+				async with aiofiles.open(debug_file, 'w') as f:
+					await f.write(json.dumps(result, indent=2))
+				logger.info(f'Debug information saved to: {debug_file}')
+
+				# Print debug stats
+				stats = result.get('stats', {})
+				logger.info(f'Extraction stats: {stats}')
+
+				if 'error' in result:
+					logger.error(f'JavaScript extraction error: {result["error"]}')
+
+			return result.get('elements', [])
+
+		except Exception as e:
+			logger.error(f'Failed to extract interactive elements: {e}')
+			# Save error information for debugging
+			if debug_mode:
+				error_file = f'semantic_extraction_error_{int(asyncio.get_event_loop().time())}.txt'
+				async with aiofiles.open(error_file, 'w') as f:
+					await f.write(f'Error: {str(e)}\n')
+					await f.write(f'URL: {await page.get_url()}\n')
+					await f.write(f'Timestamp: {asyncio.get_event_loop().time()}\n')
+				logger.info(f'Error information saved to: {error_file}')
+
+			return []
+
+	async def extract_semantic_mapping(self, page: 'Page') -> Dict[str, Dict]:
+		"""Extract semantic mapping from the current page.
+
+		Returns mapping: visible_text -> {"class": "", "id": "", "selectors": ""}
+		"""
+		self._reset_counters()
+
+		# Get all interactive elements with enhanced context
+		elements = await self.extract_interactive_elements(page)
+
+		mapping = {}
+		existing_keys = set()
+
+		for element_info in elements:
+			# Determine element type and generate ID
+			element_type, element_id = self._get_element_type_and_id(element_info)
+
+			# Get meaningful text
+			text = self._get_element_text(element_info)
+
+			# Use fallback if no meaningful text found
+			if not text:
+				text = self._create_fallback_text(element_info, element_type, element_id)
+
+			# Handle duplicates with hierarchical context
+			final_text = self._handle_duplicate_text(text, existing_keys, element_info)
+			existing_keys.add(final_text)
+
+			# Store mapping with enhanced selector options
+			mapping[final_text] = {
+				'class': element_info.get('class', ''),
+				'id': element_info.get('id', ''),
+				'selectors': element_info['css_selector'],
+				'hierarchical_selector': element_info.get('hierarchical_selector', element_info['css_selector']),
+				'fallback_selector': element_info.get('fallback_selector', element_info['css_selector']),
+				'text_xpath': element_info.get('text_xpath', ''),
+				# Additional info for internal use
+				'element_type': element_type,
+				'deterministic_id': element_id,
+				'original_text': text,
+				'dom_path': element_info.get('dom_path', ''),
+				'container_context': element_info.get('container_context', {}),
+				'sibling_context': element_info.get('sibling_context', {}),
+				'position': element_info.get('position', {}),
+			}
+
+			logger.debug(f"Mapped '{final_text}' -> {element_info['css_selector']}")
+
+		return mapping
+
+	def find_element_by_text(self, mapping: Dict[str, Dict], target_text: str) -> Optional[Dict]:
+		"""Find element by text with intelligent fuzzy matching and hierarchical context understanding."""
+		if not target_text or not mapping:
+			return None
+
+		target_lower = target_text.lower().strip()
+
+		# Strategy 1: Exact match (case-insensitive)
+		for text, element_info in mapping.items():
+			if text.lower() == target_lower:
+				logger.debug(f"Exact match found: '{target_text}' -> '{text}'")
+				return element_info
+
+		# Strategy 2: Check if target looks like an element ID or name attribute
+		if target_text.replace('_', '').replace('-', '').isalnum():
+			for text, element_info in mapping.items():
+				selectors = element_info.get('selectors', '')
+				# Check if the selector contains the target as an ID or name
+				if (
+					f'#{target_text}' in selectors
+					or f'[name="{target_text}"]' in selectors
+					or f'[id="{target_text}"]' in selectors
+				):
+					logger.debug(f"ID/name match found: '{target_text}' -> '{text}' (selector: {selectors})")
+					return element_info
+
+		# Strategy 3: Hierarchical context matching
+		# If target contains context information like "Submit (in Contact Form)", parse it
+		if '(' in target_text and target_text.endswith(')'):
+			base_text = target_text.split('(')[0].strip()
+			context_part = target_text.split('(')[1].rstrip(')').strip()
+
+			# Look for elements that match both the base text and context
+			candidates = []
+			for text, element_info in mapping.items():
+				if base_text.lower() in text.lower():
+					# Check if the context matches
+					if context_part.lower() in text.lower():
+						candidates.append((text, element_info, 1.0))  # High score for full context match
+					else:
+						# Check if context matches container or DOM path
+						container_context = element_info.get('container_context', {})
+						dom_path = element_info.get('dom_path', '')
+
+						context_match = False
+						if container_context and context_part.lower() in str(container_context).lower():
+							context_match = True
+						elif context_part.lower() in dom_path.lower():
+							context_match = True
+
+						if context_match:
+							candidates.append((text, element_info, 0.8))  # Good score for context match
+
+			if candidates:
+				# Return the best candidate
+				candidates.sort(key=lambda x: x[2], reverse=True)
+				best_text, best_element, best_score = candidates[0]
+				logger.debug(f"Hierarchical context match found: '{target_text}' -> '{best_text}' (score: {best_score:.2f})")
+				return best_element
+
+		# Strategy 4: Enhanced fuzzy text matching with hierarchical scoring
+		best_match = None
+		best_score = 0.0
+		best_text = ''
+
+		for text, element_info in mapping.items():
+			text_lower = text.lower()
+			original_text = element_info.get('original_text', '').lower()
+
+			# Calculate different types of matches
+			scores = []
+
+			# Substring match (both directions)
+			if target_lower in text_lower:
+				scores.append(len(target_lower) / len(text_lower))
+			if text_lower in target_lower:
+				scores.append(len(text_lower) / len(target_lower))
+
+			# Also check against original text (before context was added)
+			if original_text:
+				if target_lower in original_text:
+					scores.append(len(target_lower) / len(original_text))
+				if original_text in target_lower:
+					scores.append(len(original_text) / len(target_lower))
+
+			# Word-based matching
+			target_words = set(target_lower.split())
+			text_words = set(text_lower.split())
+			original_words = set(original_text.split()) if original_text else set()
+
+			# Check against both full text and original text
+			for word_set in [text_words, original_words]:
+				if target_words and word_set:
+					# Calculate Jaccard similarity (intersection over union)
+					intersection = len(target_words & word_set)
+					union = len(target_words | word_set)
+					if union > 0:
+						jaccard_score = intersection / union
+						scores.append(jaccard_score)
+
+					# Calculate word overlap score
+					if len(target_words) > 0 and len(word_set) > 0:
+						overlap_score = intersection / max(len(target_words), len(word_set))
+						scores.append(overlap_score)
+
+			# Take the best score for this element
+			if scores:
+				element_score = max(scores)
+				if element_score > best_score and element_score > 0.3:  # Minimum threshold
+					best_match = element_info
+					best_score = element_score
+					best_text = text
+
+		if best_match:
+			logger.debug(f"Fuzzy match found: '{target_text}' -> '{best_text}' (score: {best_score:.2f})")
+			return best_match
+
+		# Strategy 5: Pattern matching with camelCase/snake_case handling
+		target_words = target_lower.split()
+		if len(target_words) == 1:  # Single word target
+			word = target_words[0]
+
+			for text, element_info in mapping.items():
+				text_lower = text.lower()
+				original_text = element_info.get('original_text', '').lower()
+
+				# Check both full text and original text for pattern matching
+				for check_text in [text_lower, original_text]:
+					if not check_text:
+						continue
+
+					# Split camelCase or snake_case
+					word_parts = re.findall(r'[a-z]+|[A-Z][a-z]*', word)
+					word_parts = [part.lower() for part in word_parts if part]
+
+					if word_parts:
+						# Check if all parts of the target word appear in the element text
+						parts_found = sum(1 for part in word_parts if part in check_text)
+						if parts_found >= len(word_parts) * 0.7:  # At least 70% of parts match
+							score = parts_found / len(word_parts)
+							if score > best_score:
+								best_match = element_info
+								best_score = score
+								best_text = text
+
+		if best_match:
+			logger.debug(f"Pattern match found: '{target_text}' -> '{best_text}' (score: {best_score:.2f})")
+			return best_match
+
+		logger.debug(f"No match found for: '{target_text}'")
+		return None
+
+	def find_element_by_hierarchy(
+		self, mapping: Dict[str, Dict], target_text: str, context_hints: List[str] = None
+	) -> Optional[Dict]:
+		"""Find element using hierarchical context hints.
+
+		Args:
+		    mapping: The semantic mapping
+		    target_text: The text to find
+		    context_hints: List of context hints like ['form', 'contact', 'personal info']
+		"""
+		if not target_text or not mapping:
+			return None
+
+		if not context_hints:
+			return self.find_element_by_text(mapping, target_text)
+
+		target_lower = target_text.lower().strip()
+		context_lower = [hint.lower() for hint in context_hints]
+
+		candidates = []
+
+		for text, element_info in mapping.items():
+			text_lower = text.lower()
+			original_text = element_info.get('original_text', '').lower()
+
+			# Check if the base text matches
+			base_match_score = 0
+			if text_lower == target_lower or original_text == target_lower:
+				base_match_score = 1.0
+			elif target_lower in text_lower or target_lower in original_text:
+				base_match_score = 0.8
+			elif any(word in text_lower or word in original_text for word in target_lower.split()):
+				base_match_score = 0.6
+
+			if base_match_score > 0:
+				# Calculate context match score
+				context_score = 0
+				total_context_checks = 0
+
+				# Check container context
+				container_context = element_info.get('container_context', {})
+				for hint in context_lower:
+					total_context_checks += 1
+					if container_context:
+						container_text = container_context.get('text', '').lower()
+						container_id = container_context.get('id', '').lower()
+						if hint in container_text or hint in container_id:
+							context_score += 1
+
+				# Check DOM path
+				dom_path = element_info.get('dom_path', '').lower()
+				for hint in context_lower:
+					if hint in dom_path:
+						context_score += 0.5  # DOM path matches are less strong
+
+				# Check full text (including added context)
+				for hint in context_lower:
+					if hint in text_lower:
+						context_score += 0.3
+
+				# Calculate final score
+				context_match_ratio = context_score / max(len(context_lower), 1)
+				final_score = base_match_score * 0.7 + context_match_ratio * 0.3
+
+				candidates.append((text, element_info, final_score))
+
+		if candidates:
+			# Sort by score and return the best match
+			candidates.sort(key=lambda x: x[2], reverse=True)
+			best_text, best_element, best_score = candidates[0]
+
+			if best_score > 0.5:  # Minimum threshold for hierarchical matching
+				logger.debug(
+					f"Hierarchical match found: '{target_text}' with context {context_hints} -> '{best_text}' (score: {best_score:.2f})"
+				)
+				return best_element
+
+		# Fallback to regular text matching
+		return self.find_element_by_text(mapping, target_text)

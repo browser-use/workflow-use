@@ -684,7 +684,7 @@ class Workflow:
 			JSON string with workflow results
 		"""
 		if self.llm is None:
-			raise ValueError("LLM is required for run_as_tool to parse inputs from prompt")
+			raise ValueError('LLM is required for run_as_tool to parse inputs from prompt')
 
 		# Parse inputs from prompt using LLM
 		input_model = self._build_input_model()
@@ -695,10 +695,7 @@ The workflow requires the following inputs:
 
 Extract the values from the user's prompt and return them in the required format."""
 
-		messages = [
-			SystemMessage(content=system_prompt),
-			UserMessage(content=prompt)
-		]
+		messages = [SystemMessage(content=system_prompt), UserMessage(content=prompt)]
 
 		response = await self.llm.ainvoke(messages, output_format=input_model)
 		inputs = response.completion.model_dump()
@@ -707,12 +704,7 @@ Extract the values from the user's prompt and return them in the required format
 		result = await self.run(inputs=inputs, close_browser_at_end=True)
 
 		# Return results as JSON
-		output = {
-			"success": True,
-			"steps_executed": len(result.step_results),
-			"inputs_used": inputs,
-			"context": self.context
-		}
+		output = {'success': True, 'steps_executed': len(result.step_results), 'inputs_used': inputs, 'context': self.context}
 
 		return json.dumps(output, indent=2)
 
@@ -768,7 +760,9 @@ Extract the values from the user's prompt and return them in the required format
 
 				# Only process deterministic steps (no agent steps)
 				if step_resolved.type == 'agent':
-					raise Exception(f"Agent steps are not supported in run_with_no_ai mode. Step {step_index + 1} is an agent step.")
+					raise Exception(
+						f'Agent steps are not supported in run_with_no_ai mode. Step {step_index + 1} is an agent step.'
+					)
 
 				# Execute step using semantic executor
 				result = await semantic_executor.execute_step(step_resolved)

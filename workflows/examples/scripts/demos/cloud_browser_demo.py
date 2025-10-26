@@ -35,7 +35,7 @@ async def main():
 	workflow = Workflow.load_from_file(
 		str(workflow_file),
 		llm=llm,
-		use_cloud=True  # Enable cloud browser
+		use_cloud=True,  # Enable cloud browser
 	)
 
 	try:

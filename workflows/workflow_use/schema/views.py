@@ -15,18 +15,29 @@ class BaseWorkflowStep(BaseModel):
 # --- Steps that require interaction with a DOM element ---
 class SelectorWorkflowSteps(BaseWorkflowStep):
 	# Legacy fields - kept for backward compatibility but discouraged
-	cssSelector: Optional[str] = Field(None, description='[LEGACY] CSS selector - avoid in new workflows, use target_text instead.')
+	cssSelector: Optional[str] = Field(
+		None, description='[LEGACY] CSS selector - avoid in new workflows, use target_text instead.'
+	)
 	xpath: Optional[str] = Field(None, description='[LEGACY] XPath selector - avoid in new workflows.')
 	elementTag: Optional[str] = Field(None, description='[INFORMATIONAL] HTML tag for documentation.')
 	elementHash: Optional[str] = Field(None, description='[LEGACY] Element hash - not required for semantic workflows.')
-	
+
 	# PRIMARY: Text-based semantic targeting (non-brittle)
-	target_text: str = Field(..., description='Visible or accessible text to identify the element. Use hierarchical context for disambiguation (e.g., "Submit (in Personal Information)", "Edit (item 2 of 3)").')
-	
+	target_text: str = Field(
+		...,
+		description='Visible or accessible text to identify the element. Use hierarchical context for disambiguation (e.g., "Submit (in Personal Information)", "Edit (item 2 of 3)").',
+	)
+
 	# OPTIONAL: Context hints for disambiguation (stored as text, not selectors)
-	container_hint: Optional[str] = Field(None, description='Container context hint for disambiguation (e.g., "Personal Information", "Billing Section").')
-	position_hint: Optional[str] = Field(None, description='Position hint for repeated elements (e.g., "item 2 of 3", "first", "last").')
-	interaction_type: Optional[str] = Field(None, description='Expected interaction type hint (e.g., "form_submit", "table_action", "navigation").')
+	container_hint: Optional[str] = Field(
+		None, description='Container context hint for disambiguation (e.g., "Personal Information", "Billing Section").'
+	)
+	position_hint: Optional[str] = Field(
+		None, description='Position hint for repeated elements (e.g., "item 2 of 3", "first", "last").'
+	)
+	interaction_type: Optional[str] = Field(
+		None, description='Expected interaction type hint (e.g., "form_submit", "table_action", "navigation").'
+	)
 
 
 # --- Agent Step ---
@@ -104,7 +115,7 @@ class PageExtractionStep(BaseWorkflowStep):
 
 class ExtractStep(BaseWorkflowStep):
 	"""Extracts information from the current page using AI."""
-	
+
 	type: Literal['extract']
 	extractionGoal: str = Field(..., description='Description of what information to extract from the page.')
 

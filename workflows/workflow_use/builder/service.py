@@ -225,7 +225,9 @@ class BuilderService:
 
 		# Invoke the LLM with structured output
 		try:
-			llm_response = await self.llm.ainvoke([UserMessage(content=cast(Any, vision_messages))], output_format=WorkflowDefinitionSchema)
+			llm_response = await self.llm.ainvoke(
+				[UserMessage(content=cast(Any, vision_messages))], output_format=WorkflowDefinitionSchema
+			)
 			workflow_data = llm_response.completion
 		except Exception as e:
 			logger.exception(f'An error occurred during LLM invocation or processing: {e}')

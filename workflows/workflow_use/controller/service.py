@@ -67,6 +67,7 @@ class WorkflowController(Controller):
 			await page.goto(params.url)
 			# Wait for page to load (CDP navigate doesn't wait automatically)
 			import asyncio
+
 			await asyncio.sleep(2)
 
 			msg = f'🔗  Navigated to URL: {params.url}'
@@ -230,6 +231,7 @@ class WorkflowController(Controller):
 			prompt = f'Your task is to extract the content of the page. You will be given a page and a goal and you should extract all relevant information around this goal from the page. If the goal is vague, summarize the page. Respond in json format. Extraction goal: {params.goal}, Page: {content}'
 			try:
 				from browser_use.llm import UserMessage
+
 				output = await page_extraction_llm.ainvoke([UserMessage(content=prompt)])
 				msg = f'📄  Extracted from page\n: {output.completion}\n'
 				logger.info(msg)

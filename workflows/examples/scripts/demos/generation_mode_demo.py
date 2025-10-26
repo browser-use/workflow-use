@@ -54,9 +54,7 @@ async def demo_generate_and_run():
 
 	try:
 		workflow = await healing_service.generate_workflow_from_prompt(
-			prompt=task,
-			agent_llm=agent_llm,
-			extraction_llm=extraction_llm
+			prompt=task, agent_llm=agent_llm, extraction_llm=extraction_llm
 		)
 
 		if not workflow:
@@ -93,11 +91,7 @@ async def demo_generate_and_run():
 	print('💾 Step 2: Saving workflow to storage...')
 
 	try:
-		metadata = storage_service.save_workflow(
-			workflow=workflow,
-			generation_mode='browser_use',
-			original_task=task
-		)
+		metadata = storage_service.save_workflow(workflow=workflow, generation_mode='browser_use', original_task=task)
 
 		print('✅ Workflow saved!')
 		print()
@@ -134,22 +128,18 @@ async def demo_generate_and_run():
 
 	try:
 		# Create workflow instance
-		workflow_instance = Workflow(
-			workflow_schema=retrieved_workflow,
-			llm=workflow_llm,
-			page_extraction_llm=extraction_llm
-		)
+		workflow_instance = Workflow(workflow_schema=retrieved_workflow, llm=workflow_llm, page_extraction_llm=extraction_llm)
 
 		# Run as tool if there are input parameters, otherwise run directly
 		if workflow.input_schema:
-			prompt = "Execute the workflow with default values"
+			prompt = 'Execute the workflow with default values'
 			print(f'   Running as tool with prompt: "{prompt}"')
 			result = await workflow_instance.run_as_tool(prompt)
 		else:
 			print('   Running without parameters (deterministic execution)')
 			# For workflows without inputs, we'd need to provide an empty inputs dict
 			# This is a simple demo, so we'll just show the concept
-			result = {"status": "Would execute workflow here"}
+			result = {'status': 'Would execute workflow here'}
 
 		print('✅ Workflow execution completed!')
 		print()
@@ -160,6 +150,7 @@ async def demo_generate_and_run():
 	except Exception as e:
 		print(f'❌ Error running workflow: {e}')
 		import traceback
+
 		traceback.print_exc()
 		return
 
