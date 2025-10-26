@@ -51,6 +51,9 @@ jobs:
         env:
           NOYARNPOSTINSTALL: 1
 
+      - name: Generate TypeScript types from OpenAPI
+        run: npm run type-gen
+
       - name: Run ESLint
         run: npm run lint
 
