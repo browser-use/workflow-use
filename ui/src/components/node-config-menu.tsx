@@ -67,7 +67,6 @@ export const NodeConfigMenu: React.FC<NodeConfigMenuProps> = ({
 
   const stepData: StepData = localStepData || node.data.stepData;
 
-
   const handleInputChange = (field: keyof StepData, value: string) => {
     if (editedStepData) {
       setEditedStepData({
