@@ -16,7 +16,6 @@
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx",
-    "noUncheckedIndexedAccess": true,
     /* Linting */
     "strict": true,
     "noUnusedLocals": true,

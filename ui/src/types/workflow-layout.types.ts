@@ -53,7 +53,7 @@ export interface WorkflowMetadata {
   name: string;
   description: string;
   version: string;
-  input_schema: Array<{ name: string; type: string; required: boolean }>;
+  input_schema: Array<{ name: string; type: 'string' | 'number' | 'boolean'; required: boolean }>;
   workflow_analysis?: string;
 }
 

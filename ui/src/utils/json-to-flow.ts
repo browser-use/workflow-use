@@ -1,20 +1,22 @@
-import { Edge } from '@xyflow/react';
-import { Workflow, WorkflowStep, WorkflowMetadata, AppNode } from '../types/workflow-layout.types';
+import { Edge, Node } from '@xyflow/react';
+import { Workflow, WorkflowMetadata } from '../types/workflow-layout.types';
+import { NodeData, StepData } from '../types/node-config-menu.types';
 
-export function jsonToFlow(workflow: string): { 
-  nodes: AppNode[]; 
+export function jsonToFlow(workflow: string): {
+  nodes: Node<NodeData>[];
   edges: Edge[];
   metadata: WorkflowMetadata;
 } {
   const parsedWorkflow = JSON.parse(workflow) as Workflow;
-  const nodes: AppNode[] = parsedWorkflow.steps.map((step: WorkflowStep, idx: number) => ({
+  const nodes: Node<NodeData>[] = parsedWorkflow.steps.map((step: StepData, idx: number) => ({
     id: String(idx),
-    data: { 
-      label: `${step.description}`, 
+    data: {
+      label: `${step.description}`,
       stepData: step,
       workflowName: parsedWorkflow.name
     },
-    position: { x: 0, y: idx * 100 }
+    position: { x: 0, y: idx * 100 },
+    type: 'default'
   }));
 
   const edges: Edge[] = parsedWorkflow.steps.slice(1).map((_, idx) => ({

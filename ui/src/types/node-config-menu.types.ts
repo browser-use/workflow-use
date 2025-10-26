@@ -2,7 +2,7 @@ import type { Node } from '@xyflow/react';
 
 export interface StepData {
   description: string;
-  output: Record<string, unknown> | null;
+  output?: unknown;
   timestamp: number | null;
   tabId: number | null;
   type: 'navigation' | 'click' | 'select_change' | 'input';
@@ -18,6 +18,7 @@ export interface StepData {
 export interface NodeData extends Record<string, unknown> {
   label: string;
   stepData: StepData;
+  workflowName?: string;
 }
 
 export interface NodeConfigMenuProps {

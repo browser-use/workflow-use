@@ -50,14 +50,14 @@ const WorkflowItem: React.FC<WorkflowItemProps> = ({
 
   const editForm = metadata && (
     <div>
-      {(["name", "version"] as (keyof WorkflowMetadata)[]).map((f) => (
+      {(["name", "version"] as const).map((f) => (
         <label key={f} className="block text-xs mb-2">
           <span className="block text-[#aaa] mb-1">
             {f[0]?.toUpperCase() + f.slice(1)}
           </span>
           <input
             className="w-full bg-[#333] border border-[#555] text-white p-1.5 rounded text-xs"
-            value={edited?.[f] ?? ""}
+            value={(edited?.[f] as string) ?? ""}
             onChange={change(f)}
           />
         </label>
