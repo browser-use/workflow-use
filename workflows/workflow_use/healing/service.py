@@ -161,7 +161,7 @@ class HealingService:
 				raw_response = await self.llm.ainvoke(all_messages)
 				print("\nRaw LLM response:")
 				print(raw_response)
-			except:
+			except Exception:
 				pass
 			raise
 

@@ -8,6 +8,7 @@ Usage:
 import asyncio
 import json
 
+import aiofiles
 from langchain_anthropic import ChatAnthropic
 
 from workflow_use.healing.service import HealingService
@@ -45,8 +46,8 @@ async def main():
         # Save and analyze
         workflow_dict = workflow.model_dump(exclude_none=True)
 
-        with open("test_output.workflow.json", "w") as f:
-            json.dump(workflow_dict, f, indent=2)
+        async with aiofiles.open("test_output.workflow.json", "w") as f:
+            await f.write(json.dumps(workflow_dict, indent=2))
 
         print("\n" + "=" * 80)
         print("RESULTS")

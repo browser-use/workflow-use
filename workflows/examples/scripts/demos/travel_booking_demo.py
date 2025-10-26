@@ -103,7 +103,7 @@ class TravelBookingDemo:
                         date_field = {"found": True, "selector": selector}
                         print(f"✅ Clicked departure button with: {selector}")
                         break
-                    except:
+                    except Exception:
                         continue
 
             if date_field:
@@ -326,7 +326,7 @@ class TravelBookingDemo:
                     calendar_visible = True
                     print(f"   📅 Calendar detected: {cal_selector}")
                     break
-                except:
+                except Exception:
                     continue
 
             if not calendar_visible:
@@ -344,7 +344,7 @@ class TravelBookingDemo:
                         await page.click(btn, timeout=1000)
                         await asyncio.sleep(2)
                         break
-                    except:
+                    except Exception:
                         continue
 
             # Try to select the date

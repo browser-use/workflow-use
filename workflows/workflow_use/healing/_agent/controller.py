@@ -4,6 +4,7 @@ import os
 from browser_use import ActionResult, Controller
 from browser_use.llm import ChatOpenAI
 from browser_use.llm.base import BaseChatModel
+from langchain_core.prompts import PromptTemplate
 from pydantic import BaseModel, Field, SecretStr
 
 logger = logging.getLogger(__name__)

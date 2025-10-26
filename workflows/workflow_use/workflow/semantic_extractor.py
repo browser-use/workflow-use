@@ -3,6 +3,8 @@ import logging
 import re
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
+import aiofiles
+
 if TYPE_CHECKING:
 	from browser_use.actor.page import Page
 
@@ -782,8 +784,8 @@ class SemanticExtractor:
                 # Save debug information to file
                 debug_file = f"semantic_extraction_debug_{int(asyncio.get_event_loop().time())}.json"
                 import json
-                with open(debug_file, 'w') as f:
-                    json.dump(result, f, indent=2)
+                async with aiofiles.open(debug_file, 'w') as f:
+                    await f.write(json.dumps(result, indent=2))
                 logger.info(f"Debug information saved to: {debug_file}")
                 
                 # Print debug stats
@@ -800,10 +802,10 @@ class SemanticExtractor:
             # Save error information for debugging
             if debug_mode:
                 error_file = f"semantic_extraction_error_{int(asyncio.get_event_loop().time())}.txt"
-                with open(error_file, 'w') as f:
-                    f.write(f"Error: {str(e)}\n")
-                    f.write(f"URL: {await page.get_url()}\n")
-                    f.write(f"Timestamp: {asyncio.get_event_loop().time()}\n")
+                async with aiofiles.open(error_file, 'w') as f:
+                    await f.write(f"Error: {str(e)}\n")
+                    await f.write(f"URL: {await page.get_url()}\n")
+                    await f.write(f"Timestamp: {asyncio.get_event_loop().time()}\n")
                 logger.info(f"Error information saved to: {error_file}")
             
             return []

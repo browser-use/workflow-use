@@ -16,6 +16,8 @@ import sys
 from pathlib import Path
 from typing import Any, Dict
 
+import aiofiles
+
 # Add the workflow_use package to the path
 sys.path.append(str(Path(__file__).parent.parent))
 
@@ -90,9 +92,9 @@ class SemanticExtractionDemo:
                 'deterministic_id': info.get('deterministic_id', '')
             }
         
-        with open(filepath, 'w', encoding='utf-8') as f:
-            json.dump(clean_mapping, f, indent=2, ensure_ascii=False)
-        
+        async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
+            await f.write(json.dumps(clean_mapping, indent=2, ensure_ascii=False))
+
         print(f"💾 Saved semantic mapping to: {filepath}")
 
 

@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, cast
 
+import aiofiles
 from browser_use.llm import UserMessage
 from browser_use.llm.base import BaseChatModel
 from pydantic import ValidationError
@@ -236,13 +237,14 @@ class BuilderService:
 	# path handlers
 	async def build_workflow_from_path(self, path: Path, user_goal: str) -> WorkflowDefinitionSchema:
 		"""Build a workflow from a JSON file path."""
-		with open(path, 'r') as f:
-			workflow_data = json.load(f)
+		async with aiofiles.open(path, 'r') as f:
+			content = await f.read()
+			workflow_data = json.loads(content)
 
 		workflow_data_schema = WorkflowDefinitionSchema.model_validate(workflow_data)
 		return await self.build_workflow(workflow_data_schema, user_goal)
 
 	async def save_workflow_to_path(self, workflow: WorkflowDefinitionSchema, path: Path):
 		"""Save a workflow to a JSON file path."""
-		with open(path, 'w') as f:
-			json.dump(workflow.model_dump(mode='json'), f, indent=2)
+		async with aiofiles.open(path, 'w') as f:
+			await f.write(json.dumps(workflow.model_dump(mode='json'), indent=2))

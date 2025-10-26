@@ -8,6 +8,7 @@ Usage:
 import asyncio
 import os
 
+import aiofiles
 from browser_use.llm import ChatOpenAI
 
 from workflow_use.healing.service import HealingService
@@ -113,8 +114,8 @@ async def auto_generate_workflow():
         import json
         workflow_dict = workflow.model_dump() if hasattr(workflow, 'model_dump') else workflow.dict()
 
-        with open(output_file, 'w') as f:
-            json.dump(workflow_dict, f, indent=2)
+        async with aiofiles.open(output_file, 'w') as f:
+            await f.write(json.dumps(workflow_dict, indent=2))
 
         print(f'   ✅ Saved to: {output_file}')
         print()

@@ -121,7 +121,7 @@ class SemanticWorkflowExecutor:
         try:
             bbox = await element.get_bounding_box()
             return bbox is not None and bbox['width'] > 0 and bbox['height'] > 0
-        except:
+        except Exception:
             return False
 
     async def _element_input_value(self, element) -> str:
@@ -185,7 +185,7 @@ class SemanticWorkflowExecutor:
         try:
             text = await self._element_evaluate(element, '(function() { return this.textContent || ""; })')
             return str(text) if text is not None else ''
-        except:
+        except Exception:
             return ''
 
     async def _refresh_semantic_mapping(self) -> None:
@@ -390,7 +390,7 @@ class SemanticWorkflowExecutor:
                                 await page.wait_for_selector(specific_selector, timeout=1000, state="visible")
                                 logger.info(f"Found specific element using selector: {specific_selector}")
                                 return specific_selector
-                        except:
+                        except Exception:
                             continue
 
                     # If we can't make it specific, return the original but log the issue
@@ -427,7 +427,7 @@ class SemanticWorkflowExecutor:
                         if len(value_elements) == 1:
                             logger.info(f"Found specific radio button by value: {value_selector}")
                             return value_selector
-                    except:
+                    except Exception:
                         pass
 
                     # Note: get_by_label is not supported in CDP, skipping label-based search
@@ -531,7 +531,7 @@ class SemanticWorkflowExecutor:
         try:
             # Wait for any input, button, or form element to be present
             await page.wait_for_selector('input, button, form, textarea, select', timeout=10000)
-        except:
+        except Exception:
             logger.warning("No form elements found after navigation, continuing anyway")
 
         # Refresh semantic mapping after navigation
@@ -1395,7 +1395,7 @@ class SemanticWorkflowExecutor:
                     return False
                 element = elements[0]
                 return await self._element_is_visible(element)
-            except:
+            except Exception:
                 return False
 
         return await self._execute_with_verification_and_retry(keypress_executor, step, keypress_verifier)
@@ -1663,7 +1663,7 @@ class SemanticWorkflowExecutor:
                                     'field', 'complete', 'fill'
                                 ]):
                                     validation_errors[f"{selector}_{i}"] = clean_text
-                except:
+                except Exception:
                     continue
 
             # Check for common validation patterns in text
@@ -1689,7 +1689,7 @@ class SemanticWorkflowExecutor:
             #             if elements:
             #                 logger.warning(f"Form submission may have failed: still showing '{indicator}'")
             #                 return True
-            #         except:
+            #         except Exception:
             #             continue
 
             # Check for common submission failure indicators
@@ -1707,7 +1707,7 @@ class SemanticWorkflowExecutor:
                             if error_text and error_text.strip():
                                 logger.warning(f"Form submission failure detected: {error_text.strip()}")
                                 return True
-                except:
+                except Exception:
                     continue
 
             return False
@@ -1869,7 +1869,7 @@ class SemanticWorkflowExecutor:
                     # Handle ARIA radio buttons (button with role="radio")
                     if tag_name == 'button' and role == 'radio':
                         aria_checked = await self._element_get_property(element, 'ariaChecked')
-                        input_checked = aria_checked == 'true' or aria_checked == True
+                        input_checked = aria_checked == 'true' or aria_checked is True
                         logger.info(f"Verification: ARIA radio button (aria-checked={aria_checked}) {'is' if input_checked else 'is not'} checked")
                         return input_checked
                     elif tag_name == 'input':
@@ -1887,7 +1887,7 @@ class SemanticWorkflowExecutor:
                             aria_radio_elements = await self._get_elements_by_selector(aria_radio_selector)
                             if aria_radio_elements:
                                 aria_checked = await self._element_get_property(aria_radio_elements[0], 'ariaChecked')
-                                input_checked = aria_checked == 'true' or aria_checked == True
+                                input_checked = aria_checked == 'true' or aria_checked is True
                                 logger.info(f"Verification: ARIA radio button inside container (aria-checked={aria_checked}) {'is' if input_checked else 'is not'} checked")
                                 return input_checked
                         except Exception as e:
@@ -2027,7 +2027,7 @@ class SemanticWorkflowExecutor:
                             matches = selected_text.strip() == expected_value.strip()
                             logger.info(f"Verification: Select expected '{expected_value}', got '{selected_text}', match: {matches}")
                             return matches
-                    except:
+                    except Exception:
                         pass
                     # Fallback to value comparison
                     actual_value = await self._element_input_value(element)
@@ -2513,7 +2513,7 @@ EXTRACTED INFORMATION:"""
                             'option_text': option_text,
                             'dropdown_context': dropdown_context
                         }
-                except:
+                except Exception:
                     continue
 
             logger.warning(f"Could not find dropdown option: {option_text}")
@@ -2606,7 +2606,7 @@ EXTRACTED INFORMATION:"""
                 logger.info(f"Dynamic content loaded: {expected_content}")
                 return True
 
-            except:
+            except Exception:
                 # Wait for dynamic content to load
                 await asyncio.sleep(timeout / 1000)  # Convert ms to seconds
                 logger.info("Dynamic content loading completed (timeout-based)")
@@ -2625,7 +2625,7 @@ EXTRACTED INFORMATION:"""
             element_normalized = self._normalize_date(element_date)
 
             return target_normalized == element_normalized
-        except:
+        except Exception:
             # Fallback to string matching
             return target_date.lower() in element_date.lower() or element_date.lower() in target_date.lower()
 
@@ -2647,7 +2647,7 @@ EXTRACTED INFORMATION:"""
             try:
                 dt = datetime.strptime(date_str, fmt)
                 return dt.strftime('%Y-%m-%d')
-            except:
+            except Exception:
                 continue
 
         return date_str
@@ -2725,7 +2725,7 @@ EXTRACTED INFORMATION:"""
                 min_price = int(range_parts[0])
                 max_price = int(range_parts[1])
                 return min_price <= price <= max_price
-        except:
+        except Exception:
             pass
 
         return False

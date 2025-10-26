@@ -151,7 +151,7 @@ class RecordingService:
 			if self.browser:
 				try:
 					await self.browser.stop()
-				except:
+				except Exception:
 					pass  # Best effort
 			raise  # Re-raise to be caught by gather
 		except Exception as e:

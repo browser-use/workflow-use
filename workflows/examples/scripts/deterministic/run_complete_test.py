@@ -14,6 +14,7 @@ Usage:
 import asyncio
 import json
 
+import aiofiles
 from langchain_anthropic import ChatAnthropic
 
 from workflow_use.healing.service import HealingService
@@ -120,8 +121,8 @@ async def main():
     output_file = "complete_test_output.workflow.json"
 
     try:
-        with open(output_file, "w") as f:
-            json.dump(workflow_dict, f, indent=2)
+        async with aiofiles.open(output_file, "w") as f:
+            await f.write(json.dumps(workflow_dict, indent=2))
         print(f"✅ Workflow saved to: {output_file}\n")
     except Exception as e:
         print(f"❌ FAILED: Could not save workflow: {e}\n")

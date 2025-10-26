@@ -11,6 +11,7 @@ Usage:
 import asyncio
 import json
 
+import aiofiles
 from langchain_anthropic import ChatAnthropic
 
 from workflow_use.healing.service import HealingService
@@ -65,8 +66,8 @@ async def main():
 
     # Save to file
     output_file = "github_stars_deterministic.workflow.json"
-    with open(output_file, "w") as f:
-        json.dump(workflow_dict, f, indent=2)
+    async with aiofiles.open(output_file, "w") as f:
+        await f.write(json.dumps(workflow_dict, indent=2))
 
     print(f"\n📁 Workflow saved to: {output_file}")
 

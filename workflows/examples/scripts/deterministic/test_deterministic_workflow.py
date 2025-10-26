@@ -14,6 +14,7 @@ Benefits:
 import asyncio
 import json
 
+import aiofiles
 from langchain_anthropic import ChatAnthropic
 
 from workflow_use.healing.service import HealingService
@@ -55,8 +56,8 @@ async def test_deterministic_generation():
         workflow_dict = workflow_deterministic.model_dump(exclude_none=True)
 
         output_file = "deterministic_workflow.workflow.json"
-        with open(output_file, "w") as f:
-            json.dump(workflow_dict, f, indent=2)
+        async with aiofiles.open(output_file, "w") as f:
+            await f.write(json.dumps(workflow_dict, indent=2))
 
         print(f"\n✅ Deterministic workflow saved to: {output_file}")
 
@@ -109,8 +110,8 @@ async def test_deterministic_generation():
         workflow_dict_llm = workflow_llm.model_dump(exclude_none=True)
 
         output_file_llm = "llm_based_workflow.workflow.json"
-        with open(output_file_llm, "w") as f:
-            json.dump(workflow_dict_llm, f, indent=2)
+        async with aiofiles.open(output_file_llm, "w") as f:
+            await f.write(json.dumps(workflow_dict_llm, indent=2))
 
         print(f"\n✅ LLM-based workflow saved to: {output_file_llm}")
 

@@ -6,6 +6,7 @@ import tempfile  # For temporary file handling
 import webbrowser
 from pathlib import Path
 
+import aiofiles
 import pandas as pd
 import typer
 from browser_use import Browser
@@ -1496,9 +1497,9 @@ def generate_semantic_mapping_command(
 						'selectors': element_info['selectors']
 					}
 
-				with open(output_file, 'w') as f:
+				async with aiofiles.open(output_file, 'w') as f:
 					import json
-					json.dump(output_data, f, indent=2)
+					await f.write(json.dumps(output_data, indent=2))
 
 				typer.secho(f'Semantic mapping saved to: {output_file}', fg=typer.colors.GREEN)
 
@@ -1616,9 +1617,9 @@ def create_semantic_workflow_command(
 			template["example_steps_to_customize"] = example_steps
 
 			# Save template
-			with open(output_path, 'w') as f:
+			async with aiofiles.open(output_path, 'w') as f:
 				import json
-				json.dump(template, f, indent=2)
+				await f.write(json.dumps(template, indent=2))
 
 			typer.secho(f'Workflow template created: {output_path}', fg=typer.colors.GREEN, bold=True)
 			typer.echo()
