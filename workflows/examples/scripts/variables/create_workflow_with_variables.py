@@ -82,9 +82,9 @@ def example_2_automatic_llm():
 	print('\n💻 Code example:')
 	print("""
     from workflow_use.healing.service import HealingService
-    from browser_use.llm import ChatOpenAI
+    from browser_use.llm import ChatBrowserUse
 
-    llm = ChatOpenAI(model='gpt-4o')
+    llm = ChatBrowserUse(model='bu-latest')
     service = HealingService(llm=llm)
 
     # Generate workflow - variables created automatically!

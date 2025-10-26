@@ -5,13 +5,13 @@ from pathlib import Path
 import aiofiles
 from browser_use import AgentHistoryList
 from browser_use.agent.views import AgentOutput
-from browser_use.llm import ChatOpenAI
+from browser_use.llm import ChatBrowserUse
 
 from workflow_use.healing._agent.controller import HealingController
 from workflow_use.healing.service import HealingService
 from workflow_use.healing.tests.constants import TASK_MESSAGE
 
-llm = ChatOpenAI(model='gpt-4.1', temperature=0)
+llm = ChatBrowserUse(model='bu-latest')
 
 
 ActionModel = HealingController(extraction_llm=llm).registry.create_action_model()

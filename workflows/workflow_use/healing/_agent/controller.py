@@ -2,18 +2,15 @@ import logging
 import os
 
 from browser_use import ActionResult, Controller
-from browser_use.llm import ChatOpenAI
+from browser_use.llm import ChatBrowserUse
 from browser_use.llm.base import BaseChatModel
 from pydantic import BaseModel, Field, SecretStr
 
 logger = logging.getLogger(__name__)
 
 
-page_extraction_llm = ChatOpenAI(
-	base_url='https://api.groq.com/openai/v1',
-	model='meta-llama/llama-4-scout-17b-16e-instruct',
-	api_key=SecretStr(os.environ['GROQ_API_KEY']),
-	temperature=0.0,
+page_extraction_llm = ChatBrowserUse(
+	model='bu-latest',
 )
 
 

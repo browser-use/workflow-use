@@ -10,7 +10,7 @@ This demonstrates:
 import asyncio
 import os
 
-from browser_use.llm import ChatOpenAI
+from browser_use.llm import ChatBrowserUse
 
 from workflow_use.healing.service import HealingService
 from workflow_use.storage.service import WorkflowStorageService
@@ -32,9 +32,9 @@ async def demo_generate_and_run():
 
 	# Initialize services
 	print('📦 Initializing services...')
-	agent_llm = ChatOpenAI(model='gpt-4.1-mini')
-	extraction_llm = ChatOpenAI(model='gpt-4.1-mini')
-	workflow_llm = ChatOpenAI(model='gpt-4.1')
+	agent_llm = ChatBrowserUse(model='bu-latest')
+	extraction_llm = ChatBrowserUse(model='bu-latest')
+	workflow_llm = ChatBrowserUse(model='bu-latest')
 
 	healing_service = HealingService(llm=workflow_llm)
 	storage_service = WorkflowStorageService()

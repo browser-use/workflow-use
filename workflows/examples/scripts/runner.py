@@ -1,10 +1,10 @@
 import asyncio
 
-from browser_use.llm import ChatOpenAI
+from browser_use.llm import ChatBrowserUse
 
 from workflow_use.workflow.service import Workflow
 
-llm = ChatOpenAI(model='gpt-4.1-mini')
+llm = ChatBrowserUse(model='bu-latest')
 
 
 async def main():

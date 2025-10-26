@@ -110,9 +110,9 @@ def example_1_github_stars():
 	print('\n💻 Actual code to run:')
 	print("""
     from workflow_use.workflow.service import Workflow
-    from browser_use.llm import ChatOpenAI
+    from browser_use.llm import ChatBrowserUse
 
-    llm = ChatOpenAI(model='gpt-4o')
+    llm = ChatBrowserUse(model='bu-latest')
     workflow = Workflow.load_from_file(
         'examples/github_stars_parameterized.workflow.json',
         llm=llm
@@ -381,9 +381,9 @@ def main():
 	print('\n💻 To Run a Workflow:')
 	print("""
     from workflow_use.workflow.service import Workflow
-    from browser_use.llm import ChatOpenAI
+    from browser_use.llm import ChatBrowserUse
 
-    llm = ChatOpenAI(model='gpt-4o')
+    llm = ChatBrowserUse(model='bu-latest')
     workflow = Workflow.load_from_file('workflow.json', llm=llm)
 
     # Run with inputs

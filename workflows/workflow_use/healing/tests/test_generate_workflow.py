@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 
 import aiofiles
-from browser_use.llm import ChatOpenAI
+from browser_use.llm import ChatBrowserUse
 from pydantic import SecretStr
 
 from workflow_use.healing.service import HealingService
@@ -20,13 +20,13 @@ async def test_generate_workflow_from_prompt():
 	"""
 
 	# LLM for workflow creation (use high-quality model)
-	workflow_llm = ChatOpenAI(
-		model='gpt-4.1',
+	workflow_llm = ChatBrowserUse(
+		model='bu-latest',
 		temperature=0.0,
 	)
 
 	# LLM for browser agent (can use faster model)
-	agent_llm = ChatOpenAI(
+	agent_llm = ChatBrowserUse(
 		base_url='https://api.groq.com/openai/v1',
 		model='meta-llama/llama-4-maverick-17b-128e-instruct',
 		api_key=SecretStr(os.environ['GROQ_API_KEY']),
@@ -34,7 +34,7 @@ async def test_generate_workflow_from_prompt():
 	)
 
 	# LLM for page extraction (specialized model)
-	extraction_llm = ChatOpenAI(
+	extraction_llm = ChatBrowserUse(
 		base_url='https://api.groq.com/openai/v1',
 		model='meta-llama/llama-4-scout-17b-16e-instruct',
 		api_key=SecretStr(os.environ['GROQ_API_KEY']),

@@ -3,7 +3,7 @@
 import asyncio
 import logging
 
-from browser_use.llm import ChatOpenAI
+from browser_use.llm import ChatBrowserUse
 
 from workflow_use.workflow.service import Workflow
 
@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 async def main():
-	llm = ChatOpenAI(model='gpt-4o-mini')
+	llm = ChatBrowserUse(model='bu-latest')
 	workflow = Workflow.load_from_file('tmp/temp_recording_kn1yz829.json', llm)
 
 	logger.info('Starting workflow execution...')

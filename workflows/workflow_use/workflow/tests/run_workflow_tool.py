@@ -1,13 +1,13 @@
 import asyncio
 from pathlib import Path
 
-from browser_use.llm import ChatOpenAI
+from browser_use.llm import ChatBrowserUse
 
 from workflow_use.workflow.service import Workflow
 
 # Instantiate the LLM and the service directly
-llm_instance = ChatOpenAI(model='gpt-4.1-mini')  # Or your preferred model
-page_extraction_llm = ChatOpenAI(model='gpt-4.1-mini')
+llm_instance = ChatBrowserUse(model='bu-latest')  # Or your preferred model
+page_extraction_llm = ChatBrowserUse(model='bu-latest')
 
 
 async def test_run_workflow():

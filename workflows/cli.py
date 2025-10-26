@@ -10,7 +10,7 @@ import aiofiles
 import pandas as pd
 import typer
 from browser_use import Browser
-from browser_use.llm import ChatOpenAI
+from browser_use.llm import ChatBrowserUse
 from browser_use.llm.base import BaseChatModel
 
 from workflow_use.builder.service import BuilderService
@@ -34,15 +34,15 @@ app = typer.Typer(
 # Default LLM instance to None
 llm_instance: BaseChatModel
 try:
-	llm_instance = ChatOpenAI(model='gpt-4.1-mini')
-	page_extraction_llm = ChatOpenAI(model='gpt-4.1-mini')
+	llm_instance = ChatBrowserUse(model='bu-latest')
+	page_extraction_llm = ChatBrowserUse(model='bu-latest')
 except Exception as e:
-	typer.secho(f'Error initializing LLM: {e}. Would you like to set your OPENAI_API_KEY?', fg=typer.colors.RED)
-	set_openai_api_key = input('Set OPENAI_API_KEY? (y/n): ')
-	if set_openai_api_key.lower() == 'y':
-		os.environ['OPENAI_API_KEY'] = input('Enter your OPENAI_API_KEY: ')
-		llm_instance = ChatOpenAI(model='gpt-4.1')
-		page_extraction_llm = ChatOpenAI(model='gpt-4.1-mini')
+	typer.secho(f'Error initializing LLM: {e}. Would you like to set your BROWSER_USE_API_KEY?', fg=typer.colors.RED)
+	set_browser_use_api_key = input('Set BROWSER_USE_API_KEY? (y/n): ')
+	if set_browser_use_api_key.lower() == 'y':
+		os.environ['BROWSER_USE_API_KEY'] = input('Enter your BROWSER_USE_API_KEY: ')
+		llm_instance = ChatBrowserUse(model='bu-latest')
+		page_extraction_llm = ChatBrowserUse(model='bu-latest')
 
 builder_service = BuilderService(llm=llm_instance) if llm_instance else None
 # recorder_service = RecorderService() # Placeholder
@@ -1324,11 +1324,11 @@ def run_workflow_no_ai_command(
 			extraction_llm = None
 
 			try:
-				from browser_use.llm import ChatOpenAI
+				from browser_use.llm import ChatBrowserUse
 
-				dummy_llm = ChatOpenAI(model='gpt-4.1-mini')
+				dummy_llm = ChatBrowserUse(model='bu-latest')
 				if enable_extraction:
-					extraction_llm = ChatOpenAI(model='gpt-4.1-mini')
+					extraction_llm = ChatBrowserUse(model='bu-latest')
 					typer.secho('AI extraction enabled - will use LLM for extraction steps only.', fg=typer.colors.BLUE)
 			except Exception as e:
 				if enable_extraction:
@@ -2071,8 +2071,8 @@ def mcp_server_command(
 	typer.echo(typer.style('Starting MCP server...', bold=True))
 	typer.echo()  # Add space
 
-	llm_instance = ChatOpenAI(model='gpt-4.1')
-	page_extraction_llm = ChatOpenAI(model='gpt-4.1-mini')
+	llm_instance = ChatBrowserUse(model='bu-latest')
+	page_extraction_llm = ChatBrowserUse(model='bu-latest')
 
 	mcp = get_mcp_server(llm_instance, page_extraction_llm=page_extraction_llm, workflow_dir='./tmp')
 
@@ -2257,8 +2257,8 @@ def generate_workflow_from_task(
 	typer.echo()
 
 	# Initialize LLMs
-	agent_llm = ChatOpenAI(model=agent_model)
-	extraction_llm = ChatOpenAI(model=extraction_model)
+	agent_llm = ChatBrowserUse(model='bu-latest')
+	extraction_llm = ChatBrowserUse(model='bu-latest')
 
 	typer.echo('Starting browser automation to complete the task...')
 	typer.echo(f'  Agent Model: {agent_model}')

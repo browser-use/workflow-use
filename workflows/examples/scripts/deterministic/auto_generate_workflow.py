@@ -10,7 +10,7 @@ import asyncio
 import os
 
 import aiofiles
-from browser_use.llm import ChatOpenAI
+from browser_use.llm import ChatBrowserUse
 
 from workflow_use.healing.service import HealingService
 
@@ -40,7 +40,7 @@ async def auto_generate_workflow():
 
 	# Initialize LLM
 	print('🔧 Initializing LLM...')
-	llm = ChatOpenAI(model='gpt-4o')
+	llm = ChatBrowserUse(model='bu-latest')
 	print('   ✅ LLM initialized')
 	print()
 

@@ -15,7 +15,7 @@ import asyncio
 import json
 
 import aiofiles
-from browser_use.llm import ChatAnthropic
+from browser_use.llm import ChatBrowserUse
 
 from workflow_use.healing.service import HealingService
 
@@ -32,7 +32,7 @@ async def test_deterministic_generation():
 	print(f'\nTask: {task}\n')
 
 	# Initialize LLM (still needed for variable identification and browser agent)
-	llm = ChatAnthropic(model='claude-3-5-sonnet-20241022', timeout=25)
+	llm = ChatBrowserUse(model='bu-latest')
 
 	# Test 1: Deterministic conversion (new approach)
 	print('\n' + '=' * 80)
