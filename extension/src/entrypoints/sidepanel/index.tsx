@@ -11,6 +11,7 @@ import { RecordingView } from "./components/recording-view";
 import { StoppedView } from "./components/stopped-view";
 import { WorkflowProvider, useWorkflow } from "./context/workflow-provider";
 
+// eslint-disable-next-line react-refresh/only-export-components
 const AppContent: React.FC = () => {
   const { recordingStatus, isLoading, error } = useWorkflow();
 
@@ -33,6 +34,7 @@ const AppContent: React.FC = () => {
   }
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 const SidepanelApp: React.FC = () => {
   return (
     <React.StrictMode>

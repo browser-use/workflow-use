@@ -196,8 +196,8 @@ function startRecorder() {
     checkoutEveryNth: 200,
   });
 
-  // Add the stop function to window for potenti
-  // --- End CSS Selector Helper --- al manual cleanup
+  // Add the stop function to window for potential manual cleanup
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (window as any).rrwebStop = stopRecorder;
 
   // --- Attach Custom Event Listeners Permanently ---
@@ -219,6 +219,7 @@ function stopRecorder() {
     stopRecording();
     stopRecording = undefined;
     isRecordingActive = false;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window as any).rrwebStop = undefined; // Clean up window property
     // Remove custom listeners when recording stops
     document.removeEventListener("click", handleCustomClick, true);
@@ -238,6 +239,7 @@ function stopRecorder() {
 function extractSemanticInfo(element: HTMLElement) {
   // Get associated label text using multiple strategies
   let labelText = '';
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const elementType = (element as any).type?.toLowerCase() || '';
   const elementTag = element.tagName.toLowerCase();
   
@@ -247,11 +249,13 @@ function extractSemanticInfo(element: HTMLElement) {
     
     let fieldName = ''; // The group/field name (e.g., "Marital Status")
     let optionValue = ''; // The specific option (e.g., "Married")
-    let allOptions: string[] = []; // All possible values in the group
+    const allOptions: string[] = []; // All possible values in the group
     
     // First, get the individual option value/label
     // Strategy 1: Direct label[for="id"] association (most reliable for radio buttons)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if ((element as any).id) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const label = document.querySelector(`label[for="${(element as any).id}"]`);
       if (label) {
         optionValue = label.textContent?.trim() || '';
@@ -295,6 +299,7 @@ function extractSemanticInfo(element: HTMLElement) {
     
     // Strategy 4: Use value attribute for radio buttons if no label found
     if (!optionValue && elementType === 'radio') {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const value = (element as any).value || '';
       if (value && value.length < 30) {
         optionValue = value;
@@ -303,6 +308,7 @@ function extractSemanticInfo(element: HTMLElement) {
     
     // Now find the field name and all options for radio button groups
     if (elementType === 'radio') {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const radioName = (element as any).name || '';
       
       // Find the field group name by looking for fieldset legend or group labels
@@ -323,6 +329,7 @@ function extractSemanticInfo(element: HTMLElement) {
           const labelText = possibleLabel.textContent?.trim() || '';
           // Check if this label doesn't belong to a specific input (not associated with any radio button value)
           const isGeneralLabel = !Array.from(container.querySelectorAll('input[type="radio"]')).some(radio => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const radioValue = (radio as any).value || '';
             const radioLabel = radio.closest('label')?.textContent?.trim() || '';
             return labelText.includes(radioValue) || labelText.includes(radioLabel);
@@ -344,6 +351,7 @@ function extractSemanticInfo(element: HTMLElement) {
         radioGroup.forEach((radio) => {
           // Get the label for each radio button
           let radioOptionText = '';
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const radioId = (radio as any).id;
           if (radioId) {
             const radioLabel = document.querySelector(`label[for="${radioId}"]`);
@@ -358,8 +366,9 @@ function extractSemanticInfo(element: HTMLElement) {
               radioOptionText = radioParent.textContent?.trim() || '';
             }
           }
-          
+
           if (!radioOptionText) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             radioOptionText = (radio as any).value || '';
           }
           
@@ -378,8 +387,9 @@ function extractSemanticInfo(element: HTMLElement) {
     } else if (fieldName) {
       labelText = fieldName;
     }
-    
+
     // Store additional radio button info for later use
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (element as any)._radioButtonInfo = {
       fieldName,
       optionValue,
@@ -399,6 +409,7 @@ function extractSemanticInfo(element: HTMLElement) {
           let cleanedText = parentText;
           radioButtons.forEach((radio) => {
             if (radio !== element) {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               const radioValue = (radio as any).value || '';
               const radioText = radio.textContent?.trim() || '';
               if (radioValue) cleanedText = cleanedText.replace(radioValue, '').trim();
@@ -423,13 +434,16 @@ function extractSemanticInfo(element: HTMLElement) {
       
       // If no direct text, try aria-label or value
       if (!labelText) {
-        labelText = element.getAttribute('aria-label') || 
-                   (element as any).value || 
+        labelText = element.getAttribute('aria-label') ||
+                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                   (element as any).value ||
                    element.title || '';
       }
     } else {
       // Strategy 1: Direct label[for="id"] association
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       if ((element as any).id) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const label = document.querySelector(`label[for="${(element as any).id}"]`);
         if (label) {
           labelText = label.textContent?.trim() || '';
@@ -456,6 +470,7 @@ function extractSemanticInfo(element: HTMLElement) {
         // Check for text in the same container
         const parentText = parent.textContent?.trim() || '';
         // Extract meaningful text that's not just the element's own value/placeholder
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const elementOwnText = ((element as any).value || (element as any).placeholder || element.textContent || '').trim();
         
         if (parentText && parentText !== elementOwnText && parentText.length < 200) {
@@ -511,19 +526,25 @@ function extractSemanticInfo(element: HTMLElement) {
     }
     parent = parent.parentElement;
   }
-  
+
   // Get radio button info if available
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const radioButtonInfo = (element as any)._radioButtonInfo || null;
-  
+
   return {
     labelText,
     textContent: element.textContent?.trim().slice(0, 200) || "",
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     placeholder: (element as any).placeholder || "",
     title: element.title || "",
     ariaLabel: element.getAttribute('aria-label') || "",
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     value: (element as any).value || "",
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     name: (element as any).name || "",
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     id: (element as any).id || "",
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     type: (element as any).type || "",
     parentText,
     // Radio button specific info
@@ -544,14 +565,16 @@ function handleCustomClick(event: MouseEvent) {
     // Determine the best target_text for semantic targeting
     // For buttons, prioritize direct text content over label text to avoid confusion
     let targetText = "";
-    if (targetElement.tagName.toLowerCase() === 'button' || 
-        (targetElement.tagName.toLowerCase() === 'input' && 
+    if (targetElement.tagName.toLowerCase() === 'button' ||
+        (targetElement.tagName.toLowerCase() === 'input' &&
+         // eslint-disable-next-line @typescript-eslint/no-explicit-any
          ['button', 'submit'].includes((targetElement as any).type?.toLowerCase()))) {
       // For buttons, use the most specific text available
-      targetText = semanticInfo.textContent?.trim() || 
-                   semanticInfo.ariaLabel || 
-                   (targetElement as any).value || 
-                   semanticInfo.title || 
+      targetText = semanticInfo.textContent?.trim() ||
+                   semanticInfo.ariaLabel ||
+                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                   (targetElement as any).value ||
+                   semanticInfo.title ||
                    "";
     } else {
       // For other elements, use the standard priority order
@@ -569,10 +592,12 @@ function handleCustomClick(event: MouseEvent) {
       console.log("Skipping redundant click event on:", targetElement.tagName, targetText);
       return;
     }
-    
+
     // Capture element state information for inputs
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const elementType = (targetElement as any).type?.toLowerCase() || '';
-    let elementState = {};
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let elementState: Record<string, any> = {};
     
     if (targetElement.tagName.toLowerCase() === 'input') {
       if (elementType === 'checkbox') {
@@ -619,8 +644,10 @@ function handleCustomClick(event: MouseEvent) {
 }
 
 // Helper function to determine if we should skip capturing this click event
-function shouldSkipClickEvent(element: HTMLElement, semanticInfo: any, targetText: string): boolean {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function shouldSkipClickEvent(element: HTMLElement, _semanticInfo: Record<string, any>, targetText: string): boolean {
   const tagName = element.tagName.toLowerCase();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const elementType = (element as any).type?.toLowerCase() || '';
   
   // Skip hidden input elements (they often fire alongside visible elements)
@@ -685,6 +712,7 @@ function handleInput(event: Event) {
       cssSelector: getEnhancedCSSSelector(targetElement, xpath),
       elementTag: targetElement.tagName,
       value: isPassword ? "********" : targetElement.value,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       inputType: (targetElement as any).type?.toLowerCase() || 'text', // Input type (text, password, email, etc.)
       // Semantic information for target_text based workflows
       targetText: targetText,
@@ -901,7 +929,7 @@ function handleMouseOver(event: MouseEvent) {
 }
 
 // Handle mouseout to remove overlay
-function handleMouseOut(event: MouseEvent) {
+function handleMouseOut(_event: MouseEvent) {
   if (!isRecordingActive) return;
   if (currentOverlay) {
     currentOverlay.remove();
@@ -964,7 +992,7 @@ function handleFocus(event: FocusEvent) {
 }
 
 // Handle blur to remove focus overlay
-function handleBlur(event: FocusEvent) {
+function handleBlur(_event: FocusEvent) {
   if (!isRecordingActive) return;
   if (currentFocusOverlay) {
     currentFocusOverlay.remove();
@@ -974,9 +1002,9 @@ function handleBlur(event: FocusEvent) {
 
 export default defineContentScript({
   matches: ["<all_urls>"],
-  main(ctx) {
+  main(_ctx) {
     // Listener for status updates from the background script
-    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    chrome.runtime.onMessage.addListener((message, _sender, _sendResponse) => {
       if (message.type === "SET_RECORDING_STATUS") {
         const shouldBeRecording = message.payload;
         console.log(`Received recording status update: ${shouldBeRecording}`);

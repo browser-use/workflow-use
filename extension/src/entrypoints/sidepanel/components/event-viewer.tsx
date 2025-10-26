@@ -18,29 +18,33 @@ const getScreenshot = (step: Step): string | undefined => {
 };
 
 // Helper function to format step details based on type
-const formatStepDetails = (step: any): string => {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const formatStepDetails = (step: Step): string => {
   switch (step.type) {
     case "navigation":
-      return step.url;
+      return (step as NavigationStep).url;
     case "click":
-      return step.targetText || step.elementText || step.cssSelector || "Click action";
-    case "input":
-      const value = step.value || "";
-      const target = step.targetText || step.cssSelector || "Input field";
+      return (step as ClickStep).targetText || (step as ClickStep).elementText || (step as ClickStep).cssSelector || "Click action";
+    case "input": {
+      const s = step as InputStep;
+      const value = s.value || "";
+      const target = s.targetText || s.cssSelector || "Input field";
       return `${target}: "${value}"`;
+    }
     case "key_press":
-      return `Key: ${step.key}`;
+      return `Key: ${(step as KeyPressStep).key}`;
     case "scroll":
-      return `(${step.scrollX}, ${step.scrollY})`;
+      return `(${(step as ScrollStep).scrollX}, ${(step as ScrollStep).scrollY})`;
     case "extract":
-      return step.extractionGoal || "AI Extraction";
+      return "AI Extraction";
     default:
       return "Unknown action";
   }
 };
 
 // Helper function to get step icon based on type
-const getStepIcon = (step: any): string => {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const getStepIcon = (step: Step): string => {
   switch (step.type) {
     case "navigation":
       return "🔗";
@@ -60,7 +64,7 @@ const getStepIcon = (step: any): string => {
 };
 
 // Helper function to get background color based on step type
-const getStepBgColor = (step: any, isSelected: boolean): string => {
+const getStepBgColor = (step: Step, isSelected: boolean): string => {
   if (isSelected) {
     switch (step.type) {
       case "extract":
@@ -159,6 +163,7 @@ const StepCard: React.FC<{
         );
       }
       default:
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         return <>{(step as any).type}</>; // Fallback
     }
   };
@@ -271,7 +276,8 @@ const StepCard: React.FC<{
         break;
       }
       case "extract": {
-        const s = step as any; // ExtractStep
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const s = step as any; // ExtractStep type not imported
         specificInfo = (
           <>
             <p>
@@ -283,6 +289,7 @@ const StepCard: React.FC<{
       }
       default:
         specificInfo = (
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           <p>Details not available for type: {(step as any).type}</p>
         );
     }

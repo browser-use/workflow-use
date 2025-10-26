@@ -86,7 +86,7 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
           setCurrentEventIndex(0);
         }
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error(
         "Error fetching workflow data (polling=" + isPolling + "):",
         err
@@ -94,7 +94,8 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
       // Only set error state if it wasn't a background poll error
       // and the status isn't already error
       if (!isPolling) {
-        setError(`Failed to load workflow data: ${err.message}`);
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        setError(`Failed to load workflow data: ${errorMessage}`);
         setRecordingStatus("error");
         setWorkflow(null);
       }
@@ -111,7 +112,8 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
     fetchWorkflowData(false);
 
     // Listener for status updates pushed from the background script
-    const messageListener = (message: any, sender: any, sendResponse: any) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const messageListener = (message: any, _sender: any, _sendResponse: any) => {
       console.log("Sidepanel received message:", message);
       if (message.type === "recording_status_updated") {
         console.log(
@@ -163,7 +165,7 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
   const startRecording = useCallback(() => {
     setError(null);
     setIsLoading(true);
-    chrome.runtime.sendMessage({ type: "START_RECORDING" }, (response) => {
+    chrome.runtime.sendMessage({ type: "START_RECORDING" }, (_response) => {
       // Loading state will be turned off by the fetchWorkflowData triggered
       // by the recording_status_updated message, or on error here.
       if (chrome.runtime.lastError) {
@@ -183,7 +185,7 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
   const stopRecording = useCallback(() => {
     setError(null);
     setIsLoading(true);
-    chrome.runtime.sendMessage({ type: "STOP_RECORDING" }, (response) => {
+    chrome.runtime.sendMessage({ type: "STOP_RECORDING" }, (_response) => {
       // Loading state will be turned off by the fetchWorkflowData triggered
       // by the recording_status_updated message, or on error here.
       if (chrome.runtime.lastError) {
@@ -228,6 +230,7 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
   );
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useWorkflow = (): WorkflowContextType => {
   const context = useContext(WorkflowContext);
   if (context === undefined) {

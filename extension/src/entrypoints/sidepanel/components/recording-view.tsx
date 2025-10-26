@@ -76,11 +76,12 @@ export const RecordingView: React.FC = () => {
   // Get workflow stats
   const stats = React.useMemo(() => {
     if (!workflow?.steps) return { actions: 0, extractions: 0, navigations: 0 };
-    
+
     const actions = workflow.steps.filter(s => ['click', 'input', 'key_press'].includes(s.type)).length;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const extractions = workflow.steps.filter(s => (s as any).type === 'extract').length;
     const navigations = workflow.steps.filter(s => s.type === 'navigation').length;
-    
+
     return { actions, extractions, navigations };
   }, [workflow?.steps]);
 

@@ -17,12 +17,13 @@ export const StoppedView: React.FC = () => {
       ...workflow,
       name: customName || workflow.name,
       description: customDescription || workflow.description,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       workflow_analysis: `Recorded workflow with ${workflow.steps?.length || 0} steps. ${workflow.steps?.some(s => (s as any).type === 'extract') ? 'Includes AI extraction steps for intelligent data gathering.' : ''}`
     };
 
     // Sanitize workflow name for filename
     const safeName = enhancedWorkflow.name
-      ? enhancedWorkflow.name.replace(/[^a-z0-9\.\-\_]/gi, "_").toLowerCase()
+      ? enhancedWorkflow.name.replace(/[^a-z0-9._-]/gi, "_").toLowerCase()
       : "workflow";
 
     const blob = new Blob([JSON.stringify(enhancedWorkflow, null, 2)], {
@@ -57,6 +58,7 @@ export const StoppedView: React.FC = () => {
     }
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const hasExtractionSteps = workflow?.steps?.some(step => (step as any).type === 'extract');
   const stepCount = workflow?.steps?.length || 0;
 

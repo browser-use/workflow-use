@@ -34,7 +34,6 @@ export default defineBackground(() => {
 
   // Track recent user interactions to distinguish intentional vs side-effect navigation
   const recentUserInteractions: { [tabId: number]: number } = {}; // timestamp of last user interaction
-  const USER_INTERACTION_TIMEOUT = 5000; // 5 seconds (increased for testing)
 
   let isRecordingEnabled = true; // Default to disabled (OFF)
   let lastWorkflowHash: string | null = null; // Cache for the last logged workflow hash
@@ -100,12 +99,13 @@ export default defineBackground(() => {
       .sort((a, b) => a.timestamp - b.timestamp); // Sort chronologically
 
     console.log(`🔄 Processing ${allSteps.length} steps for workflow update`);
-    const extractionSteps = allSteps.filter(s => (s as any).type === 'extract');
+    const extractionSteps = allSteps.filter(s => s.type === 'extract');
     console.log(`🤖 Found ${extractionSteps.length} extraction steps:`, extractionSteps);
 
     // Convert steps to semantic format with proper descriptions
-    const semanticSteps = allSteps.map((step, index) => {
-      const semanticStep: any = {
+    const semanticSteps = allSteps.map((step) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const semanticStep: Record<string, any> = {
         ...step,
         description: generateStepDescription(step),
       };
@@ -201,9 +201,9 @@ export default defineBackground(() => {
               type: "SET_RECORDING_STATUS",
               payload: isRecordingEnabled,
             })
-            .catch((err: Error) => {
+            .catch((_err: Error) => {
               // Optional: Log if sending to a specific tab failed (e.g., script not injected)
-              // console.debug(`Could not send status to tab ${tab.id}: ${err.message}`);
+              // console.debug(`Could not send status to tab ${tab.id}: ${_err.message}`);
             });
         }
       });
@@ -214,15 +214,16 @@ export default defineBackground(() => {
         type: "recording_status_updated",
         payload: { status: statusString }, // Send string status
       })
-      .catch((err) => {
-        // console.debug("Could not send status update to sidepanel (might be closed)", err.message);
+      .catch((_err) => {
+        // console.debug("Could not send status update to sidepanel (might be closed)", _err.message);
       });
   }
 
   // --- Tab Event Listeners ---
 
   // Function to send tab events (only if recording is enabled)
-  function sendTabEvent(type: string, payload: any) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function sendTabEvent(type: string, payload: Record<string, any>) {
     if (!isRecordingEnabled) return;
     console.log(`Sending ${type}:`, payload);
     const tabId = payload.tabId;
@@ -494,7 +495,7 @@ export default defineBackground(() => {
         }
 
         case "EXTRACTION_STEP": {
-          const extractEvent = event as any; // Type assertion for extraction event
+          const extractEvent = event as StoredExtractionEvent;
           if (extractEvent.url && extractEvent.extractionGoal) {
             const step: ExtractStep = {
               type: "extract",
@@ -554,7 +555,8 @@ export default defineBackground(() => {
       const isCustomEvent = customEventTypes.includes(message.type);
 
       // Function to store the event
-      const storeEvent = (eventPayload: any, screenshotDataUrl?: string) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const storeEvent = (eventPayload: Record<string, any>, screenshotDataUrl?: string) => {
         if (!sessionLogs[tabId]) {
           sessionLogs[tabId] = [];
         }
