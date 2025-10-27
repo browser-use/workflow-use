@@ -23,6 +23,15 @@ from .views import (
 )
 
 
+def json_serializer(obj):
+	"""Convert non-JSON-serializable objects to JSON-compatible types."""
+	# Handle datetime objects
+	if hasattr(obj, 'isoformat'):
+		return obj.isoformat()
+	# Handle other types by converting to string
+	return str(obj)
+
+
 class WorkflowService:
 	"""Workflow execution service."""
 
@@ -78,13 +87,35 @@ class WorkflowService:
 			await f.write(message)
 
 	def list_workflows(self) -> List[str]:
-		return [f.name for f in self.tmp_dir.iterdir() if f.is_file() and not f.name.startswith('temp_recording')]
+		"""List only valid workflow files (JSON or YAML format)."""
+		return [
+			f.name
+			for f in self.tmp_dir.iterdir()
+			if f.is_file()
+			and not f.name.startswith('temp_recording')
+			and (f.name.endswith('.workflow.json') or f.name.endswith('.workflow.yaml') or f.name.endswith('.workflow.yml'))
+		]
 
 	def get_workflow(self, name: str) -> str:
+		"""Get workflow content, converting YAML to JSON for frontend compatibility."""
 		wf_file = self.tmp_dir / name
-		# Load YAML and convert to JSON for frontend compatibility
-		content = yaml.safe_load(wf_file.read_text())
-		return json.dumps(content, indent=2)
+
+		# Validate file exists
+		if not wf_file.exists():
+			raise FileNotFoundError(f"Workflow file '{name}' not found")
+
+		# Validate file is a workflow file
+		if not (name.endswith('.workflow.json') or name.endswith('.workflow.yaml') or name.endswith('.workflow.yml')):
+			raise ValueError(f"File '{name}' is not a valid workflow file")
+
+		try:
+			# Load YAML/JSON and convert to JSON for frontend compatibility
+			content = yaml.safe_load(wf_file.read_text())
+			return json.dumps(content, indent=2, default=json_serializer)
+		except yaml.YAMLError as e:
+			raise ValueError(f"Failed to parse workflow file '{name}': {e}")
+		except TypeError as e:
+			raise ValueError(f"Failed to serialize workflow file '{name}' to JSON: {e}")
 
 	def update_workflow(self, request: WorkflowUpdateRequest) -> WorkflowResponse:
 		workflow_filename = request.filename
@@ -143,7 +174,7 @@ class WorkflowService:
 			self.active_tasks[task_id] = TaskInfo(status='running', workflow=workflow_name)
 			ts = time.strftime('%Y-%m-%d %H:%M:%S')
 			await self._write_log(log_file, f"[{ts}] Starting workflow '{workflow_name}'\n")
-			await self._write_log(log_file, f'[{ts}] Input parameters: {json.dumps(inputs)}\n')
+			await self._write_log(log_file, f'[{ts}] Input parameters: {json.dumps(inputs, default=json_serializer)}\n')
 
 			if cancel_event.is_set():
 				await self._write_log(log_file, f'[{ts}] Workflow cancelled before execution\n')

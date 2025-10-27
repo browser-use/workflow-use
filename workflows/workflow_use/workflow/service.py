@@ -355,11 +355,20 @@ class Workflow:
 				value = update_dict.get('value', getattr(data, 'value'))
 				default_value = update_dict.get('default_value', getattr(data, 'default_value', None))
 
-				# If value is empty, contains unresolved placeholders, or equals original (meaning placeholder failed)
-				if default_value and (not value or ('{' in value and '}' in value)):
-					original_value_str = getattr(data, 'value')
-					# Check if the value wasn't successfully resolved (still has placeholders or is same as original)
-					if value == original_value_str and '{' in value:
+				if default_value:
+					should_use_default = False
+
+					# Case 1: Value is empty or whitespace-only
+					if not value or not value.strip():
+						should_use_default = True
+					# Case 2: Value contains unresolved placeholders
+					elif '{' in value and '}' in value:
+						original_value_str = getattr(data, 'value')
+						# Check if placeholder wasn't resolved (value unchanged and still has placeholders)
+						if value == original_value_str:
+							should_use_default = True
+
+					if should_use_default:
 						update_dict['value'] = default_value
 						model_changed = True
 

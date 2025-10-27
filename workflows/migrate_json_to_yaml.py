@@ -82,7 +82,8 @@ def update_metadata(metadata_path: Path, dry_run: bool = False) -> bool:
 			if 'file_path' in workflow_meta:
 				old_path = workflow_meta['file_path']
 				if old_path.endswith('.json'):
-					new_path = old_path.replace('.json', '.yaml')
+					# Only replace the final .json extension, not all occurrences in the path
+					new_path = old_path[:-5] + '.yaml'  # Remove '.json' (5 chars) and add '.yaml'
 					if dry_run:
 						print(f'  Would update: {old_path} → {new_path}')
 					else:
