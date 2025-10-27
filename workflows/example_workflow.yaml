@@ -33,7 +33,7 @@ steps:
   # Step 2: Click step (using semantic target_text)
   - type: click
     description: Click on the first repository result
-    target_text: {repository_name}/{repository_name}
+    target_text: "{repository_name}/{repository_name}"
     cssSelector: null  # Deprecated - use target_text instead
     xpath: null        # Deprecated - use target_text instead
     output: null
