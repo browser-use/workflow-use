@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import json
-import json as _json
 import logging
 from pathlib import Path
 from typing import Any, Dict, List, TypeVar
 from typing import cast as _cast
 
+import yaml
 from browser_use import Agent, Browser
 from browser_use.agent.views import ActionResult, AgentHistoryList
 from browser_use.llm import SystemMessage, UserMessage
@@ -94,7 +94,7 @@ class Workflow:
 	) -> Workflow:
 		"""Load a workflow from a file."""
 		with open(file_path, 'r', encoding='utf-8') as f:
-			data = _json.load(f)
+			data = yaml.safe_load(f)
 		workflow_schema = WorkflowDefinitionSchema(**data)
 		return Workflow(
 			workflow_schema=workflow_schema,
@@ -339,6 +339,8 @@ class Workflow:
 				new_dict[key] = resolved_value
 			return new_dict if changed else data
 		elif isinstance(data, BaseModel):  # Handle Pydantic models
+			from workflow_use.schema.views import InputStep
+
 			update_dict = {}
 			model_changed = False
 			for field_name in data.model_fields:  # Iterate using model_fields keys
@@ -347,6 +349,19 @@ class Workflow:
 				if resolved_value is not original_value:
 					model_changed = True
 				update_dict[field_name] = resolved_value
+
+			# Special handling for InputStep: use default_value if value is empty or unresolved
+			if isinstance(data, InputStep):
+				value = update_dict.get('value', getattr(data, 'value'))
+				default_value = update_dict.get('default_value', getattr(data, 'default_value', None))
+
+				# If value is empty, contains unresolved placeholders, or equals original (meaning placeholder failed)
+				if default_value and (not value or ('{' in value and '}' in value)):
+					original_value_str = getattr(data, 'value')
+					# Check if the value wasn't successfully resolved (still has placeholders or is same as original)
+					if value == original_value_str and '{' in value:
+						update_dict['value'] = default_value
+						model_changed = True
 
 			if model_changed:
 				return data.model_copy(update=update_dict)

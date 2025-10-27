@@ -1,0 +1,40 @@
+workflow_analysis: Pure semantic workflow that relies only on visible text identification
+  without any CSS selector fallbacks.
+name: Pure Semantic Form Fill
+description: Fill form using only visible text - no CSS selectors needed
+version: '1.0'
+steps:
+- description: Navigate to the government form application
+  type: navigation
+  url: https://v0-complex-form-example.vercel.app/
+- description: Click the start application button
+  type: click
+  target_text: Start Application
+- description: Enter first name
+  type: input
+  target_text: First Name (Given Name) *
+  value: '{first_name}'
+- description: Enter last name
+  type: input
+  target_text: Last Name (Family Name) *
+  value: '{last_name}'
+- description: Enter social security number
+  type: input
+  target_text: Last 4 Digits of Social Security Number *
+  value: '{social_security_last4}'
+- description: Select gender
+  type: click
+  target_text: Male
+- description: Select marital status
+  type: click
+  target_text: Single
+input_schema:
+- name: first_name
+  type: string
+  required: true
+- name: last_name
+  type: string
+  required: true
+- name: social_security_last4
+  type: string
+  required: true

@@ -1,0 +1,103 @@
+# Example Workflow in YAML Format
+# This demonstrates the structure of a workflow stored in YAML
+
+workflow_analysis: |
+  This workflow demonstrates searching for a GitHub repository,
+  navigating to it, extracting information, and filling out a form.
+  It showcases different step types including navigation, clicking,
+  input, extraction, and agent-based tasks.
+
+name: GitHub Repository Search and Analysis
+description: Search for a repository on GitHub, extract its details, and perform actions
+version: '1.0'
+
+# Input schema defines what parameters the workflow accepts
+input_schema:
+  - name: repository_name
+    type: string
+    required: true
+    description: The name of the GitHub repository to search for
+  - name: max_stars
+    type: number
+    required: false
+    description: Optional filter for minimum star count
+
+# Workflow steps - executed in sequence
+steps:
+  # Step 1: Navigation step
+  - type: navigation
+    description: Navigate to GitHub search page
+    url: https://github.com/search?q={repository_name}&type=repositories
+    output: null
+
+  # Step 2: Click step (using semantic target_text)
+  - type: click
+    description: Click on the first repository result
+    target_text: {repository_name}/{repository_name}
+    cssSelector: null  # Deprecated - use target_text instead
+    xpath: null        # Deprecated - use target_text instead
+    output: null
+
+  # Step 3: Extract content step
+  - type: extract_page_content
+    description: Extract repository star count and description
+    goal: Extract the number of stars and the repository description from the page
+    output: repo_info
+
+  # Step 4: Click on Issues tab
+  - type: click
+    description: Navigate to Issues tab
+    target_text: Issues
+    output: null
+
+  # Step 5: Click on New Issue button
+  - type: click
+    description: Click the New Issue button
+    target_text: New issue
+    output: null
+
+  # Step 6: Input text into title field
+  - type: input_text
+    description: Enter issue title
+    target_text: Add a title
+    value: Test Issue from Workflow
+    output: null
+
+  # Step 7: Input text into description
+  - type: input_text
+    description: Enter issue description
+    target_text: Add a description
+    value: This is a test issue created by an automated workflow
+    output: null
+
+  # Step 8: Select dropdown option
+  - type: select_option
+    description: Select a label for the issue
+    target_text: Labels
+    value: bug
+    output: null
+
+  # Step 9: Checkbox interaction
+  - type: checkbox
+    description: Check the checkbox to confirm
+    target_text: I have read the guidelines
+    checked: true
+    output: null
+
+  # Step 10: Press keyboard key
+  - type: done
+    description: Complete the workflow
+    output: final_result
+
+  # Step 11: Agent step - for complex tasks that need AI
+  - type: agent
+    description: Use AI agent to analyze the repository and write a summary
+    task: |
+      Analyze the GitHub repository page and create a comprehensive summary including:
+      1. Main purpose of the repository
+      2. Key features mentioned in the README
+      3. Technology stack used
+      4. Recent activity level
+      Please be thorough and accurate.
+    max_steps: 10
+    output: ai_summary

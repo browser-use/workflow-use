@@ -125,14 +125,16 @@ def _build_and_save_workflow_from_recording(
 	if is_temp_recording:
 		file_stem = file_stem.replace('temp_recording_', '') or 'recorded'
 
-	default_workflow_filename = f'{file_stem}.workflow.json'
+	default_workflow_filename = f'{file_stem}.workflow.yaml'
 	workflow_output_name: str = typer.prompt(
-		typer.style('Enter a name for the generated workflow file', bold=True) + ' (e.g., my_search.workflow.json):',
+		typer.style('Enter a name for the generated workflow file', bold=True) + ' (e.g., my_search.workflow.yaml):',
 		default=default_workflow_filename,
 	)
-	# Ensure the file name ends with .json
-	if not workflow_output_name.endswith('.json'):
-		workflow_output_name = f'{workflow_output_name}.json'
+	# Ensure the file name ends with .json, .yaml, or .yml
+	if not (
+		workflow_output_name.endswith('.json') or workflow_output_name.endswith('.yaml') or workflow_output_name.endswith('.yml')
+	):
+		workflow_output_name = f'{workflow_output_name}.yaml'
 	final_workflow_path = output_dir / workflow_output_name
 
 	try:
@@ -214,15 +216,17 @@ def _build_and_save_semantic_workflow_from_recording(
 	if is_temp_recording:
 		file_stem = file_stem.replace('temp_recording_', '') or 'recorded'
 
-	default_workflow_filename = f'{file_stem}.semantic.workflow.json'
+	default_workflow_filename = f'{file_stem}.semantic.workflow.yaml'
 	workflow_output_name: str = typer.prompt(
 		typer.style('Enter a name for the generated semantic workflow file', bold=True)
-		+ ' (e.g., my_search.semantic.workflow.json):',
+		+ ' (e.g., my_search.semantic.workflow.yaml):',
 		default=default_workflow_filename,
 	)
-	# Ensure the file name ends with .json
-	if not workflow_output_name.endswith('.json'):
-		workflow_output_name = f'{workflow_output_name}.json'
+	# Ensure the file name ends with .json, .yaml, or .yml
+	if not (
+		workflow_output_name.endswith('.json') or workflow_output_name.endswith('.yaml') or workflow_output_name.endswith('.yml')
+	):
+		workflow_output_name = f'{workflow_output_name}.yaml'
 	final_workflow_path = output_dir / workflow_output_name
 
 	try:

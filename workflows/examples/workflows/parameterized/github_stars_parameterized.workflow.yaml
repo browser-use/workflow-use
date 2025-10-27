@@ -1,0 +1,34 @@
+workflow_analysis: This workflow demonstrates using variables in target_text fields.
+  The same workflow can search for stars on any GitHub repository by parameterizing
+  the repository name in the search query. This avoids using agent steps for simple
+  text variations.
+name: Get GitHub Repository Stars
+description: Search for a GitHub repository and extract its star count - works for
+  any repo name
+version: '1.0'
+input_schema:
+- name: repo_name
+  type: string
+  required: true
+  format: owner/repo-name
+steps:
+- type: navigation
+  url: https://github.com
+  description: Navigate to GitHub homepage
+- type: input
+  target_text: Search or jump to
+  value: '{repo_name}'
+  description: Enter repository name to search for
+- type: key_press
+  target_text: Search or jump to
+  key: Enter
+  description: Submit search
+- type: click
+  target_text: '{repo_name}'
+  container_hint: Repositories
+  description: Click on the repository from search results - target_text uses the
+    variable to match the exact repo name
+- type: extract
+  extractionGoal: Extract the number of stars for this repository
+  output: star_count
+  description: Get the star count from repository page

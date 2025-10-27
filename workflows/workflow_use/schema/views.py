@@ -81,6 +81,10 @@ class InputStep(SelectorWorkflowSteps):
 
 	value: str = Field(..., description='Value to input. Can use {context_var}.')
 
+	default_value: Optional[str] = Field(
+		None, description='Default value to use if value is empty or context variable is not available.'
+	)
+
 
 class SelectChangeStep(SelectorWorkflowSteps):
 	"""Selects a dropdown option using 'select_change' (maps to workflow controller's select_change)."""
@@ -196,3 +200,18 @@ class WorkflowDefinitionSchema(BaseModel):
 	def load_from_json(cls, json_path: str):
 		with open(json_path, 'r') as f:
 			return cls.model_validate_json(f.read())
+
+	@classmethod
+	def load_from_file(cls, file_path: str):
+		"""Load workflow from JSON or YAML file with auto-detection."""
+		from pathlib import Path
+
+		import yaml
+
+		path = Path(file_path)
+		with open(path, 'r') as f:
+			if path.suffix in ['.yaml', '.yml']:
+				data = yaml.safe_load(f)
+				return cls(**data)
+			else:
+				return cls.model_validate_json(f.read())

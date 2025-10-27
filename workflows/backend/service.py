@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import aiofiles
+import yaml
 from browser_use.browser.browser import Browser
 from browser_use.llm import ChatBrowserUse
 
@@ -81,7 +82,9 @@ class WorkflowService:
 
 	def get_workflow(self, name: str) -> str:
 		wf_file = self.tmp_dir / name
-		return wf_file.read_text()
+		# Load YAML and convert to JSON for frontend compatibility
+		content = yaml.safe_load(wf_file.read_text())
+		return json.dumps(content, indent=2)
 
 	def update_workflow(self, request: WorkflowUpdateRequest) -> WorkflowResponse:
 		workflow_filename = request.filename
@@ -95,12 +98,12 @@ class WorkflowService:
 		if not wf_file.exists():
 			return WorkflowResponse(success=False, error=f"Workflow file '{workflow_filename}' not found")
 
-		workflow_content = json.loads(wf_file.read_text())
+		workflow_content = yaml.safe_load(wf_file.read_text())
 		steps = workflow_content.get('steps', [])
 
 		if 0 <= int(node_id) < len(steps):
 			steps[int(node_id)] = updated_step_data
-			wf_file.write_text(json.dumps(workflow_content, indent=2))
+			wf_file.write_text(yaml.dump(workflow_content, default_flow_style=False, sort_keys=False))
 			return WorkflowResponse(success=True)
 
 		return WorkflowResponse(success=False, error='Node not found in workflow')
@@ -116,7 +119,7 @@ class WorkflowService:
 		if not wf_file.exists():
 			return WorkflowResponse(success=False, error='Workflow not found')
 
-		workflow_content = json.loads(wf_file.read_text())
+		workflow_content = yaml.safe_load(wf_file.read_text())
 		workflow_content['name'] = updated_metadata.get('name', workflow_content.get('name', ''))
 		workflow_content['description'] = updated_metadata.get('description', workflow_content.get('description', ''))
 		workflow_content['version'] = updated_metadata.get('version', workflow_content.get('version', ''))
@@ -124,7 +127,7 @@ class WorkflowService:
 		if 'input_schema' in updated_metadata:
 			workflow_content['input_schema'] = updated_metadata['input_schema']
 
-		wf_file.write_text(json.dumps(workflow_content, indent=2))
+		wf_file.write_text(yaml.dump(workflow_content, default_flow_style=False, sort_keys=False))
 		return WorkflowResponse(success=True)
 
 	async def run_workflow_in_background(

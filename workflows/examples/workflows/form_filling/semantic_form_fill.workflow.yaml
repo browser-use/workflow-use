@@ -1,0 +1,42 @@
+workflow_analysis: This workflow demonstrates proper use of target_text field for
+  semantic abstraction. Instead of relying on CSS selectors, we use visible text to
+  identify elements on the page.
+name: Government Form - Pure Semantic Version
+description: Fill government form using only visible text identifiers (no CSS selectors
+  needed)
+version: '1.0'
+steps:
+- description: Navigate to the government form application
+  type: navigation
+  url: https://v0-complex-form-example.vercel.app/form/personal-info
+- description: Enter first name
+  type: input
+  target_text: firstName
+  value: '{first_name}'
+- description: Enter last name
+  type: input
+  target_text: lastName
+  value: '{last_name}'
+- description: Enter social security number
+  type: input
+  target_text: socialSecurityLast4
+  value: '{social_security_last4}'
+- description: Select gender - Male
+  type: click
+  target_text: Male
+- description: Select marital status - Single
+  type: click
+  target_text: Single
+- description: Continue to next section
+  type: click
+  target_text: 'Next: Contact Information'
+input_schema:
+- name: first_name
+  type: string
+  required: true
+- name: last_name
+  type: string
+  required: true
+- name: social_security_last4
+  type: string
+  required: true

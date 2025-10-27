@@ -1,10 +1,9 @@
 import logging
-import os
 
 from browser_use import ActionResult, Controller
 from browser_use.llm import ChatBrowserUse
 from browser_use.llm.base import BaseChatModel
-from pydantic import BaseModel, Field, SecretStr
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 

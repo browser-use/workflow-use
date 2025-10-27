@@ -27,16 +27,21 @@ def _setup_workflow_tools(
 	mcp_app: FastMCP, llm_instance: BaseChatModel, page_extraction_llm: BaseChatModel | None, workflow_dir: str
 ):
 	"""
-	Scans a directory for workflow.json files, loads them, and registers them as tools
+	Scans a directory for workflow.json and workflow.yaml files, loads them, and registers them as tools
 	with the FastMCP instance by dynamically setting function signatures.
 	"""
-	workflow_files = list(Path(workflow_dir).glob('*.workflow.json'))
+	# Find both JSON and YAML workflow files
+	json_files = list(Path(workflow_dir).glob('*.workflow.json'))
+	yaml_files = list(Path(workflow_dir).glob('*.workflow.yaml'))
+	yml_files = list(Path(workflow_dir).glob('*.workflow.yml'))
+	workflow_files = json_files + yaml_files + yml_files
+
 	print(f"[FastMCP Service] Found workflow files in '{workflow_dir}': {len(workflow_files)}")
 
 	for wf_file_path in workflow_files:
 		try:
 			print(f'[FastMCP Service] Loading workflow from: {wf_file_path}')
-			schema = WorkflowDefinitionSchema.load_from_json(str(wf_file_path))
+			schema = WorkflowDefinitionSchema.load_from_file(str(wf_file_path))
 
 			# Instantiate the workflow
 			workflow = Workflow(

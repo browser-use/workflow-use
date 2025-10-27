@@ -1,0 +1,107 @@
+workflow_analysis: This workflow is about automating the process of filling out a
+  government-related form on a website. The form requires personal information such
+  as first name, middle name, last name, social security number, gender, and marital
+  status. Inputs are needed for dynamic form values such as names and social security
+  number. The workflow involves navigation, data entry, and selection of options within
+  the form.
+name: Government Form Submission
+description: Automated submission of a government-related form.
+version: '1.0'
+steps:
+- description: Navigate to the form application's homepage.
+  output: null
+  timestamp: null
+  tabId: null
+  type: navigation
+  url: https://v0-complex-form-example.vercel.app/
+- description: Click the 'Start Application' button to begin form entry.
+  output: null
+  timestamp: 1747409674925
+  tabId: 1417505019
+  type: click
+  cssSelector: button.inline-flex.items-center.justify-center.gap-2.whitespace-nowrap.text-sm.font-medium.ring-offset-background.transition-colors.bg-primary.text-primary-foreground.h-11.rounded-md.px-8
+  xpath: body/div[1]/div[1]/a[1]/button[1]
+  elementTag: BUTTON
+  elementText: Start Application
+- description: Enter the first name into the form.
+  output: null
+  timestamp: 1747409678034
+  tabId: 1417505019
+  type: input
+  cssSelector: input.flex.h-10.w-full.rounded-md.border.border-input.bg-background.px-3.py-2.text-base.ring-offset-background[id="firstName"][name="firstName"]
+  value: '{first_name}'
+  xpath: id("firstName")
+  elementTag: INPUT
+- description: Press Tab to move to the next field.
+  output: null
+  timestamp: 1747409678270
+  tabId: 1417505019
+  type: key_press
+  cssSelector: input.flex.h-10.w-full.rounded-md.border.border-input.bg-background.px-3.py-2.text-base.ring-offset-background[id="firstName"][name="firstName"]
+  key: Tab
+  xpath: id("firstName")
+  elementTag: INPUT
+- description: Tab through the middle name field.
+  output: null
+  timestamp: 1747409678417
+  tabId: 1417505019
+  type: key_press
+  cssSelector: input.flex.h-10.w-full.rounded-md.border.border-input.bg-background.px-3.py-2.text-base.ring-offset-background[id="middleName"][name="middleName"]
+  key: Tab
+  xpath: id("middleName")
+  elementTag: INPUT
+- description: Enter the last name into the form.
+  output: null
+  timestamp: 1747409678926
+  tabId: 1417505019
+  type: input
+  cssSelector: input.flex.h-10.w-full.rounded-md.border.border-input.bg-background.px-3.py-2.text-base.ring-offset-background[id="lastName"][name="lastName"]
+  value: '{last_name}'
+  xpath: id("lastName")
+  elementTag: INPUT
+- description: Click to focus on the Social Security field.
+  output: null
+  timestamp: 1747409680009
+  tabId: 1417505019
+  type: click
+  cssSelector: input.flex.h-10.w-full.rounded-md.border.border-input.bg-background.px-3.py-2.text-base.ring-offset-background[id="socialSecurityLast4"][name="socialSecurityLast4"]
+  xpath: id("socialSecurityLast4")
+  elementTag: INPUT
+  elementText: null
+- description: Enter the last 4 digits of the Social Security number.
+  output: null
+  timestamp: 1747409680292
+  tabId: 1417505019
+  type: input
+  cssSelector: input.flex.h-10.w-full.rounded-md.border.border-input.bg-background.px-3.py-2.text-base.ring-offset-background[id="socialSecurityLast4"][name="socialSecurityLast4"]
+  value: '{social_security_last4}'
+  xpath: id("socialSecurityLast4")
+  elementTag: INPUT
+- description: Select 'Male' as the gender.
+  output: null
+  timestamp: 1747409681493
+  tabId: 1417505019
+  type: click
+  cssSelector: button.aspect-square.h-4.w-4.rounded-full.border.border-primary.text-primary.ring-offset-background[type="button"][role="radio"][id="male"]
+  xpath: id("male")
+  elementTag: BUTTON
+  elementText: null
+- description: Select 'Single' as the marital status.
+  output: null
+  timestamp: 1747409682216
+  tabId: 1417505019
+  type: click
+  cssSelector: button.aspect-square.h-4.w-4.rounded-full.border.border-primary.text-primary.ring-offset-background[type="button"][role="radio"][id="single"]
+  xpath: id("single")
+  elementTag: BUTTON
+  elementText: null
+input_schema:
+- name: first_name
+  type: string
+  required: true
+- name: last_name
+  type: string
+  required: true
+- name: social_security_last4
+  type: string
+  required: true

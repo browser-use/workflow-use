@@ -1,0 +1,38 @@
+name: Example Workflow with Default Values
+description: Demonstrates the use of default_value in input steps
+version: '1.0'
+
+input_schema:
+  - name: search_term
+    type: string
+    required: false  # Not required because we have a default value
+    description: Optional search term (will use default if not provided)
+  - name: username
+    type: string
+    required: false
+    description: Optional username (defaults to 'guest')
+
+steps:
+  - type: navigation
+    description: Navigate to example site
+    url: https://example.com
+    output: null
+
+  - type: input
+    description: Enter search term (with fallback)
+    target_text: Search
+    value: '{search_term}'
+    default_value: 'general search'  # Used if search_term is not provided
+    output: null
+
+  - type: input
+    description: Enter username (with fallback)
+    target_text: Username
+    value: '{username}'
+    default_value: 'guest'  # Used if username is not provided
+    output: null
+
+  - type: click
+    description: Submit the form
+    target_text: Submit
+    output: null

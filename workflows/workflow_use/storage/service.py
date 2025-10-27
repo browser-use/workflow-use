@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import List, Optional
 from uuid import uuid4
 
+import yaml
 from pydantic import BaseModel, Field
 
 from workflow_use.schema.views import WorkflowDefinitionSchema
@@ -107,7 +108,7 @@ class WorkflowStorageService:
 		else:
 			# Create new workflow
 			workflow_id = workflow_id or str(uuid4())
-			filename = f'{workflow_id}.workflow.json'
+			filename = f'{workflow_id}.workflow.yaml'
 			file_path = str(self.workflows_dir / filename)
 
 			metadata = WorkflowMetadata(
@@ -123,7 +124,7 @@ class WorkflowStorageService:
 
 		# Save workflow file
 		with open(metadata.file_path, 'w') as f:
-			json.dump(workflow.model_dump(mode='json'), f, indent=2)
+			yaml.dump(workflow.model_dump(mode='json'), f, default_flow_style=False, sort_keys=False)
 
 		# Update metadata
 		self.metadata[workflow_id] = metadata
@@ -149,7 +150,7 @@ class WorkflowStorageService:
 		metadata = self.metadata[workflow_id]
 		try:
 			with open(metadata.file_path, 'r') as f:
-				data = json.load(f)
+				data = yaml.safe_load(f)
 			workflow = WorkflowDefinitionSchema(**data)
 			logger.info(f'Loaded workflow: {workflow_id}')
 			return workflow
