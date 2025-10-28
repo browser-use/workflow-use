@@ -115,10 +115,19 @@ class Workflow:
 		# Filter out workflow metadata fields that shouldn't be passed to browser-use ActionModel
 		# Note: 'type' is NOT filtered here because some actions (like navigation) need it in their params
 		workflow_metadata_fields = {
-			'description', 'output', 'agent_reasoning',
-			'page_context_url', 'page_context_title',
-			'cssSelector', 'xpath', 'elementTag', 'elementHash',  # These are workflow-specific selector fields
-			'target_text', 'container_hint', 'position_hint', 'interaction_type'  # Semantic workflow fields
+			'description',
+			'output',
+			'agent_reasoning',
+			'page_context_url',
+			'page_context_title',
+			'cssSelector',
+			'xpath',
+			'elementTag',
+			'elementHash',  # These are workflow-specific selector fields
+			'target_text',
+			'container_hint',
+			'position_hint',
+			'interaction_type',  # Semantic workflow fields
 		}
 
 		# Keep only action-specific parameters
