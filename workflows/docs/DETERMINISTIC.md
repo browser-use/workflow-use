@@ -7,10 +7,10 @@ Generate workflows **without LLM for step creation** - directly map browser acti
 ```python
 import asyncio
 from workflow_use.healing.service import HealingService
-from langchain_anthropic import ChatAnthropic
+from browser_use.llm import ChatBrowserUse
 
 async def main():
-    llm = ChatAnthropic(model_name="claude-3-5-sonnet-20241022")
+    llm = ChatBrowserUse(model_name="bu-latest")
 
     service = HealingService(llm=llm, use_deterministic_conversion=True)
 

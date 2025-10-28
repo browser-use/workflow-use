@@ -110,7 +110,24 @@ class Workflow:
 		"""Execute a deterministic (controller) action based on step dictionary."""
 		# Assumes WorkflowStep for deterministic type has 'action' and 'params' keys
 		action_name: str = step.type  # Expect 'action' key for deterministic steps
-		params: Dict[str, Any] = step.model_dump()  # Use params if present
+		all_params: Dict[str, Any] = step.model_dump(exclude_none=True)  # Exclude None values to prevent validation errors
+
+		# Filter out workflow metadata fields that shouldn't be passed to browser-use ActionModel
+		# Note: 'type' is NOT filtered here because some actions (like navigation) need it in their params
+		workflow_metadata_fields = {
+			'description', 'output', 'agent_reasoning',
+			'page_context_url', 'page_context_title',
+			'cssSelector', 'xpath', 'elementTag', 'elementHash',  # These are workflow-specific selector fields
+			'target_text', 'container_hint', 'position_hint', 'interaction_type'  # Semantic workflow fields
+		}
+
+		# Keep only action-specific parameters
+		params = {k: v for k, v in all_params.items() if k not in workflow_metadata_fields}
+
+		# Special handling for actions that use EmptyActionModel (don't accept any parameters)
+		empty_actions = {'go_back', 'go_forward'}
+		if action_name in empty_actions:
+			params = {}
 
 		ActionModel = self.controller.registry.create_action_model(include_actions=[action_name])
 		# Pass the params dictionary directly
@@ -432,21 +449,34 @@ class Workflow:
 		if isinstance(step_resolved, DeterministicWorkflowStep):
 			from browser_use.agent.views import ActionResult  # Local import ok
 
-			try:
-				# Use action key from step dictionary
-				action_name = step_resolved.type or '[No action specified]'
-				logger.info(f'Attempting deterministic action: {action_name}')
-				result = await self._run_deterministic_step(step_resolved, step_index)
-				if isinstance(result, ActionResult) and result.error:
-					logger.warning(f'Deterministic action reported error: {result.error}')
-					raise ValueError(f'Deterministic action {action_name} failed: {result.error}')
-			except Exception as e:
-				action_name = step_resolved.type or '[Unknown Action]'
-				logger.warning(
-					f'Deterministic step {step_index + 1} ({action_name}) failed: {e}. Attempting fallback with agent.'
-				)
+			# Check if this is a selector step without cssSelector - use semantic execution
+			action_name = step_resolved.type or '[No action specified]'
+			requires_selector = action_name in ['click', 'input', 'key_press', 'select_change']
+			has_css_selector = hasattr(step_resolved, 'cssSelector') and step_resolved.cssSelector
+			has_target_text = hasattr(step_resolved, 'target_text') and step_resolved.target_text
 
-				raise ValueError(f'Deterministic step {step_index + 1} ({action_name}) failed: {e}')
+			if requires_selector and not has_css_selector and has_target_text:
+				# Use semantic execution as fallback
+				logger.info(f'Step {step_index + 1}: cssSelector missing but target_text present - using semantic execution')
+				from workflow_use.workflow.semantic_executor import SemanticWorkflowExecutor
+
+				if not hasattr(self, '_semantic_executor'):
+					self._semantic_executor = SemanticWorkflowExecutor(self.browser, page_extraction_llm=self.page_extraction_llm)
+				result = await self._semantic_executor.execute_step(step_resolved)
+			else:
+				# Use deterministic controller execution
+				try:
+					logger.info(f'Attempting deterministic action: {action_name}')
+					result = await self._run_deterministic_step(step_resolved, step_index)
+					if isinstance(result, ActionResult) and result.error:
+						logger.warning(f'Deterministic action reported error: {result.error}')
+						raise ValueError(f'Deterministic action {action_name} failed: {result.error}')
+				except Exception as e:
+					action_name = step_resolved.type or '[Unknown Action]'
+					logger.warning(
+						f'Deterministic step {step_index + 1} ({action_name}) failed: {e}. Attempting fallback with agent.'
+					)
+					raise ValueError(f'Deterministic step {step_index + 1} ({action_name}) failed: {e}')
 
 				# if self.fallback_to_agent:
 				# 	result = await self._fallback_to_agent(step_resolved, step_index, e)

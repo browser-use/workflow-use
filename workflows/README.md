@@ -14,9 +14,9 @@ Generate workflows **without LLM for step creation** - 10-100x faster, guarantee
 ### 2. Create Your Own Workflow
 ```python
 from workflow_use.healing.service import HealingService
-from langchain_anthropic import ChatAnthropic
+from browser_use.llm import ChatBrowserUse
 
-llm = ChatAnthropic(model_name="claude-3-5-sonnet-20241022")
+llm = ChatBrowserUse(model_name="bu-latest")
 service = HealingService(llm=llm, use_deterministic_conversion=True)
 
 workflow = await service.generate_workflow_from_prompt(

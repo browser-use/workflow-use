@@ -1,5 +1,7 @@
 import asyncio
+import json
 import logging
+import traceback
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 from browser_use import Browser
@@ -573,17 +575,26 @@ class SemanticWorkflowExecutor:
 			# Always try to get element_info from semantic mapping for metadata (element_type, etc.)
 			element_info = self._find_element_by_text(step.target_text)
 
-			# Try direct selector first (for ID/name attributes)
-			selector_to_use = await self._try_direct_selector(step.target_text)
+			# SEMANTIC WORKFLOW PRIORITY:
+			# 1. Try direct selector by ID/name (stable, semantic attributes)
+			# 2. Use hierarchical selector if available and specific enough
+			# 3. Fall back to CSS selector (which should now include href for links)
 
-			# If direct selector fails, use semantic mapping selector
-			if not selector_to_use:
-				if element_info:
-					selector_to_use = element_info['selectors']
-					logger.info(f"Using semantic mapping: '{target_identifier}' -> {selector_to_use}")
-			else:
-				# Direct selector worked, but we still want the element_info for metadata
-				if element_info:
+			direct_selector = await self._try_direct_selector(step.target_text)
+			if direct_selector:
+				selector_to_use = direct_selector
+				logger.info(f"Using direct selector: '{target_identifier}' -> {selector_to_use}")
+			elif element_info:
+				# Use hierarchical selector if it's more specific than the basic selector
+				hierarchical = element_info.get('hierarchical_selector', '')
+				basic = element_info.get('selectors', '')
+
+				# Prefer hierarchical if it has positional info (nth-of-type) or IDs
+				if hierarchical and ('#' in hierarchical or ':nth-of-type' in hierarchical):
+					selector_to_use = hierarchical
+					logger.info(f"Using hierarchical selector: '{target_identifier}' -> {selector_to_use}")
+				else:
+					selector_to_use = basic
 					logger.info(f"Using semantic mapping: '{target_identifier}' -> {selector_to_use}")
 
 		elif step.description:
@@ -664,9 +675,123 @@ class SemanticWorkflowExecutor:
 
 		return await self._execute_with_verification_and_retry(click_executor, step, click_verifier)
 
+	async def _click_element_by_text_direct(self, target_text: str, element_tag: str = None) -> bool:
+		"""Click element by finding it directly via JavaScript text matching.
+
+		This bypasses selectors entirely and uses the abstract DOM mapping at click time.
+		"""
+		page = await self.browser.get_current_page()
+
+		# Build JavaScript to find and click element by text
+		tag_constraint = f"el.tagName.toLowerCase() === '{element_tag.lower()}'" if element_tag else 'true'
+
+		js_code = f"""() => {{
+			const targetText = {json.dumps(target_text)};
+			const allElements = document.querySelectorAll('a, button, input, select, textarea, [role="button"], [role="link"], [onclick]');
+
+			// Try multiple matching strategies in order of specificity
+			const matches = [];
+
+			for (const el of allElements) {{
+				// Skip hidden elements
+				const rect = el.getBoundingClientRect();
+				if (rect.width === 0 || rect.height === 0 ||
+					getComputedStyle(el).visibility === 'hidden' ||
+					getComputedStyle(el).display === 'none') {{
+					continue;
+				}}
+
+				// Check if tag matches (if specified)
+				if (!({tag_constraint})) {{
+					continue;
+				}}
+
+				// Get visible text from multiple sources
+				let text = el.textContent?.trim() || '';
+				const ariaLabel = el.getAttribute('aria-label') || '';
+				const title = el.getAttribute('title') || '';
+				const value = el.getAttribute('value') || '';
+				const placeholder = el.getAttribute('placeholder') || '';
+
+				// Combine all text sources
+				const allText = [text, ariaLabel, title, value, placeholder]
+					.filter(t => t)
+					.join(' ')
+					.toLowerCase();
+
+				const targetLower = targetText.toLowerCase();
+
+				// Strategy 1: Exact match (highest priority)
+				if (allText === targetLower) {{
+					matches.push({{ element: el, text: text || ariaLabel || title, priority: 1 }});
+				}}
+				// Strategy 2: Exact word match (split by spaces/special chars)
+				else if (allText.split(/[\\s\\W]+/).includes(targetLower)) {{
+					matches.push({{ element: el, text: text || ariaLabel || title, priority: 2 }});
+				}}
+				// Strategy 3: Contains match
+				else if (allText.includes(targetLower)) {{
+					matches.push({{ element: el, text: text || ariaLabel || title, priority: 3 }});
+				}}
+				// Strategy 4: Fuzzy match (split target into words and match all)
+				else {{
+					const targetWords = targetLower.split(/[\\s\\W]+/).filter(w => w.length > 2);
+					if (targetWords.length > 0 && targetWords.every(word => allText.includes(word))) {{
+						matches.push({{ element: el, text: text || ariaLabel || title, priority: 4 }});
+					}}
+				}}
+			}}
+
+			// Sort by priority and click the best match
+			if (matches.length > 0) {{
+				matches.sort((a, b) => a.priority - b.priority);
+				const best = matches[0];
+				best.element.click();
+				return {{ success: true, clicked: best.text, tag: best.element.tagName, priority: best.priority }};
+			}}
+
+			return {{ success: false, error: 'Element not found by text' }};
+		}}"""
+
+		try:
+			result = await page.evaluate(js_code)
+
+			# Handle case where result might be a string instead of dict
+			if isinstance(result, str):
+				try:
+					result = json.loads(result)
+				except json.JSONDecodeError:
+					logger.error(f'Failed to parse result as JSON. Got string: {result}')
+					return False
+
+			# Log the result type and value for debugging
+			logger.debug(f'Result type: {type(result)}, value: {result}')
+
+			if result and isinstance(result, dict) and result.get('success'):
+				priority_desc = {1: 'exact', 2: 'word', 3: 'contains', 4: 'fuzzy'}
+				match_type = priority_desc.get(result.get('priority', 3), 'unknown')
+				logger.info(
+					f"✅ Clicked element by text ({match_type} match): '{target_text}' -> {result.get('tag')}: '{result.get('clicked')}'"
+				)
+				return True
+			else:
+				logger.warning(f"❌ Could not find element by text: '{target_text}'")
+				return False
+		except Exception as e:
+			logger.error(f'Error clicking element by text: {e}')
+			logger.error(f'Traceback: {traceback.format_exc()}')
+			return False
+
 	async def _click_element_intelligently(self, selector: str, target_text: str, element_info: Dict | None = None) -> bool:
 		"""Click element using the most appropriate strategy based on element type."""
 		page = await self.browser.get_current_page()
+
+		# STRATEGY 0: Try direct text-based clicking first (most semantic)
+		if target_text and target_text.strip():
+			element_tag = element_info.get('tag', '').lower() if element_info else None
+			if await self._click_element_by_text_direct(target_text, element_tag):
+				return True
+			logger.info('Direct text click failed, falling back to selector-based approach')
 
 		try:
 			# Strategy -1: Check if element_info indicates this is a radio/checkbox, even if selector doesn't show it
@@ -1435,6 +1560,24 @@ class SemanticWorkflowExecutor:
 		logger.info(msg)
 		return ActionResult(extracted_content=msg, include_in_memory=True)
 
+	async def execute_go_back_step(self, step) -> ActionResult:
+		"""Execute go back navigation step."""
+		page = await self.browser.get_current_page()
+		await page.go_back()
+
+		msg = '🔙 Navigated back to previous page'
+		logger.info(msg)
+		return ActionResult(extracted_content=msg, include_in_memory=True)
+
+	async def execute_go_forward_step(self, step) -> ActionResult:
+		"""Execute go forward navigation step."""
+		page = await self.browser.get_current_page()
+		await page.go_forward()
+
+		msg = '🔜 Navigated forward to next page'
+		logger.info(msg)
+		return ActionResult(extracted_content=msg, include_in_memory=True)
+
 	async def execute_button_step(self, step) -> ActionResult:
 		"""Execute button click step using semantic mapping."""
 		# Button steps are essentially click steps but with button-specific metadata
@@ -1483,6 +1626,10 @@ class SemanticWorkflowExecutor:
 			return await self.execute_button_step(step)
 		elif isinstance(step, ExtractStep):
 			return await self.execute_extract_step(step)
+		elif step.type == 'go_back':
+			return await self.execute_go_back_step(step)
+		elif step.type == 'go_forward':
+			return await self.execute_go_forward_step(step)
 		else:
 			raise Exception(f'Unsupported step type: {step.type}')
 

@@ -651,7 +651,7 @@ class SemanticExtractor:
                             selector = `#${el.id}`;
                         } else {
                             selector = el.tagName.toLowerCase();
-                            
+
                             // Add specific attributes based on widget type
                             const widgetType = containerContext.widget_type;
                             if (widgetType === 'calendar' && el.getAttribute('data-date')) {
@@ -661,7 +661,7 @@ class SemanticExtractor:
                             } else if (el.getAttribute('data-testid')) {
                                 selector += `[data-testid="${el.getAttribute('data-testid')}"]`;
                             }
-                            
+
                             // Add other attributes
                             if (el.name) selector += `[name="${el.name}"]`;
                             if (el.type && el.type !== 'submit' && el.type !== 'button' && el.type !== '') {

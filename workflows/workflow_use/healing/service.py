@@ -121,15 +121,34 @@ class HealingService:
 
 	def _populate_selector_fields(self, workflow_definition: WorkflowDefinitionSchema) -> WorkflowDefinitionSchema:
 		"""Populate cssSelector, xpath, and elementTag fields from interacted_elements_hash_map"""
+		print('\n🔧 Populating selector fields for workflow steps...')
+		print(f'   Available element hashes in map: {len(self.interacted_elements_hash_map)}')
+
 		# Process each step to add back the selector fields
-		for step in workflow_definition.steps:
+		populated_count = 0
+		for i, step in enumerate(workflow_definition.steps):
 			if isinstance(step, SelectorWorkflowSteps):
-				if step.elementHash in self.interacted_elements_hash_map:
-					dom_element = self.interacted_elements_hash_map[step.elementHash]
-					# DOMInteractedElement has different attribute names
-					step.cssSelector = getattr(dom_element, 'css_selector', '') or ''
-					step.xpath = getattr(dom_element, 'x_path', '') or getattr(dom_element, 'xpath', '')
-					step.elementTag = dom_element.node_name.lower() if hasattr(dom_element, 'node_name') else ''
+				print(f'\n   Step {i + 1} (type={step.type}):')
+				if hasattr(step, 'elementHash') and step.elementHash:
+					print(f'      elementHash: {step.elementHash}')
+					if step.elementHash in self.interacted_elements_hash_map:
+						dom_element = self.interacted_elements_hash_map[step.elementHash]
+						# DOMInteractedElement has different attribute names
+						step.cssSelector = getattr(dom_element, 'css_selector', '') or ''
+						step.xpath = getattr(dom_element, 'x_path', '') or getattr(dom_element, 'xpath', '')
+						step.elementTag = dom_element.node_name.lower() if hasattr(dom_element, 'node_name') else ''
+
+						print('      ✅ Populated:')
+						print(f'         cssSelector: {step.cssSelector[:80] if step.cssSelector else "(empty)"}')
+						print(f'         xpath: {step.xpath[:80] if step.xpath else "(empty)"}')
+						print(f'         elementTag: {step.elementTag}')
+						populated_count += 1
+					else:
+						print('      ⚠️  elementHash not found in map!')
+				else:
+					print('      (no elementHash)')
+
+		print(f'\n   ✅ Populated {populated_count} steps with selector fields')
 
 		# Create the full WorkflowDefinitionSchema with populated fields
 		return workflow_definition
@@ -204,6 +223,50 @@ class HealingService:
 		# Convert history to steps deterministically
 		steps = self.deterministic_converter.convert_history_to_steps(history_list)
 
+		# Transfer element objects from deterministic converter to healing service's map
+		# This allows _populate_selector_fields to populate cssSelector
+		# Use the captured element map from the CapturingController instead of history
+		captured_map = getattr(self, 'captured_element_text_map', {})
+
+		for history in history_list.history:
+			if history.model_output is None:
+				continue
+			for action in history.model_output.action:
+				action_dict = action.model_dump()
+				# Extract index from browser-use action format
+				for key, value in action_dict.items():
+					if isinstance(value, dict) and 'index' in value:
+						index = value['index']
+						if index in self.deterministic_converter.element_hash_map:
+							element_hash = self.deterministic_converter.element_hash_map[index]
+
+							# First try: Use captured element data (more reliable)
+							if index in captured_map:
+								# Create a mock DOMInteractedElement from captured data
+								captured_data = captured_map[index]
+
+								# Create a simple object with the needed attributes
+								class MockElement:
+									def __init__(self, data):
+										self.node_name = data.get('tag_name', '').upper()
+										self.css_selector = data.get('css_selector', '')
+										self.x_path = data.get('xpath', '')
+										self.xpath = data.get('xpath', '')  # Support both attribute names
+
+								mock_element = MockElement(captured_data)
+								self.interacted_elements_hash_map[element_hash] = mock_element
+								print(f'   📍 Populated selector for hash {element_hash} from captured data (index {index})')
+								print(f'      CSS: {mock_element.css_selector}')
+								print(f'      XPath: {mock_element.x_path}')
+								continue
+
+							# Fallback: Use history.state.interacted_element
+							for element in history.state.interacted_element:
+								if element and hasattr(element, 'highlight_index') and element.highlight_index == index:
+									self.interacted_elements_hash_map[element_hash] = element
+									print(f'   📍 Populated selector for hash {element_hash} from history (index {index})')
+									break
+
 		# Create workflow definition dict
 		workflow_dict = self.deterministic_converter.create_workflow_definition(
 			name=task, description=f'Workflow for: {task}', steps=steps, input_schema=[]
@@ -243,27 +306,155 @@ class HealingService:
 
 		browser = Browser(use_cloud=use_cloud)
 
-		# Note: HealingController's custom action has compatibility issues with current browser-use version
-		# Using standard Controller for now
+		# Create a shared map to capture element text during agent execution
+		element_text_map = {}  # Maps index -> {'text': str, 'tag': str, 'xpath': str, etc.}
+
+		# Create a custom controller that captures element mappings
 		from browser_use import Controller
+
+		class CapturingController(Controller):
+			"""Controller that captures element text mapping during execution"""
+
+			async def act(self, action, browser_session, *args, **kwargs):
+				# Get the selector map before action
+				try:
+					selector_map = await browser_session.get_selector_map()
+
+					if selector_map:
+						print(f'📋 Captured {len(selector_map)} elements from selector_map')
+						# selector_map is a dict: {index: DOMInteractedElement}
+						# We need to extract text/attributes from each element
+						debug_count = 0
+						for index, dom_element in selector_map.items():
+							# DEBUG: Print all fields for first 3 elements to see what's available
+							if debug_count < 3:
+								print(f'\n🔍 DEBUG - Element {index}:')
+								print(f'   Type: {type(dom_element)}')
+								if isinstance(dom_element, dict):
+									print(f'   Dict keys: {list(dom_element.keys())}')
+									print(f'   Content: {dom_element}')
+								elif hasattr(dom_element, '__dict__'):
+									print(f'   Available fields: {list(dom_element.__dict__.keys())}')
+									print(f'   Values: {dom_element.__dict__}')
+								else:
+									attrs = [attr for attr in dir(dom_element) if not attr.startswith('_')]
+									print(f'   Dir (non-private): {attrs}')
+									# Print values of key attributes
+									for attr in ['text', 'inner_text', 'node_value', 'node_name', 'attributes']:
+										if hasattr(dom_element, attr):
+											val = getattr(dom_element, attr, None)
+											print(f'   {attr}: {val}')
+								debug_count += 1
+
+							# Handle dict format (from selector_map)
+							if isinstance(dom_element, dict):
+								text = dom_element.get('text', '')
+								tag_name = dom_element.get('tag_name', '')
+								attrs = dom_element.get('attributes', {})
+							else:
+								# Extract text by trying multiple field names
+								text = ''
+								for text_field in ['text', 'inner_text', 'node_value', 'textContent', 'innerText']:
+									if hasattr(dom_element, text_field):
+										text = getattr(dom_element, text_field, '')
+										if text and text.strip():
+											break
+								tag_name = (
+									getattr(dom_element, 'node_name', '').lower() if hasattr(dom_element, 'node_name') else ''
+								)
+								attrs = getattr(dom_element, 'attributes', {})
+
+							# If still no text, try getting it from attributes
+							if not text or not text.strip():
+								if isinstance(attrs, dict):
+									# Try common text attributes first
+									text = (
+										attrs.get('aria-label')
+										or attrs.get('title')
+										or attrs.get('alt')
+										or attrs.get('placeholder')
+										or attrs.get('value')
+										or ''
+									)
+
+									# For anchor tags, try to extract meaningful text from href
+									if not text and tag_name == 'a' and 'href' in attrs:
+										href = attrs['href']
+										# Extract the last meaningful part of the URL path
+										# E.g., "https://newsroom.edison.com/releases" -> "releases"
+										if isinstance(href, str):
+											# Remove query params and anchors
+											href = href.split('?')[0].split('#')[0]
+											# Get the last path segment
+											path_parts = href.rstrip('/').split('/')
+											if path_parts:
+												last_part = path_parts[-1]
+												# Convert URL-friendly text to readable text
+												# E.g., "sec-filings" -> "SEC Filings"
+												if last_part and last_part not in ['www.edison.com', 'edison.com', 'investors']:
+													text = last_part.replace('-', ' ').replace('_', ' ').title()
+													print(f'   📎 Extracted from href: "{text}"')
+
+							# Create a simplified dict with the data we need
+							# Handle both dict and object formats
+							if isinstance(dom_element, dict):
+								element_data = {
+									'index': index,
+									'tag_name': tag_name or dom_element.get('tag_name', ''),
+									'text': text,
+									'xpath': dom_element.get('xpath', '') or dom_element.get('x_path', ''),
+									'css_selector': dom_element.get('css_selector', ''),
+									'attributes': attrs,
+								}
+							else:
+								element_data = {
+									'index': index,
+									'tag_name': tag_name,
+									'text': text,
+									'xpath': getattr(dom_element, 'x_path', '') or getattr(dom_element, 'xpath', ''),
+									'css_selector': getattr(dom_element, 'css_selector', ''),
+									'attributes': attrs,
+								}
+
+							# Store in the shared map
+							element_text_map[index] = element_data
+
+							# Show first few captures for debugging
+							if len(element_text_map) <= 5:
+								text_preview = element_data['text'][:50] if element_data['text'] else '(no text)'
+								print(f'   Element {index} ({element_data["tag_name"]}): {text_preview}')
+
+				except Exception as e:
+					print(f'⚠️  Warning: Failed to capture elements before action: {e}')
+
+				# Execute the actual action
+				result = await super().act(action, browser_session, *args, **kwargs)
+				return result
 
 		agent = Agent(
 			task=prompt,
 			browser_session=browser,
 			llm=agent_llm,
 			page_extraction_llm=extraction_llm,
-			controller=Controller(),  # Using standard controller instead of HealingController
+			controller=CapturingController(),  # Use our custom controller
 			enable_memory=False,
 			max_failures=10,
 			tool_calling_method='auto',
 		)
 
+		# Store the element map for later use
+		self.captured_element_text_map = element_text_map
+
 		# Run the agent to get history
+		print('🎬 Starting agent with element capture enabled...')
 		history = await agent.run()
+		print(f'✅ Agent completed. Captured {len(element_text_map)} element mappings total.')
 
 		# Create workflow definition from the history
 		# Route to deterministic or LLM-based conversion based on flag
 		if self.use_deterministic_conversion:
+			# Pass the captured element map to the deterministic converter
+			self.deterministic_converter.captured_element_text_map = element_text_map
 			workflow_definition = await self._create_workflow_deterministically(
 				prompt, history, extract_variables=self.enable_variable_extraction
 			)

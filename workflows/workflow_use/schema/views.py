@@ -110,6 +110,18 @@ class ScrollStep(BaseWorkflowStep):
 	scrollY: int = Field(..., description='Vertical scroll pixels.')
 
 
+class GoBackStep(BaseWorkflowStep):
+	"""Navigates back to the previous page in browser history."""
+
+	type: Literal['go_back']
+
+
+class GoForwardStep(BaseWorkflowStep):
+	"""Navigates forward to the next page in browser history."""
+
+	type: Literal['go_forward']
+
+
 class PageExtractionStep(BaseWorkflowStep):
 	"""Extracts text from the page using 'page_extraction' (maps to workflow controller's page_extraction)."""
 
@@ -133,6 +145,8 @@ DeterministicWorkflowStep = Union[
 	SelectChangeStep,
 	KeyPressStep,
 	ScrollStep,
+	GoBackStep,
+	GoForwardStep,
 	PageExtractionStep,
 	ExtractStep,
 ]
