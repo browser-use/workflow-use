@@ -24,7 +24,7 @@ from workflow_use.storage.service import WorkflowStorageService
 # CONFIGURE YOUR TASK HERE
 # ============================================================================
 
-TASK_NAME = "Get GitHub Repository Stars"
+TASK_NAME = 'Get GitHub Repository Stars'
 TASK_DESCRIPTION = """
 Go to GitHub, search for the browser-use repository, click on it,
 and extract the star count.
@@ -65,9 +65,7 @@ async def generate_and_store_workflow():
 	# Create HealingService for workflow generation
 	print('Step 2: Setting up workflow generation service...')
 	healing_service = HealingService(
-		llm=llm,
-		enable_variable_extraction=ENABLE_VARIABLE_EXTRACTION,
-		use_deterministic_conversion=USE_DETERMINISTIC_CONVERSION
+		llm=llm, enable_variable_extraction=ENABLE_VARIABLE_EXTRACTION, use_deterministic_conversion=USE_DETERMINISTIC_CONVERSION
 	)
 
 	# Generate workflow
@@ -75,10 +73,7 @@ async def generate_and_store_workflow():
 	print('(This will open a browser and execute the task)\n')
 
 	workflow = await healing_service.generate_workflow_from_prompt(
-		prompt=TASK_DESCRIPTION,
-		agent_llm=llm,
-		extraction_llm=llm,
-		use_cloud=True
+		prompt=TASK_DESCRIPTION, agent_llm=llm, extraction_llm=llm, use_cloud=True
 	)
 
 	print('✅ Workflow generated successfully!\n')
