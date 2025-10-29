@@ -1,0 +1,24 @@
+{
+  "bfaf87d9-f5d9-4245-b210-5bfdf302a9b2": {
+    "id": "bfaf87d9-f5d9-4245-b210-5bfdf302a9b2",
+    "name": "\nGo to GitHub, search for the browser-use repository, click on it,\nand extract the star count.\n",
+    "description": "Workflow for: \nGo to GitHub, search for the browser-use repository, click on it,\nand extract the star count.\n",
+    "version": "1.0.0",
+    "created_at": "2025-10-29T19:10:18.180929",
+    "updated_at": "2025-10-29T19:10:18.180939",
+    "file_path": "/Users/sauravpanda/Github/LLMs/Browser-Use/workflow-use/workflows/storage/workflows/bfaf87d9-f5d9-4245-b210-5bfdf302a9b2.workflow.yaml",
+    "generation_mode": "browser_use",
+    "original_task": "Go to GitHub, search for the browser-use repository, click on it,\nand extract the star count."
+  },
+  "01093ced-5dfc-4590-8806-2eae6840bc8f": {
+    "id": "01093ced-5dfc-4590-8806-2eae6840bc8f",
+    "name": "\nGo to GitHub, search for the browser-use repository, click on it,\nand extract the star count.\n",
+    "description": "Workflow for: \nGo to GitHub, search for the browser-use repository, click on it,\nand extract the star count.\n",
+    "version": "1.0.0",
+    "created_at": "2025-10-29T19:16:50.042455",
+    "updated_at": "2025-10-29T19:16:50.042464",
+    "file_path": "/Users/sauravpanda/Github/LLMs/Browser-Use/workflow-use/workflows/storage/workflows/01093ced-5dfc-4590-8806-2eae6840bc8f.workflow.yaml",
+    "generation_mode": "browser_use",
+    "original_task": "Go to GitHub, search for the browser-use repository, click on it,\nand extract the star count."
+  }
+}

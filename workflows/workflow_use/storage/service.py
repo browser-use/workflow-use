@@ -35,7 +35,7 @@ class WorkflowMetadata(BaseModel):
 class WorkflowStorageService:
 	"""Service for storing and retrieving workflows."""
 
-	def __init__(self, storage_dir: str | Path = './workflows/storage'):
+	def __init__(self, storage_dir: str | Path = './storage'):
 		"""
 		Initialize the workflow storage service.
 
