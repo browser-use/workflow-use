@@ -10,6 +10,7 @@ from browser_use.llm.base import BaseChatModel, BaseMessage
 
 from workflow_use.builder.service import BuilderService
 from workflow_use.healing.deterministic_converter import DeterministicWorkflowConverter
+from workflow_use.healing.selector_generator import SelectorGenerator
 from workflow_use.healing.variable_extractor import VariableExtractor
 from workflow_use.healing.views import ParsedAgentStep, SimpleDomElement, SimpleResult
 from workflow_use.schema.views import SelectorWorkflowSteps, WorkflowDefinitionSchema
@@ -27,6 +28,7 @@ class HealingService:
 		self.use_deterministic_conversion = use_deterministic_conversion
 		self.variable_extractor = VariableExtractor(llm=llm) if enable_variable_extraction else None
 		self.deterministic_converter = DeterministicWorkflowConverter() if use_deterministic_conversion else None
+		self.selector_generator = SelectorGenerator()  # Initialize multi-strategy selector generator
 
 		self.interacted_elements_hash_map: dict[str, DOMInteractedElement] = {}
 
@@ -315,6 +317,10 @@ class HealingService:
 		class CapturingController(Controller):
 			"""Controller that captures element text mapping during execution"""
 
+			def __init__(self, selector_generator: SelectorGenerator):
+				super().__init__()
+				self.selector_generator = selector_generator
+
 			async def act(self, action, browser_session, *args, **kwargs):
 				# Get the selector map before action
 				try:
@@ -364,11 +370,23 @@ class HealingService:
 								)
 								attrs = getattr(dom_element, 'attributes', {})
 
-							# If still no text, try getting it from attributes
-							if not text or not text.strip():
-								if isinstance(attrs, dict):
-									# Try common text attributes first
-									text = (
+							# Normalize text (strip whitespace)
+							text = text.strip() if text else ''
+
+							# For interactive elements (links, buttons), prioritize semantic attributes
+							# over potentially meaningless text content
+							if tag_name in ['a', 'button'] and isinstance(attrs, dict):
+								# Check if current text is very short or looks like an ID/hash
+								is_poor_text = (
+									not text
+									or len(text) <= 2  # Single char or very short
+									or text.lower() in ['link', 'button', 'click', 'here']  # Generic text
+									or (len(text) == 8 and text.isalnum())  # Looks like an ID (e.g., "nboo9eyy")
+								)
+
+								if is_poor_text:
+									# Try semantic attributes first for better context
+									semantic_text = (
 										attrs.get('aria-label')
 										or attrs.get('title')
 										or attrs.get('alt')
@@ -377,8 +395,11 @@ class HealingService:
 										or ''
 									)
 
-									# For anchor tags, try to extract meaningful text from href
-									if not text and tag_name == 'a' and 'href' in attrs:
+									if semantic_text:
+										text = semantic_text
+										print(f'   📎 Using semantic attribute for better text: "{text}"')
+									# For anchor tags with no good text, try parent text or href extraction
+									elif tag_name == 'a' and 'href' in attrs:
 										href = attrs['href']
 										# Extract the last meaningful part of the URL path
 										# E.g., "https://newsroom.edison.com/releases" -> "releases"
@@ -389,11 +410,28 @@ class HealingService:
 											path_parts = href.rstrip('/').split('/')
 											if path_parts:
 												last_part = path_parts[-1]
-												# Convert URL-friendly text to readable text
-												# E.g., "sec-filings" -> "SEC Filings"
+												# Only use if it looks like readable text (has hyphens/underscores)
+												# Avoid random IDs like "nboo9eyy" (all lowercase alphanumeric with no separators)
 												if last_part and last_part not in ['www.edison.com', 'edison.com', 'investors']:
-													text = last_part.replace('-', ' ').replace('_', ' ').title()
-													print(f'   📎 Extracted from href: "{text}"')
+													# Check if it has word separators (hyphens, underscores)
+													if '-' in last_part or '_' in last_part:
+														text = last_part.replace('-', ' ').replace('_', ' ').title()
+														print(f'   📎 Extracted from href: "{text}"')
+													# Otherwise keep the original text (even if poor)
+													# Don't use random URL IDs
+
+							# Final fallback for any element: if still no text, try attributes
+							elif not text:
+								if isinstance(attrs, dict):
+									# Try common text attributes
+									text = (
+										attrs.get('aria-label')
+										or attrs.get('title')
+										or attrs.get('alt')
+										or attrs.get('placeholder')
+										or attrs.get('value')
+										or ''
+									)
 
 							# Create a simplified dict with the data we need
 							# Handle both dict and object formats
@@ -416,6 +454,14 @@ class HealingService:
 									'attributes': attrs,
 								}
 
+							# Generate multiple selector strategies for robust element finding
+							try:
+								strategies = self.selector_generator.generate_strategies_dict(element_data)
+								element_data['selector_strategies'] = strategies
+							except Exception as e:
+								print(f'   ⚠️  Warning: Failed to generate selector strategies: {e}')
+								element_data['selector_strategies'] = []
+
 							# Store in the shared map
 							element_text_map[index] = element_data
 
@@ -436,7 +482,7 @@ class HealingService:
 			browser_session=browser,
 			llm=agent_llm,
 			page_extraction_llm=extraction_llm,
-			controller=CapturingController(),  # Use our custom controller
+			controller=CapturingController(self.selector_generator),  # Pass selector_generator to controller
 			enable_memory=False,
 			max_failures=10,
 			tool_calling_method='auto',
@@ -449,6 +495,9 @@ class HealingService:
 		print('🎬 Starting agent with element capture enabled...')
 		history = await agent.run()
 		print(f'✅ Agent completed. Captured {len(element_text_map)} element mappings total.')
+
+		# Store the history so it can be accessed externally (for result caching)
+		self._agent_history = history
 
 		# Create workflow definition from the history
 		# Route to deterministic or LLM-based conversion based on flag

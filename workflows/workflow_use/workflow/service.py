@@ -12,6 +12,7 @@ from browser_use import Agent, Browser
 from browser_use.agent.views import ActionResult, AgentHistoryList
 from browser_use.llm import SystemMessage, UserMessage
 from browser_use.llm.base import BaseChatModel
+from browser_use.tools.views import NoParamsAction
 from pydantic import BaseModel, Field, create_model
 
 from workflow_use.controller.service import WorkflowController
@@ -23,6 +24,7 @@ from workflow_use.schema.views import (
 	WorkflowInputSchemaDefinition,
 	WorkflowStep,
 )
+from workflow_use.workflow.element_finder import ElementFinder
 from workflow_use.workflow.prompts import AGENT_STEP_SYSTEM_PROMPT, STRUCTURED_OUTPUT_PROMPT
 from workflow_use.workflow.step_agent.controller import WorkflowStepAgentController
 from workflow_use.workflow.views import WorkflowRunOutput
@@ -75,6 +77,9 @@ class Workflow:
 
 		self.fallback_to_agent = fallback_to_agent
 
+		# Initialize multi-strategy element finder
+		self.element_finder = ElementFinder()
+
 		self.context: dict[str, Any] = {}
 
 		self.inputs_def: List[WorkflowInputSchemaDefinition] = self.schema.input_schema
@@ -124,6 +129,7 @@ class Workflow:
 			'xpath',
 			'elementTag',
 			'elementHash',  # These are workflow-specific selector fields
+			'selectorStrategies',  # Multi-strategy selectors
 			'target_text',
 			'container_hint',
 			'position_hint',
@@ -133,19 +139,69 @@ class Workflow:
 		# Keep only action-specific parameters
 		params = {k: v for k, v in all_params.items() if k not in workflow_metadata_fields}
 
-		# Special handling for actions that use EmptyActionModel (don't accept any parameters)
+		# Try multi-strategy element finding for click and input actions
+		if action_name in ['click', 'input'] and all_params.get('selectorStrategies'):
+			try:
+				strategies = all_params['selectorStrategies']
+
+				logger.info(f'   🎯 Attempting semantic multi-strategy finding ({len(strategies)} strategies)')
+				result = await self.element_finder.find_element_with_strategies(strategies, self.browser)
+
+				if result:
+					element_index, strategy_used = result
+					logger.info(f'   ✅ Element found at index {element_index} using strategy: {strategy_used.get("type")}')
+
+					# Use the found index to execute the action through browser-use's controller
+					# This ensures we use browser-use's native semantic action system
+					if action_name == 'click':
+						# Override the index param with our found index
+						params['index'] = element_index
+						logger.info(f'   ✅ Will click element at index {element_index} (semantic-only)')
+
+					elif action_name == 'input':
+						# Override the index param with our found index
+						params['index'] = element_index
+						logger.info(f'   ✅ Will input to element at index {element_index} (semantic-only)')
+
+					# Continue to controller execution below with updated index
+					# This way we leverage browser-use's robust action handling
+
+				else:
+					logger.warning(f'   ⚠️  Multi-strategy finding failed, falling back to full controller')
+
+			except Exception as e:
+				logger.warning(f'   ⚠️  Error in multi-strategy finding: {e}, falling back to full controller')
+
+		# Special handling for actions that don't accept any parameters
+		# These actions use NoParamsAction, so we pass an empty instance instead of {}
 		empty_actions = {'go_back', 'go_forward'}
 		if action_name in empty_actions:
-			params = {}
+			params = NoParamsAction()  # type: ignore
 
 		ActionModel = self.controller.registry.create_action_model(include_actions=[action_name])
 		# Pass the params dictionary directly
-		action_model = ActionModel(**{action_name: params})
+		# For empty actions, ActionModel itself IS the action (EmptyActionModel), so don't wrap in dict
+		if action_name in empty_actions:
+			action_model = ActionModel()
+		else:
+			action_model = ActionModel(**{action_name: params})
 
 		try:
 			result = await self.controller.act(action_model, self.browser, page_extraction_llm=self.page_extraction_llm)
 		except Exception as e:
 			raise RuntimeError(f"Deterministic action '{action_name}' failed: {str(e)}")
+
+		# Wait for page to stabilize after certain actions
+		actions_requiring_wait = {'navigation', 'click', 'go_back', 'go_forward'}
+		if action_name in actions_requiring_wait:
+			try:
+				page = await self.browser.get_current_page()
+				# Wait for network to be idle (no more than 2 connections for at least 500ms)
+				await page.wait_for_load_state('networkidle', timeout=10000)
+				logger.info(f'Page stabilized after {action_name} action')
+			except Exception as e:
+				# Don't fail if wait times out, just log and continue
+				logger.warning(f'Timeout waiting for page to stabilize after {action_name}: {e}')
 
 		# Helper function to truncate long selectors in logs
 		def truncate_selector(selector: str) -> str:
@@ -458,22 +514,62 @@ class Workflow:
 		if isinstance(step_resolved, DeterministicWorkflowStep):
 			from browser_use.agent.views import ActionResult  # Local import ok
 
-			# Check if this is a selector step without cssSelector - use semantic execution
 			action_name = step_resolved.type or '[No action specified]'
-			requires_selector = action_name in ['click', 'input', 'key_press', 'select_change']
-			has_css_selector = hasattr(step_resolved, 'cssSelector') and step_resolved.cssSelector
-			has_target_text = hasattr(step_resolved, 'target_text') and step_resolved.target_text
 
-			if requires_selector and not has_css_selector and has_target_text:
-				# Use semantic execution as fallback
-				logger.info(f'Step {step_index + 1}: cssSelector missing but target_text present - using semantic execution')
-				from workflow_use.workflow.semantic_executor import SemanticWorkflowExecutor
+			# Extraction steps ALWAYS use agent/LLM, even in deterministic mode
+			is_extraction_step = action_name in ['extract', 'extract_page_content']
+			if is_extraction_step:
+				logger.info(f'Step {step_index + 1}: Extraction step detected - using agent with LLM')
+				# Convert to agent step
+				from workflow_use.schema.views import AgentTaskWorkflowStep
 
-				if not hasattr(self, '_semantic_executor'):
-					self._semantic_executor = SemanticWorkflowExecutor(self.browser, page_extraction_llm=self.page_extraction_llm)
-				result = await self._semantic_executor.execute_step(step_resolved)
+				# Create agent task based on extraction step type
+				if action_name == 'extract':
+					task = getattr(step_resolved, 'extractionGoal', 'Extract information from the page')
+				else:  # extract_page_content
+					task = getattr(step_resolved, 'goal', 'Extract text from the page')
+
+				# Create an AgentTaskWorkflowStep on the fly
+				agent_step = AgentTaskWorkflowStep(
+					type='agent',
+					task=task,
+					description=step_resolved.description if hasattr(step_resolved, 'description') else None,
+					output=step_resolved.output if hasattr(step_resolved, 'output') else None,
+				)
+				result = await self._run_agent_step(agent_step, step_index)
+
+			# Check if this is a selector step without cssSelector - use semantic execution
+			elif action_name in ['click', 'input', 'key_press', 'select_change']:
+				requires_selector = True
+				has_css_selector = hasattr(step_resolved, 'cssSelector') and step_resolved.cssSelector
+				has_target_text = hasattr(step_resolved, 'target_text') and step_resolved.target_text
+
+				if not has_css_selector and has_target_text:
+					# Use semantic execution as fallback
+					logger.info(f'Step {step_index + 1}: cssSelector missing but target_text present - using semantic execution')
+					from workflow_use.workflow.semantic_executor import SemanticWorkflowExecutor
+
+					if not hasattr(self, '_semantic_executor'):
+						self._semantic_executor = SemanticWorkflowExecutor(
+							self.browser, page_extraction_llm=self.page_extraction_llm
+						)
+					result = await self._semantic_executor.execute_step(step_resolved)
+				else:
+					# Use deterministic controller execution
+					try:
+						logger.info(f'Attempting deterministic action: {action_name}')
+						result = await self._run_deterministic_step(step_resolved, step_index)
+						if isinstance(result, ActionResult) and result.error:
+							logger.warning(f'Deterministic action reported error: {result.error}')
+							raise ValueError(f'Deterministic action {action_name} failed: {result.error}')
+					except Exception as e:
+						action_name = step_resolved.type or '[Unknown Action]'
+						logger.warning(
+							f'Deterministic step {step_index + 1} ({action_name}) failed: {e}. Attempting fallback with agent.'
+						)
+						raise ValueError(f'Deterministic step {step_index + 1} ({action_name}) failed: {e}')
 			else:
-				# Use deterministic controller execution
+				# Use deterministic controller execution for all other actions
 				try:
 					logger.info(f'Attempting deterministic action: {action_name}')
 					result = await self._run_deterministic_step(step_resolved, step_index)

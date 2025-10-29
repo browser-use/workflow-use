@@ -1,0 +1,13 @@
+description: Test go_back action
+input_schema: []
+name: Test Go Back
+steps:
+- description: Navigate to example.com
+  type: navigation
+  url: https://example.com
+- description: Navigate to google.com
+  type: navigation
+  url: https://google.com
+- description: Go back to example.com
+  type: go_back
+version: 1.0.0

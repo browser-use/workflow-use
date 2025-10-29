@@ -45,7 +45,14 @@ python cli.py run-workflow-no-ai my_workflow.json
 - **10-100x Faster**: 5-10s vs 20-40s for LLM-based
 - **90% Cheaper**: Minimal LLM usage
 
-### 🎯 Variables in Workflows
+### 🎯 Semantic-Only Multi-Strategy Element Finding
+- **No CSS/XPath**: 100% semantic strategies (text, role, ARIA, placeholder, etc.)
+- **7 Fallback Strategies**: text_exact → role_text → aria_label → placeholder → title → alt_text → text_fuzzy
+- **Works WITH Browser-Use**: Finds element index in DOM state, then uses browser-use's controller
+- **Fast & Robust**: Direct index lookup when strategies match, falls back to AI when needed
+- **Human-Readable**: Workflow YAML contains semantic strategies, not brittle selectors
+
+### 🔄 Variables in Workflows
 - **Reusable Workflows**: Parameterize dynamic values
 - **Semantic Targeting**: Use `{variable}` in `target_text`
 - **Auto-Extraction**: LLM suggests variables automatically

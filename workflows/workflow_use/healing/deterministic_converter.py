@@ -430,6 +430,10 @@ class DeterministicWorkflowConverter:
 			if element_data and element_data.get('element_hash'):
 				step['elementHash'] = element_data['element_hash']
 
+			# Add multi-strategy selectors for robust element finding
+			if element_data and element_data.get('selector_strategies'):
+				step['selectorStrategies'] = element_data['selector_strategies']
+
 			# Add semantic metadata
 			if agent_context.get('reasoning'):
 				step['agent_reasoning'] = agent_context['reasoning']
@@ -458,6 +462,10 @@ class DeterministicWorkflowConverter:
 			# Add element hash for selector population
 			if element_data and element_data.get('element_hash'):
 				step['elementHash'] = element_data['element_hash']
+
+			# Add multi-strategy selectors for robust element finding
+			if element_data and element_data.get('selector_strategies'):
+				step['selectorStrategies'] = element_data['selector_strategies']
 
 			# Add semantic metadata (optional fields that provide context)
 			if agent_context.get('reasoning'):

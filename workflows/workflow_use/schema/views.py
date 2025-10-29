@@ -1,4 +1,4 @@
-from typing import List, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field
 
@@ -21,6 +21,12 @@ class SelectorWorkflowSteps(BaseWorkflowStep):
 	xpath: Optional[str] = Field(None, description='[LEGACY] XPath selector - avoid in new workflows.')
 	elementTag: Optional[str] = Field(None, description='[INFORMATIONAL] HTML tag for documentation.')
 	elementHash: Optional[str] = Field(None, description='[LEGACY] Element hash - not required for semantic workflows.')
+
+	# NEW: Multi-strategy selectors for robust element finding
+	selectorStrategies: Optional[List[Dict[str, Any]]] = Field(
+		None,
+		description='List of fallback selector strategies ordered by priority. Each strategy has type, value, priority, and metadata.',
+	)
 
 	# PRIMARY: Text-based semantic targeting (non-brittle)
 	target_text: str = Field(
