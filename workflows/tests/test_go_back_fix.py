@@ -1,6 +1,7 @@
 """
 Quick test to verify go_back action works with NoParamsAction fix.
 """
+
 import asyncio
 import yaml
 from pathlib import Path
@@ -10,67 +11,57 @@ from workflow_use.workflow.service import Workflow
 
 
 async def test_go_back_fix():
-    """Test that go_back action works correctly"""
+	"""Test that go_back action works correctly"""
 
-    # Create a minimal workflow with a go_back action
-    workflow_dict = {
-        'name': 'Test Go Back',
-        'description': 'Test go_back action',
-        'version': '1.0.0',
-        'input_schema': [],
-        'steps': [
-            {
-                'type': 'navigation',
-                'url': 'https://example.com',
-                'description': 'Navigate to example.com'
-            },
-            {
-                'type': 'navigation',
-                'url': 'https://google.com',
-                'description': 'Navigate to google.com'
-            },
-            {
-                'type': 'go_back',
-                'description': 'Go back to example.com'
-            }
-        ]
-    }
+	# Create a minimal workflow with a go_back action
+	workflow_dict = {
+		'name': 'Test Go Back',
+		'description': 'Test go_back action',
+		'version': '1.0.0',
+		'input_schema': [],
+		'steps': [
+			{'type': 'navigation', 'url': 'https://example.com', 'description': 'Navigate to example.com'},
+			{'type': 'navigation', 'url': 'https://google.com', 'description': 'Navigate to google.com'},
+			{'type': 'go_back', 'description': 'Go back to example.com'},
+		],
+	}
 
-    # Write to YAML file
-    workflow_path = Path('test_go_back.workflow.yaml')
-    with open(workflow_path, 'w') as f:
-        yaml.dump(workflow_dict, f)
+	# Write to YAML file
+	workflow_path = Path('test_go_back.workflow.yaml')
+	with open(workflow_path, 'w') as f:
+		yaml.dump(workflow_dict, f)
 
-    print("✅ Created test workflow")
+	print('✅ Created test workflow')
 
-    # Create LLM (using Anthropic, but won't need it for deterministic steps)
-    try:
-        llm = ChatAnthropic(model='claude-3-5-sonnet-20241022', max_tokens=1024)
-    except Exception as e:
-        print(f"⚠️  Could not create LLM (this is OK for deterministic testing): {e}")
-        llm = None
+	# Create LLM (using Anthropic, but won't need it for deterministic steps)
+	try:
+		llm = ChatAnthropic(model='claude-3-5-sonnet-20241022', max_tokens=1024)
+	except Exception as e:
+		print(f'⚠️  Could not create LLM (this is OK for deterministic testing): {e}')
+		llm = None
 
-    try:
-        # Load workflow
-        workflow = Workflow.load_from_file(workflow_path, llm=llm)
+	try:
+		# Load workflow
+		workflow = Workflow.load_from_file(workflow_path, llm=llm)
 
-        print("\n🧪 Testing go_back action...")
+		print('\n🧪 Testing go_back action...')
 
-        # Run the workflow
-        result = await workflow.run({})
+		# Run the workflow
+		result = await workflow.run({})
 
-        print(f"\n✅ Workflow completed!")
-        print(f"📊 Result: {result}")
+		print(f'\n✅ Workflow completed!')
+		print(f'📊 Result: {result}')
 
-        # Clean up
-        workflow_path.unlink()
-        print("\n✨ Test passed - go_back action works correctly!")
+		# Clean up
+		workflow_path.unlink()
+		print('\n✨ Test passed - go_back action works correctly!')
 
-    except Exception as e:
-        print(f"\n❌ Test failed: {e}")
-        import traceback
-        traceback.print_exc()
+	except Exception as e:
+		print(f'\n❌ Test failed: {e}')
+		import traceback
+
+		traceback.print_exc()
 
 
 if __name__ == '__main__':
-    asyncio.run(test_go_back_fix())
+	asyncio.run(test_go_back_fix())
