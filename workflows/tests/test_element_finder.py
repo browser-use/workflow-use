@@ -257,24 +257,24 @@ class TestElementFinder:
 		"""Test that fuzzy matching respects threshold"""
 		# Test _fuzzy_match directly
 		# "Submit" vs "Submit" = 1.0 (exact)
-		assert self.finder._fuzzy_match('Submit', 'Submit', 0.8) == True, 'Exact match should pass'
+		assert self.finder._fuzzy_match('Submit', 'Submit', 0.8), 'Exact match should pass'
 
 		# "Submit" vs "Submitt" = ~0.92 (typo)
-		assert self.finder._fuzzy_match('Submit', 'Submitt', 0.8) == True, 'Close match with typo should pass'
+		assert self.finder._fuzzy_match('Submit', 'Submitt', 0.8), 'Close match with typo should pass'
 
 		# "Submit" vs "Submit Form" = ~0.70 (extra words - below 0.8)
 		# This should fail with threshold 0.8, or pass with lower threshold
-		assert self.finder._fuzzy_match('Submit', 'Submit Form', 0.7) == True, 'Partial match should pass with lower threshold'
-		assert self.finder._fuzzy_match('Submit', 'Submit Form', 0.8) == False, 'Partial match should fail with threshold 0.8'
+		assert self.finder._fuzzy_match('Submit', 'Submit Form', 0.7), 'Partial match should pass with lower threshold'
+		assert not self.finder._fuzzy_match('Submit', 'Submit Form', 0.8), 'Partial match should fail with threshold 0.8'
 
 		# Very different text
-		assert self.finder._fuzzy_match('Submit', 'Completely Different', 0.8) == False, 'Very different should fail'
+		assert not self.finder._fuzzy_match('Submit', 'Completely Different', 0.8), 'Very different should fail'
 
 	# Test 14: Case insensitivity in fuzzy matching
 	async def test_fuzzy_matching_case_insensitive(self):
 		"""Test that fuzzy matching is case insensitive"""
-		assert self.finder._fuzzy_match('Submit', 'SUBMIT', 0.9) == True, 'Should be case insensitive'
-		assert self.finder._fuzzy_match('Submit', 'submit', 0.9) == True, 'Should be case insensitive'
+		assert self.finder._fuzzy_match('Submit', 'SUBMIT', 0.9), 'Should be case insensitive'
+		assert self.finder._fuzzy_match('Submit', 'submit', 0.9), 'Should be case insensitive'
 
 
 # Helper to run async tests

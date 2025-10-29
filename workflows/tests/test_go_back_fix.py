@@ -28,8 +28,7 @@ async def test_go_back_fix():
 
 	# Write to YAML file
 	workflow_path = Path('test_go_back.workflow.yaml')
-	with open(workflow_path, 'w') as f:
-		yaml.dump(workflow_dict, f)
+	workflow_path.write_text(yaml.dump(workflow_dict))
 
 	print('✅ Created test workflow')
 
