@@ -14,7 +14,7 @@ def run_test_file(test_file):
 	print(f'Running {test_file}')
 	print(f'{"=" * 80}')
 
-	result = subprocess.run(['uv', 'run', 'python', f'tests/{test_file}'], capture_output=True, text=True)
+	result = subprocess.run(['uv', 'run', 'python', f'workflows/tests/{test_file}'], capture_output=True, text=True)
 
 	# Print output
 	print(result.stdout)

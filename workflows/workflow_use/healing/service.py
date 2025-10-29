@@ -410,15 +410,18 @@ class HealingService:
 											path_parts = href.rstrip('/').split('/')
 											if path_parts:
 												last_part = path_parts[-1]
-												# Only use if it looks like readable text (has hyphens/underscores)
+												# Only use if it looks like readable text
 												# Avoid random IDs like "nboo9eyy" (all lowercase alphanumeric with no separators)
 												if last_part and last_part not in ['www.edison.com', 'edison.com', 'investors']:
 													# Check if it has word separators (hyphens, underscores)
 													if '-' in last_part or '_' in last_part:
 														text = last_part.replace('-', ' ').replace('_', ' ').title()
 														print(f'   📎 Extracted from href: "{text}"')
-													# Otherwise keep the original text (even if poor)
-													# Don't use random URL IDs
+													# Fallback: use clean slugs without separators (e.g., "login", "dashboard")
+													# Only if they're reasonable length and look like words (not random IDs)
+													elif len(last_part) >= 3 and len(last_part) <= 20 and last_part.isalpha():
+														text = last_part.title()
+														print(f'   📎 Extracted clean slug from href: "{text}"')
 
 							# Final fallback for any element: if still no text, try attributes
 							elif not text:
