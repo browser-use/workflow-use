@@ -604,11 +604,15 @@ class SemanticWorkflowExecutor:
 				selector_to_use = element_info['selectors']
 				logger.info(f"Using semantic mapping: '{target_identifier}' -> {selector_to_use}")
 
-		# Final fallback to original CSS selector
+		# Final fallback to original CSS selector or XPath
 		if not selector_to_use:
 			if step.cssSelector:
 				selector_to_use = step.cssSelector
 				logger.info(f'Falling back to original CSS selector: {selector_to_use}')
+			elif hasattr(step, 'xpath') and step.xpath:
+				# Try XPath as fallback if CSS selector is not available
+				selector_to_use = f'xpath={step.xpath}'
+				logger.info(f'Falling back to XPath selector: {step.xpath}')
 			else:
 				# Enhanced error message with debugging info
 				available_texts = list(self.current_mapping.keys())[:15]  # Show first 15 available options
@@ -1176,11 +1180,15 @@ class SemanticWorkflowExecutor:
 				selector_to_use = element_info['selectors']
 				logger.info(f"Using semantic mapping: '{target_identifier}' -> {selector_to_use}")
 
-		# Final fallback to original CSS selector
+		# Final fallback to original CSS selector or XPath
 		if not selector_to_use:
 			if step.cssSelector:
 				selector_to_use = step.cssSelector
 				logger.info(f'Falling back to original CSS selector: {selector_to_use}')
+			elif hasattr(step, 'xpath') and step.xpath:
+				# Try XPath as fallback if CSS selector is not available
+				selector_to_use = f'xpath={step.xpath}'
+				logger.info(f'Falling back to XPath selector: {step.xpath}')
 			else:
 				# Enhanced error message with debugging info
 				available_texts = list(self.current_mapping.keys())[:15]  # Show first 15 available options

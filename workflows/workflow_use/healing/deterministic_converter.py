@@ -263,13 +263,32 @@ class DeterministicWorkflowConverter:
 
 		# If it's already a dict from selector_map or interactive_elements
 		if isinstance(raw_data, dict):
+			# Extract tag name first
+			tag_name = raw_data.get('tag_name') or raw_data.get('node_name') or ''
+
+			# Extract text value from multiple possible fields, filtering out browser-use bugs
+			text_value = ''
+			for text_field in ['text', 'inner_text', 'textContent', 'innerText', 'node_value']:
+				potential_text = raw_data.get(text_field, '').strip()
+				if potential_text:
+					# IMPORTANT: browser-use sometimes provides JavaScript href as 'text' for anchor tags
+					# Skip this and try other fields
+					if tag_name == 'a' and potential_text.startswith('Javascript:'):
+						continue
+					text_value = potential_text
+					break
+
 			# Extract common fields with fallbacks
 			result = {
-				'node_name': raw_data.get('tag_name') or raw_data.get('node_name') or '',
-				'node_value': raw_data.get('text') or raw_data.get('node_value') or '',
+				'node_name': tag_name,
+				'node_value': text_value,
 				'attributes': raw_data.get('attributes', {}),
 				'xpath': raw_data.get('xpath') or raw_data.get('x_path') or '',
 			}
+
+			# IMPORTANT: Preserve selector_strategies for semantic/deterministic element finding
+			if 'selector_strategies' in raw_data:
+				result['selector_strategies'] = raw_data['selector_strategies']
 
 			# Compute element hash if we have the data
 			tag_name = result['node_name'].lower()
@@ -389,10 +408,10 @@ class DeterministicWorkflowConverter:
 
 		Mapping (browser-use action names):
 		- navigate → navigation step
-		- input_text → input step with target_text
-		- click → click step with target_text
+		- input, input_text → input step with target_text
+		- click, click_element → click step with target_text
 		- send_keys → keypress step
-		- extract_content → extract_page_content step
+		- extract, extract_content, extract_page_content → extract_page_content step
 		- scroll → scroll step
 		"""
 		agent_context = agent_context or {}
@@ -412,8 +431,8 @@ class DeterministicWorkflowConverter:
 
 			return step
 
-		# Input text actions
-		elif action_type == 'input_text':
+		# Input text actions (browser-use can use either 'input' or 'input_text')
+		elif action_type in ['input', 'input_text']:
 			target_text = self._extract_target_text(element_data, action_dict)
 			# Ensure target_text is never empty
 			if not target_text:
@@ -502,10 +521,10 @@ class DeterministicWorkflowConverter:
 
 			return step
 
-		# Extract content actions
-		elif action_type in ['extract_page_content', 'extract_content']:
+		# Extract content actions (browser-use can use 'extract', 'extract_content', or 'extract_page_content')
+		elif action_type in ['extract', 'extract_page_content', 'extract_content']:
 			# Browser-use may use different field names for extraction goal
-			goal = action_dict.get('value') or action_dict.get('goal') or action_dict.get('content') or 'page content'
+			goal = action_dict.get('value') or action_dict.get('goal') or action_dict.get('content') or action_dict.get('query') or 'page content'
 			return {
 				'type': 'extract_page_content',
 				'goal': goal,
