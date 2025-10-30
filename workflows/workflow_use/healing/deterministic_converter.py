@@ -524,7 +524,13 @@ class DeterministicWorkflowConverter:
 		# Extract content actions (browser-use can use 'extract', 'extract_content', or 'extract_page_content')
 		elif action_type in ['extract', 'extract_page_content', 'extract_content']:
 			# Browser-use may use different field names for extraction goal
-			goal = action_dict.get('value') or action_dict.get('goal') or action_dict.get('content') or action_dict.get('query') or 'page content'
+			goal = (
+				action_dict.get('value')
+				or action_dict.get('goal')
+				or action_dict.get('content')
+				or action_dict.get('query')
+				or 'page content'
+			)
 			return {
 				'type': 'extract_page_content',
 				'goal': goal,
