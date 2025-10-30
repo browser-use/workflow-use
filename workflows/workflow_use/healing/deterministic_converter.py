@@ -272,8 +272,8 @@ class DeterministicWorkflowConverter:
 				potential_text = raw_data.get(text_field, '').strip()
 				if potential_text:
 					# IMPORTANT: browser-use sometimes provides JavaScript href as 'text' for anchor tags
-					# Skip this and try other fields
-					if tag_name == 'a' and potential_text.startswith('Javascript:'):
+					# Skip this and try other fields (case-insensitive check)
+					if tag_name == 'a' and potential_text.lower().startswith('javascript:'):
 						continue
 					text_value = potential_text
 					break

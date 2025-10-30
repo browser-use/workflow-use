@@ -373,15 +373,6 @@ class HealingService:
 							# Normalize text (strip whitespace)
 							text = text.strip() if text else ''
 
-							# IMPORTANT: browser-use sometimes provides JavaScript href as text for anchor tags
-							# Filter this out and use actual textContent instead
-							if tag_name == 'a' and isinstance(attrs, dict) and text.startswith('Javascript:'):
-								# This is likely the href, not the actual visible text
-								# browser-use bug: it extracts href for links instead of textContent
-								# Reset text so we can try to get the real visible text below
-								print(f'   ⚠️  Ignoring JavaScript href as text: "{text}"')
-								text = ''
-
 							# For interactive elements (links, buttons), prioritize semantic attributes
 							# over potentially meaningless text content
 							if tag_name in ['a', 'button'] and isinstance(attrs, dict):
