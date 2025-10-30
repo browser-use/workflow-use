@@ -16,7 +16,6 @@ on:
 
 permissions:
   contents: write
-  id-token: write
 
 jobs:
   tag_pre_release:
@@ -54,7 +53,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
       - run: uv run ruff check --no-fix --select PLE # check only for syntax errors
       - run: uv build
-      - run: uv publish --trusted-publishing always
+      - run: uv publish --token ${{ secrets.PYPI_API_TOKEN }}
       - name: Push to stable branch (if stable release)
         if: startsWith(github.ref_name, 'v') && !contains(github.ref_name, 'rc')
         run: |
