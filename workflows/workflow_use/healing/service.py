@@ -1,5 +1,6 @@
 import hashlib
 import json
+from pathlib import Path
 from typing import Any, Dict, List, Sequence, Union
 
 import aiofiles
@@ -15,6 +16,9 @@ from workflow_use.healing.validator import WorkflowValidator
 from workflow_use.healing.variable_extractor import VariableExtractor
 from workflow_use.healing.views import ParsedAgentStep, SimpleDomElement, SimpleResult
 from workflow_use.schema.views import SelectorWorkflowSteps, WorkflowDefinitionSchema
+
+# Get the absolute path to the prompts directory
+_PROMPTS_DIR = Path(__file__).parent / 'prompts'
 
 
 class HealingService:
@@ -141,7 +145,9 @@ class HealingService:
 	async def create_workflow_definition(
 		self, task: str, history_list: AgentHistoryList, extract_variables: bool = True
 	) -> WorkflowDefinitionSchema:
-		async with aiofiles.open('workflow_use/healing/prompts/workflow_creation_prompt.md', mode='r') as f:
+		# Load prompt using absolute path
+		prompt_file = _PROMPTS_DIR / 'workflow_creation_prompt.md'
+		async with aiofiles.open(prompt_file, mode='r') as f:
 			prompt_content = await f.read()
 
 		prompt_content = prompt_content.format(goal=task, actions=BuilderService._get_available_actions_markdown())
