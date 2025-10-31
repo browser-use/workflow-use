@@ -162,9 +162,7 @@ class WorkflowStorageService:
 						cleaned_strategies = [
 							s
 							for s in strategies
-							if not (
-								isinstance(s.get('value'), str) and s.get('value', '').lower().startswith('javascript:')
-							)
+							if not (isinstance(s.get('value'), str) and s.get('value', '').lower().startswith('javascript:'))
 						]
 						# Only keep if we have valid strategies
 						if cleaned_strategies:

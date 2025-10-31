@@ -346,7 +346,9 @@ class SemanticWorkflowExecutor:
 
 		return None
 
-	def _find_element_by_pattern(self, pattern: str, position_hint: Optional[str] = None, container_hint: Optional[str] = None) -> Optional[Dict]:
+	def _find_element_by_pattern(
+		self, pattern: str, position_hint: Optional[str] = None, container_hint: Optional[str] = None
+	) -> Optional[Dict]:
 		"""
 		Find element by pattern matching for dynamic identifiers using priority-based strategies.
 		This is a generic method that works for any dynamic content (IDs, codes, numbers, etc.)
@@ -373,24 +375,26 @@ class SemanticWorkflowExecutor:
 
 		# Priority 1: Exact text match in semantic mapping (highest priority)
 		# This handles cases where the exact dynamic value was captured
-		logger.debug(f"[Priority 1] Searching for exact text matches")
+		logger.debug(f'[Priority 1] Searching for exact text matches')
 		for text, element_info in self.current_mapping.items():
 			text_stripped = text.split(' (in ')[0].strip()  # Remove context annotations
 
 			# Check if text matches common ID/code patterns
-			if (alphanumeric_id_pattern.match(text_stripped) or
-			    numeric_id_pattern.match(text_stripped) or
-			    code_pattern.match(text_stripped)):
+			if (
+				alphanumeric_id_pattern.match(text_stripped)
+				or numeric_id_pattern.match(text_stripped)
+				or code_pattern.match(text_stripped)
+			):
 				matching_elements.append((text, element_info, 1))
-				logger.debug(f"[Priority 1] Found ID/code pattern: {text_stripped}")
+				logger.debug(f'[Priority 1] Found ID/code pattern: {text_stripped}')
 
 		if matching_elements:
-			logger.info(f"✅ Found {len(matching_elements)} exact ID/code matches (Priority 1)")
+			logger.info(f'✅ Found {len(matching_elements)} exact ID/code matches (Priority 1)')
 			return self._select_element_by_position(matching_elements, position_hint, container_hint)
 
 		# Priority 2: Clickable elements in structured containers (tables, lists) with ID-like patterns
 		# This is common for search results, data grids, etc.
-		logger.info("No exact matches, trying Priority 2: Clickable elements in structured containers")
+		logger.info('No exact matches, trying Priority 2: Clickable elements in structured containers')
 		matching_elements = []
 		structured_containers = ['table', 'cell', 'td', 'tr', 'list', 'ul', 'ol', 'li', 'grid', 'row']
 
@@ -406,19 +410,21 @@ class SemanticWorkflowExecutor:
 				# Look for clickable elements (links, buttons)
 				if element_tag in ['a', 'link', 'button']:
 					# Check if text looks like an ID/code
-					if (alphanumeric_id_pattern.match(text_stripped) or
-					    numeric_id_pattern.match(text_stripped) or
-					    code_pattern.match(text_stripped)):
+					if (
+						alphanumeric_id_pattern.match(text_stripped)
+						or numeric_id_pattern.match(text_stripped)
+						or code_pattern.match(text_stripped)
+					):
 						matching_elements.append((text, element_info, 2))
-						logger.debug(f"[Priority 2] Found clickable ID in {context}: {text_stripped}")
+						logger.debug(f'[Priority 2] Found clickable ID in {context}: {text_stripped}')
 
 		if matching_elements:
-			logger.info(f"✅ Found {len(matching_elements)} clickable IDs in structured containers (Priority 2)")
+			logger.info(f'✅ Found {len(matching_elements)} clickable IDs in structured containers (Priority 2)')
 			return self._select_element_by_position(matching_elements, position_hint, container_hint)
 
 		# Priority 3: Fuzzy match using pattern keywords
 		# Extract meaningful keywords from the pattern (e.g., "license number link" -> ["license", "number", "link"])
-		logger.info("No structured matches, trying Priority 3: Fuzzy keyword matching")
+		logger.info('No structured matches, trying Priority 3: Fuzzy keyword matching')
 		matching_elements = []
 		pattern_keywords = [word for word in pattern.lower().split() if len(word) > 3]
 
@@ -433,14 +439,14 @@ class SemanticWorkflowExecutor:
 				keyword_matches = sum(1 for keyword in pattern_keywords if keyword in text_lower)
 				if keyword_matches > 0:
 					matching_elements.append((text, element_info, 3, keyword_matches))  # Include match count for sorting
-					logger.debug(f"[Priority 3] Found {keyword_matches} keyword match(es): {text_stripped}")
+					logger.debug(f'[Priority 3] Found {keyword_matches} keyword match(es): {text_stripped}')
 
 		if matching_elements:
 			# Sort by number of keyword matches (descending)
 			matching_elements.sort(key=lambda x: x[3], reverse=True)
 			# Convert back to (text, element_info, priority) format
 			matching_elements = [(t, e, p) for t, e, p, _ in matching_elements]
-			logger.info(f"✅ Found {len(matching_elements)} keyword matches (Priority 3)")
+			logger.info(f'✅ Found {len(matching_elements)} keyword matches (Priority 3)')
 			return self._select_element_by_position(matching_elements, position_hint, container_hint)
 
 		# Priority 4: Container-based selection (lowest priority)
@@ -457,17 +463,19 @@ class SemanticWorkflowExecutor:
 				if container_hint.lower() in context.lower():
 					if element_tag in ['a', 'link', 'button']:
 						matching_elements.append((text, element_info, 4))
-						logger.debug(f"[Priority 4] Found clickable in {container_hint}: {text.split(' (in ')[0].strip()}")
+						logger.debug(f'[Priority 4] Found clickable in {container_hint}: {text.split(" (in ")[0].strip()}')
 
 			if matching_elements:
-				logger.info(f"✅ Found {len(matching_elements)} clickable elements in container (Priority 4)")
+				logger.info(f'✅ Found {len(matching_elements)} clickable elements in container (Priority 4)')
 				return self._select_element_by_position(matching_elements, position_hint, container_hint)
 
 		# No matches found at any priority level
 		logger.warning(f"❌ No elements found matching pattern '{pattern}' at any priority level")
 		return None
 
-	def _select_element_by_position(self, matching_elements: list, position_hint: Optional[str], container_hint: Optional[str]) -> Optional[Dict]:
+	def _select_element_by_position(
+		self, matching_elements: list, position_hint: Optional[str], container_hint: Optional[str]
+	) -> Optional[Dict]:
 		"""
 		Select element from matching_elements based on position hint.
 		matching_elements is a list of tuples: (text, element_info, priority)
@@ -481,14 +489,14 @@ class SemanticWorkflowExecutor:
 		# Apply position hint
 		if position_hint == 'first' and matching_elements:
 			selected_text, selected_element, priority = matching_elements[0]
-			logger.info(f"Selected first matching element (Priority {priority}): {selected_text}")
+			logger.info(f'Selected first matching element (Priority {priority}): {selected_text}')
 			return selected_element
 		elif position_hint == 'last' and matching_elements:
 			# Get all elements with the best priority
 			best_priority = matching_elements[0][2]
 			best_matches = [e for e in matching_elements if e[2] == best_priority]
 			selected_text, selected_element, priority = best_matches[-1]
-			logger.info(f"Selected last matching element (Priority {priority}): {selected_text}")
+			logger.info(f'Selected last matching element (Priority {priority}): {selected_text}')
 			return selected_element
 		elif position_hint and position_hint.isdigit():
 			index = int(position_hint) - 1  # Convert to 0-indexed
@@ -497,13 +505,13 @@ class SemanticWorkflowExecutor:
 			best_matches = [e for e in matching_elements if e[2] == best_priority]
 			if 0 <= index < len(best_matches):
 				selected_text, selected_element, priority = best_matches[index]
-				logger.info(f"Selected element at position {position_hint} (Priority {priority}): {selected_text}")
+				logger.info(f'Selected element at position {position_hint} (Priority {priority}): {selected_text}')
 				return selected_element
 
 		# No position hint or invalid position - return first match (highest priority)
 		if matching_elements:
 			selected_text, selected_element, priority = matching_elements[0]
-			logger.info(f"No valid position hint, returning first match (Priority {priority}): {selected_text}")
+			logger.info(f'No valid position hint, returning first match (Priority {priority}): {selected_text}')
 			return selected_element
 
 		return None
@@ -744,7 +752,7 @@ class SemanticWorkflowExecutor:
 			# Always try to get element_info from semantic mapping for metadata (element_type, etc.)
 			# If we have hints, use them for more flexible matching
 			if position_hint or container_hint:
-				logger.info(f"Using hints - position: {position_hint}, container: {container_hint}")
+				logger.info(f'Using hints - position: {position_hint}, container: {container_hint}')
 				# Find elements by pattern (e.g., "license number link" matches any license number)
 				element_info = self._find_element_by_pattern(step.target_text, position_hint, container_hint)
 			else:
@@ -1119,7 +1127,8 @@ class SemanticWorkflowExecutor:
 
 							# Check if this is a submit button that should trigger navigation
 							is_submit_button = button_type == 'submit' or any(
-								keyword in target_text.lower() for keyword in ['next', 'submit', 'continue', 'save', 'finish', 'search']
+								keyword in target_text.lower()
+								for keyword in ['next', 'submit', 'continue', 'save', 'finish', 'search']
 							)
 
 							if is_submit_button:

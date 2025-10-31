@@ -789,12 +789,14 @@ Extracted Information:"""
 
 			# Clean step description for filename (remove special characters)
 			import re
+
 			clean_description = re.sub(r'[^\w\s-]', '', step_description)
 			clean_description = re.sub(r'[-\s]+', '_', clean_description)
 			clean_description = clean_description[:50]  # Limit length
 
 			# Create timestamp for uniqueness
 			from datetime import datetime
+
 			timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
 
 			# Build filename

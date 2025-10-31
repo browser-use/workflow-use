@@ -402,7 +402,7 @@ class DeterministicWorkflowConverter:
 				match = re.search(
 					rf'["\']?{escaped_value}["\']?[^.]*?(?:into|in|for|to)\s+(?:the\s+)?([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+(?:field|input|box)',
 					reasoning,
-					re.IGNORECASE
+					re.IGNORECASE,
 				)
 				if match:
 					label_text = match.group(1).strip()
@@ -424,7 +424,11 @@ class DeterministicWorkflowConverter:
 				return label_text
 
 			# Fallback: Pattern 3: "click the Search button" or "click on Search" (for button/link clicks)
-			match = re.search(r'(?:click|tap|press)\s+(?:on\s+)?(?:the\s+)?([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+(?:button|link)', reasoning, re.IGNORECASE)
+			match = re.search(
+				r'(?:click|tap|press)\s+(?:on\s+)?(?:the\s+)?([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+(?:button|link)',
+				reasoning,
+				re.IGNORECASE,
+			)
 			if match:
 				button_text = match.group(1).strip()
 				print(f'      ✓ Extracted button text from agent reasoning: "{button_text}"')
@@ -466,6 +470,7 @@ class DeterministicWorkflowConverter:
 				# Found a potentially semantic part - convert camelCase to readable text
 				# E.g., "FirstName" -> "First Name"
 				import re
+
 				# Insert space before capital letters
 				readable = re.sub(r'([a-z])([A-Z])', r'\1 \2', part)
 				print(f'      ✓ Extracted semantic text from {technical_id}: "{readable}"')
@@ -594,6 +599,7 @@ class DeterministicWorkflowConverter:
 
 			# Check if this looks like a dynamic identifier (ID, code, number, etc.) that should be made generic
 			import re
+
 			position_hint = None
 			container_hint = None
 
@@ -601,7 +607,9 @@ class DeterministicWorkflowConverter:
 			# Require at least one digit to avoid matching regular words
 			alphanumeric_id = re.match(r'^[A-Z]{2,}\d{3,}$', target_text)  # e.g., AP00945776, ABC123
 			numeric_id = re.match(r'^\d{3,}$', target_text)  # e.g., 123456, 00945776
-			code_with_separator = re.match(r'^[A-Z0-9]+[-_][A-Z0-9]*\d+[A-Z0-9]*$', target_text, re.IGNORECASE)  # e.g., ORD-12345, user_456, TKT-9876
+			code_with_separator = re.match(
+				r'^[A-Z0-9]+[-_][A-Z0-9]*\d+[A-Z0-9]*$', target_text, re.IGNORECASE
+			)  # e.g., ORD-12345, user_456, TKT-9876
 
 			if alphanumeric_id or numeric_id or code_with_separator:
 				print(f'      🔍 Detected dynamic identifier pattern: "{target_text}"')
