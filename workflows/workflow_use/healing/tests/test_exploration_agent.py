@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+from pathlib import Path
 
 from browser_use import Agent, Browser
 from browser_use.llm import ChatBrowserUse
@@ -26,7 +27,9 @@ page_extraction_llm = ChatBrowserUse(
 	temperature=0.0,
 )
 
-system_prompt = open('workflow_use/healing/_agent/agent_prompt.md').read()
+# Use absolute path for prompt file
+_PROMPT_FILE = Path(__file__).parent.parent / '_agent' / 'agent_prompt.md'
+system_prompt = _PROMPT_FILE.read_text()
 
 
 async def explore_page():

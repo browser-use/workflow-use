@@ -8,6 +8,7 @@ This module provides tools to:
 """
 
 import json
+from pathlib import Path
 from typing import List, Optional
 
 import aiofiles
@@ -16,6 +17,9 @@ from browser_use.llm.base import BaseChatModel
 from pydantic import BaseModel, Field
 
 from workflow_use.schema.views import WorkflowDefinitionSchema
+
+# Get the absolute path to the prompts directory
+_PROMPTS_DIR = Path(__file__).parent / 'prompts'
 
 
 class WorkflowIssue(BaseModel):
@@ -56,8 +60,9 @@ class WorkflowValidator:
 		Returns:
 		    WorkflowValidationResult with identified issues and optional corrections
 		"""
-		# Load validation prompt
-		async with aiofiles.open('workflow_use/healing/prompts/workflow_validation_prompt.md', mode='r') as f:
+		# Load validation prompt using absolute path
+		prompt_file = _PROMPTS_DIR / 'workflow_validation_prompt.md'
+		async with aiofiles.open(prompt_file, mode='r') as f:
 			prompt_content = await f.read()
 
 		# Prepare workflow JSON for review
