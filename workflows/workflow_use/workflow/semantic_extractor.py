@@ -536,7 +536,22 @@ class SemanticExtractor:
                             labelText = prevElement.textContent?.trim() || '';
                         }
                     }
-                    
+
+                    // IMPORTANT: Handle table structures where label is in previous <td>
+                    if (!labelText) {
+                        const parentCell = el.closest('td, th');
+                        if (parentCell) {
+                            const prevCell = parentCell.previousElementSibling;
+                            if (prevCell && (prevCell.tagName === 'TD' || prevCell.tagName === 'TH')) {
+                                const cellText = prevCell.textContent?.trim() || '';
+                                // Only use if it looks like a label (short text, ends with colon, etc.)
+                                if (cellText && cellText.length < 50) {
+                                    labelText = cellText.replace(/[:：]\s*$/, '').trim();
+                                }
+                            }
+                        }
+                    }
+
                     return labelText;
                 } catch (error) {
                     debugMessage('Error in safeGetLabelText', error.message);
@@ -838,6 +853,7 @@ class SemanticExtractor:
 				'element_type': element_type,
 				'deterministic_id': element_id,
 				'original_text': text,
+				'label_text': element_info.get('label_text', ''),  # IMPORTANT: Include label text for input field matching
 				'dom_path': element_info.get('dom_path', ''),
 				'container_context': element_info.get('container_context', {}),
 				'sibling_context': element_info.get('sibling_context', {}),

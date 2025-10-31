@@ -17,7 +17,8 @@ class DeterministicWorkflowConverter:
 	variable identification.
 	"""
 
-	def __init__(self):
+	def __init__(self, llm=None):
+		self.llm = llm
 		self.element_text_map: Dict[str, str] = {}  # Maps element hashes to visible text
 		self.element_hash_map: Dict[int, str] = {}  # Maps element index to hash for selector population
 		self.captured_element_text_map: Dict[int, Any] = {}  # Captured during agent execution
@@ -318,22 +319,23 @@ class DeterministicWorkflowConverter:
 
 		return None
 
-	def _extract_target_text(self, element_data: Optional[Dict[str, Any]], action_dict: Dict[str, Any]) -> str:
+	def _extract_target_text(
+		self, element_data: Optional[Dict[str, Any]], action_dict: Dict[str, Any], agent_context: Optional[Dict[str, Any]] = None
+	) -> str:
 		"""
 		Extract the best target_text for semantic targeting from element data.
 
 		Priority:
 		1. Visible text content (node_value)
 		2. aria-label attribute
-		3. title attribute
-		4. placeholder attribute
+		3. placeholder attribute (for input fields)
+		4. title attribute
 		5. alt attribute (for images)
-		6. value attribute
-		7. name attribute
-		8. id attribute (last resort)
-		9. href attribute (for anchor tags) - extract meaningful part
-		10. Input text being entered (for input actions)
-		11. Node name + xpath hint (absolute fallback)
+		6. name attribute (if human-readable, not technical ID)
+		7. id attribute (only if human-readable, not technical ID)
+		8. href attribute (for anchor tags) - extract meaningful part
+		9. Input text being entered (for input actions)
+		10. Node name + xpath hint (absolute fallback)
 		"""
 		if not element_data:
 			# For input actions, use the text being entered as fallback
@@ -341,23 +343,150 @@ class DeterministicWorkflowConverter:
 				return action_dict['text']
 			return 'element'
 
-		# Priority 1: Visible text content
+		# Priority 1: Visible text content (but NOT for input fields - they don't have meaningful text content)
+		node_name = element_data.get('node_name', '').lower()
 		node_value = element_data.get('node_value', '').strip()
-		if node_value:
+
+		# Skip node_value for input fields (they don't have text content, only values)
+		if node_value and node_name not in ['input', 'textarea', 'select']:
 			print(f'      ✓ Using node_value as target_text: "{node_value}"')
 			return node_value
 
-		# Priority 2-8: Check attributes in order
+		# Priority 2-5: Check high-value attributes in order
 		attributes = element_data.get('attributes', {})
-		for attr in ['aria-label', 'title', 'placeholder', 'alt', 'value', 'name', 'id']:
+		for attr in ['aria-label', 'placeholder', 'title', 'alt']:
 			if attr in attributes and attributes[attr]:
 				text = str(attributes[attr]).strip()
 				if text:
 					print(f'      ✓ Using {attr} attribute as target_text: "{text}"')
 					return text
 
-		# Priority 9: For anchor tags, extract meaningful text from href
-		node_name = element_data.get('node_name', '')
+		# Priority 6: Extract from agent reasoning using structured [ELEMENT: "text"] format
+		# The agent is instructed to use this format: [ELEMENT: "First Name"], [ELEMENT: "Search"], etc.
+		if agent_context and agent_context.get('reasoning'):
+			reasoning = agent_context['reasoning']
+			import re
+
+			# Debug: print the reasoning to see what we're working with
+			print(f'      📝 Agent reasoning: {reasoning[:200]}...')
+
+			# Primary Pattern: Extract from structured [ELEMENT: "text"] tag
+			# This is the most reliable since we explicitly ask the agent to use this format
+
+			# Find ALL [ELEMENT] tags and use the LAST one (closest to the action)
+			matches = list(re.finditer(r'\[ELEMENT:\s*["\']([^"\']+)["\']\]', reasoning))
+			if matches:
+				element_text = matches[-1].group(1).strip()  # Use last match
+				print(f'      ✓ Extracted from [ELEMENT] tag (last occurrence): "{element_text}"')
+				print(f'         (Found {len(matches)} [ELEMENT] tags total, using the last one)')
+				return element_text
+
+			# Try without quotes as fallback: [ELEMENT: Search]
+			matches = list(re.finditer(r'\[ELEMENT:\s*([^\]]+)\]', reasoning))
+			if matches:
+				element_text = matches[-1].group(1).strip()  # Use last match
+				print(f'      ✓ Extracted from [ELEMENT] tag (no quotes, last occurrence): "{element_text}"')
+				return element_text
+
+			# Fallback patterns for when agent doesn't follow the structured format:
+
+			# For input/click actions, try to find context-specific field mentions
+			# E.g., "input 'Jasmine' into the First Name" or "'Paxton' into the Last Name"
+			action_value = action_dict.get('text') or action_dict.get('value')
+
+			if action_value:
+				# Pattern: Look for the value followed by field name mention
+				# E.g., "'Jasmine' into the First Name field" or "input 'Paxton'... Last Name"
+				escaped_value = re.escape(str(action_value))
+				# Match: value (with quotes or not) + optional words + "into/in/for" + field name + "field/input"
+				match = re.search(
+					rf'["\']?{escaped_value}["\']?[^.]*?(?:into|in|for|to)\s+(?:the\s+)?([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+(?:field|input|box)',
+					reasoning,
+					re.IGNORECASE
+				)
+				if match:
+					label_text = match.group(1).strip()
+					print(f'      ✓ Extracted from agent reasoning (context: "{action_value}"): "{label_text}"')
+					return label_text
+
+			# Fallback: Pattern 1: "into the First Name field" (first occurrence)
+			match = re.search(r'(?:into|in|for)\s+(?:the\s+)?([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+(?:field|input|box)', reasoning)
+			if match:
+				label_text = match.group(1).strip()
+				print(f'      ✓ Extracted from agent reasoning: "{label_text}"')
+				return label_text
+
+			# Fallback: Pattern 2: "First Name field" or "Last Name input"
+			match = re.search(r'([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+(?:field|input|box)', reasoning)
+			if match:
+				label_text = match.group(1).strip()
+				print(f'      ✓ Extracted from agent reasoning: "{label_text}"')
+				return label_text
+
+			# Fallback: Pattern 3: "click the Search button" or "click on Search" (for button/link clicks)
+			match = re.search(r'(?:click|tap|press)\s+(?:on\s+)?(?:the\s+)?([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+(?:button|link)', reasoning, re.IGNORECASE)
+			if match:
+				button_text = match.group(1).strip()
+				print(f'      ✓ Extracted button text from agent reasoning: "{button_text}"')
+				return button_text
+
+		# Priority 7-8: Check name/id attributes, but skip or convert technical/generated IDs
+		def is_human_readable(text: str) -> bool:
+			"""Check if text is human-readable, not a technical ID."""
+			text_lower = text.lower()
+			# Skip if contains common technical patterns
+			technical_patterns = ['$', 'ctl', 'ctr', 'dnn', 'aspnet', 'viewstate', '__', 'guid']
+			if any(pattern in text_lower for pattern in technical_patterns):
+				return False
+			# Skip if mostly uppercase/numbers (like GUID fragments)
+			if len([c for c in text if c.isupper() or c.isdigit()]) > len(text) * 0.7:
+				return False
+			return True
+
+		def extract_semantic_part(technical_id: str) -> str | None:
+			"""Try to extract semantic meaning from technical IDs like 'dnn$ctr434$SQLViewPro$FirstName$txtParameter'."""
+			# Split by common separators
+			parts = technical_id.replace('$', '.').replace('_', '.').split('.')
+
+			# Look for parts that might be semantic (e.g., "FirstName", "LastName", "Search")
+			for part in reversed(parts):  # Check from end first (more specific)
+				# Skip common technical suffixes
+				if part.lower() in ['txt', 'txtparameter', 'parameter', 'ctrl', 'control', 'btn', 'button', 'lbl', 'label']:
+					continue
+				# Skip very short parts (likely not semantic)
+				if len(part) < 3:
+					continue
+				# Skip numeric parts
+				if part.isdigit():
+					continue
+				# Skip parts that look like prefixes (all caps)
+				if part.isupper() and len(part) < 5:
+					continue
+
+				# Found a potentially semantic part - convert camelCase to readable text
+				# E.g., "FirstName" -> "First Name"
+				import re
+				# Insert space before capital letters
+				readable = re.sub(r'([a-z])([A-Z])', r'\1 \2', part)
+				print(f'      ✓ Extracted semantic text from {technical_id}: "{readable}"')
+				return readable
+
+			return None
+
+		for attr in ['name', 'id']:
+			if attr in attributes and attributes[attr]:
+				text = str(attributes[attr]).strip()
+				if text and is_human_readable(text):
+					print(f'      ✓ Using {attr} attribute as target_text: "{text}"')
+					return text
+				elif text:
+					# Try to extract semantic meaning from technical IDs
+					semantic_text = extract_semantic_part(text)
+					if semantic_text:
+						return semantic_text
+					print(f'      ⚠️  Skipping technical {attr} attribute: "{text}"')
+
+		# Priority 8: For anchor tags, extract meaningful text from href
 		if node_name == 'a' and 'href' in attributes:
 			href = attributes['href']
 			if isinstance(href, str):
@@ -376,13 +505,8 @@ class DeterministicWorkflowConverter:
 						print(f'      ✓ Extracted from href as target_text: "{text}"')
 						return text
 
-		# Priority 10: For input actions, use the text being entered
-		if action_dict.get('text'):
-			text = action_dict['text']
-			print(f'      ✓ Using input text as target_text: "{text}"')
-			return text
-
-		# Priority 11: Fallback - use node name as hint
+		# Priority 9: Fallback - use descriptive element type
+		# NEVER use action_dict.get('text') - that's the input VALUE, not a semantic identifier!
 		if node_name:
 			print(f'      ⚠️  No good target text found, using node name: "{node_name}"')
 			return f'{node_name} element'
@@ -433,7 +557,7 @@ class DeterministicWorkflowConverter:
 
 		# Input text actions (browser-use can use either 'input' or 'input_text')
 		elif action_type in ['input', 'input_text']:
-			target_text = self._extract_target_text(element_data, action_dict)
+			target_text = self._extract_target_text(element_data, action_dict, agent_context)
 			# Ensure target_text is never empty
 			if not target_text:
 				target_text = 'input field'
@@ -463,10 +587,69 @@ class DeterministicWorkflowConverter:
 
 		# Click actions (browser-use uses 'click', not 'click_element')
 		elif action_type in ['click', 'click_element']:
-			target_text = self._extract_target_text(element_data, action_dict)
+			target_text = self._extract_target_text(element_data, action_dict, agent_context)
 			# Ensure target_text is never empty
 			if not target_text:
 				target_text = 'element'
+
+			# Check if this looks like a dynamic identifier (ID, code, number, etc.) that should be made generic
+			import re
+			position_hint = None
+			container_hint = None
+
+			# Define common dynamic identifier patterns
+			# Require at least one digit to avoid matching regular words
+			alphanumeric_id = re.match(r'^[A-Z]{2,}\d{3,}$', target_text)  # e.g., AP00945776, ABC123
+			numeric_id = re.match(r'^\d{3,}$', target_text)  # e.g., 123456, 00945776
+			code_with_separator = re.match(r'^[A-Z0-9]+[-_][A-Z0-9]*\d+[A-Z0-9]*$', target_text, re.IGNORECASE)  # e.g., ORD-12345, user_456, TKT-9876
+
+			if alphanumeric_id or numeric_id or code_with_separator:
+				print(f'      🔍 Detected dynamic identifier pattern: "{target_text}"')
+
+				# Check agent reasoning for context to determine the semantic meaning
+				reasoning = agent_context.get('reasoning', '') if agent_context else ''
+				reasoning_lower = reasoning.lower()
+
+				original_target = target_text
+
+				# Map reasoning keywords to generic identifiers
+				# This makes workflows reusable across different records
+				semantic_mapping = {
+					'license': 'license number link',
+					'provider': 'provider id link',
+					'order': 'order id link',
+					'invoice': 'invoice number link',
+					'ticket': 'ticket number link',
+					'case': 'case number link',
+					'patient': 'patient id link',
+					'user': 'user id link',
+					'customer': 'customer id link',
+					'product': 'product code link',
+					'transaction': 'transaction id link',
+					'record': 'record id link',
+				}
+
+				# Try to find semantic meaning from reasoning
+				converted = False
+				for keyword, generic_name in semantic_mapping.items():
+					if keyword in reasoning_lower:
+						target_text = generic_name
+						position_hint = 'first'  # Usually click the first result
+						container_hint = 'search results'
+						print(f'      ✅ Converted to generic: "{target_text}" (detected: {keyword})')
+						print(f'         Position: {position_hint}, Container: {container_hint}')
+						print(f'         Original value "{original_target}" will match via pattern')
+						converted = True
+						break
+
+				# If no semantic meaning found, use generic "id link"
+				if not converted:
+					target_text = 'id link'
+					position_hint = 'first'
+					container_hint = 'search results'
+					print(f'      ✅ Converted to generic: "{target_text}" (no specific context detected)')
+					print(f'         Position: {position_hint}, Container: {container_hint}')
+					print(f'         Original value "{original_target}" will match via pattern')
 
 			# Create semantic description
 			base_description = f'Click on {target_text}'
@@ -477,6 +660,12 @@ class DeterministicWorkflowConverter:
 				'target_text': target_text,
 				'description': description,
 			}
+
+			# Add position and container hints if detected
+			if position_hint:
+				step['position_hint'] = position_hint
+			if container_hint:
+				step['container_hint'] = container_hint
 
 			# Add element hash for selector population
 			if element_data and element_data.get('element_hash'):
@@ -503,7 +692,7 @@ class DeterministicWorkflowConverter:
 			keys = action_dict.get('keys', '')
 
 			# Try to get target from last interacted element if available
-			target_text = self._extract_target_text(element_data, action_dict)
+			target_text = self._extract_target_text(element_data, action_dict, agent_context)
 			# Ensure target_text is never empty
 			if not target_text:
 				target_text = 'page'

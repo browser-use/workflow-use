@@ -27,7 +27,7 @@ class HealingService:
 		self.enable_variable_extraction = enable_variable_extraction
 		self.use_deterministic_conversion = use_deterministic_conversion
 		self.variable_extractor = VariableExtractor(llm=llm) if enable_variable_extraction else None
-		self.deterministic_converter = DeterministicWorkflowConverter() if use_deterministic_conversion else None
+		self.deterministic_converter = DeterministicWorkflowConverter(llm=llm) if use_deterministic_conversion else None
 		self.selector_generator = SelectorGenerator()  # Initialize multi-strategy selector generator
 
 		self.interacted_elements_hash_map: dict[str, DOMInteractedElement] = {}
@@ -122,37 +122,15 @@ class HealingService:
 				print()
 
 	def _populate_selector_fields(self, workflow_definition: WorkflowDefinitionSchema) -> WorkflowDefinitionSchema:
-		"""Populate cssSelector, xpath, and elementTag fields from interacted_elements_hash_map"""
-		print('\n🔧 Populating selector fields for workflow steps...')
+		"""
+		DISABLED: We no longer populate xpath/cssSelector fields to rely purely on semantic matching.
+		This method is kept for backward compatibility but doesn't modify the workflow.
+		"""
+		print('\n🔧 Skipping selector field population - using pure semantic matching')
 		print(f'   Available element hashes in map: {len(self.interacted_elements_hash_map)}')
 
-		# Process each step to add back the selector fields
-		populated_count = 0
-		for i, step in enumerate(workflow_definition.steps):
-			if isinstance(step, SelectorWorkflowSteps):
-				print(f'\n   Step {i + 1} (type={step.type}):')
-				if hasattr(step, 'elementHash') and step.elementHash:
-					print(f'      elementHash: {step.elementHash}')
-					if step.elementHash in self.interacted_elements_hash_map:
-						dom_element = self.interacted_elements_hash_map[step.elementHash]
-						# DOMInteractedElement has different attribute names
-						step.cssSelector = getattr(dom_element, 'css_selector', '') or ''
-						step.xpath = getattr(dom_element, 'x_path', '') or getattr(dom_element, 'xpath', '')
-						step.elementTag = dom_element.node_name.lower() if hasattr(dom_element, 'node_name') else ''
-
-						print('      ✅ Populated:')
-						print(f'         cssSelector: {step.cssSelector[:80] if step.cssSelector else "(empty)"}')
-						print(f'         xpath: {step.xpath[:80] if step.xpath else "(empty)"}')
-						print(f'         elementTag: {step.elementTag}')
-						populated_count += 1
-					else:
-						print('      ⚠️  elementHash not found in map!')
-				else:
-					print('      (no elementHash)')
-
-		print(f'\n   ✅ Populated {populated_count} steps with selector fields')
-
-		# Create the full WorkflowDefinitionSchema with populated fields
+		# Just return the workflow as-is without populating xpath/cssSelector
+		# The semantic executor will use target_text for element matching
 		return workflow_definition
 
 	async def create_workflow_definition(
@@ -358,17 +336,24 @@ class HealingService:
 								tag_name = dom_element.get('tag_name', '')
 								attrs = dom_element.get('attributes', {})
 							else:
-								# Extract text by trying multiple field names
-								text = ''
-								for text_field in ['text', 'inner_text', 'node_value', 'textContent', 'innerText']:
-									if hasattr(dom_element, text_field):
-										text = getattr(dom_element, text_field, '')
-										if text and text.strip():
-											break
+								# Extract tag name first
 								tag_name = (
 									getattr(dom_element, 'node_name', '').lower() if hasattr(dom_element, 'node_name') else ''
 								)
 								attrs = getattr(dom_element, 'attributes', {})
+
+								# Extract text by trying multiple field names
+								text = ''
+								for text_field in ['text', 'inner_text', 'node_value', 'textContent', 'innerText']:
+									if hasattr(dom_element, text_field):
+										potential_text = getattr(dom_element, text_field, '')
+										if potential_text and potential_text.strip():
+											# IMPORTANT: Skip JavaScript href text (same filter as in deterministic_converter.py)
+											# browser-use sometimes provides JavaScript href as 'text' for anchor tags
+											if tag_name == 'a' and potential_text.lower().startswith('javascript:'):
+												continue
+											text = potential_text
+											break
 
 							# Normalize text (strip whitespace)
 							text = text.strip() if text else ''
@@ -398,32 +383,57 @@ class HealingService:
 									if semantic_text:
 										text = semantic_text
 										print(f'   📎 Using semantic attribute for better text: "{text}"')
-									# For anchor tags with no good text, try parent text or href extraction
-									elif tag_name == 'a' and 'href' in attrs:
-										href = attrs['href']
-										# Extract the last meaningful part of the URL path
-										# E.g., "https://newsroom.edison.com/releases" -> "releases"
-										if isinstance(href, str):
-											# Remove query params and anchors
-											href = href.split('?')[0].split('#')[0]
-											# Get the last path segment
-											path_parts = href.rstrip('/').split('/')
-											if path_parts:
-												last_part = path_parts[-1]
-												# Only use if it looks like readable text
-												# Avoid random IDs like "nboo9eyy" (all lowercase alphanumeric with no separators)
-												if last_part and last_part not in ['www.edison.com', 'edison.com', 'investors']:
-													# Check if it has word separators (hyphens, underscores)
-													if '-' in last_part or '_' in last_part:
-														text = last_part.replace('-', ' ').replace('_', ' ').title()
-														print(f'   📎 Extracted from href: "{text}"')
-													# Fallback: use clean slugs without separators (e.g., "login", "dashboard")
-													# Only if they're reasonable length and look like words (not random IDs)
-													elif len(last_part) >= 3 and len(last_part) <= 20 and last_part.isalpha():
-														text = last_part.title()
-														print(f'   📎 Extracted clean slug from href: "{text}"')
+									# For anchor tags, try ID/class-based inference for common button patterns
+									elif tag_name == 'a':
+										element_id = attrs.get('id', '')
+										element_class = attrs.get('class', '')
 
-							# Final fallback for any element: if still no text, try attributes
+										# Check for common button patterns in ID/class
+										id_lower = element_id.lower() if element_id else ''
+										class_lower = element_class.lower() if element_class else ''
+
+										# Common search/submit button patterns
+										if 'search' in id_lower or 'search' in class_lower:
+											text = 'Search'
+											print(f'   📎 Inferred "Search" from ID/class: {element_id or element_class}')
+										elif 'submit' in id_lower or 'submit' in class_lower:
+											text = 'Submit'
+											print(f'   📎 Inferred "Submit" from ID/class: {element_id or element_class}')
+										elif 'action' in id_lower or 'action' in class_lower:
+											# cmdAction, btnAction, etc. in forms usually means Submit/Search
+											if 'sqlviewpro' in id_lower or 'parameter' in id_lower:
+												text = 'Search'
+												print(f'   📎 Inferred "Search" from form action button: {element_id}')
+											else:
+												text = 'Submit'
+												print(f'   📎 Inferred "Submit" from action button: {element_id}')
+										# If still no text after ID/class inference, try href extraction
+										elif 'href' in attrs:
+											href = attrs['href']
+											# Skip JavaScript hrefs - they don't have meaningful text to extract
+											if isinstance(href, str) and not href.lower().startswith('javascript:'):
+												# Extract the last meaningful part of the URL path
+												# E.g., "https://newsroom.edison.com/releases" -> "releases"
+												# Remove query params and anchors
+												href = href.split('?')[0].split('#')[0]
+												# Get the last path segment
+												path_parts = href.rstrip('/').split('/')
+												if path_parts:
+													last_part = path_parts[-1]
+													# Only use if it looks like readable text
+													# Avoid random IDs like "nboo9eyy" (all lowercase alphanumeric with no separators)
+													if last_part and last_part not in ['www.edison.com', 'edison.com', 'investors']:
+														# Check if it has word separators (hyphens, underscores)
+														if '-' in last_part or '_' in last_part:
+															text = last_part.replace('-', ' ').replace('_', ' ').title()
+															print(f'   📎 Extracted from href: "{text}"')
+														# Fallback: use clean slugs without separators (e.g., "login", "dashboard")
+														# Only if they're reasonable length and look like words (not random IDs)
+														elif len(last_part) >= 3 and len(last_part) <= 20 and last_part.isalpha():
+															text = last_part.title()
+															print(f'   📎 Extracted clean slug from href: "{text}"')
+
+							# Final fallback for any element (not anchor/button): if still no text, try attributes
 							elif not text:
 								if isinstance(attrs, dict):
 									# Try common text attributes
@@ -435,6 +445,7 @@ class HealingService:
 										or attrs.get('value')
 										or ''
 									)
+									# Note: ID/class inference for anchor tags is now handled above in the anchor/button block
 
 							# Create a simplified dict with the data we need
 							# Handle both dict and object formats
@@ -480,13 +491,32 @@ class HealingService:
 				result = await super().act(action, browser_session, *args, **kwargs)
 				return result
 
+		# Enhance the prompt to ensure agent mentions visible text of elements in a structured format
+		enhanced_prompt = f"""{prompt}
+
+CRITICAL WORKFLOW GENERATION REQUIREMENTS:
+For EVERY action you take, you MUST include this structured tag in your reasoning:
+
+Format: [ELEMENT: "exact visible text"]
+
+Examples:
+- "I will input 'John' [ELEMENT: "First Name"] into the form"
+- "I will input 'Doe' [ELEMENT: "Last Name"] into the form"
+- "I will click [ELEMENT: "Search"] to submit the form"
+- "I will click [ELEMENT: "License Number"] to view details"
+- "I will select [ELEMENT: "Country"] from the dropdown"
+
+The [ELEMENT: "..."] tag must contain the EXACT visible text of the button, label, link, or field you're interacting with.
+This structured format is critical for generating a reusable workflow."""
+
 		agent = Agent(
-			task=prompt,
+			task=enhanced_prompt,
 			browser_session=browser,
 			llm=agent_llm,
 			page_extraction_llm=extraction_llm,
 			controller=CapturingController(self.selector_generator),  # Pass selector_generator to controller
 			enable_memory=False,
+			use_vision=True,
 			max_failures=10,
 		)
 

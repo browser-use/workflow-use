@@ -123,8 +123,57 @@ class WorkflowStorageService:
 			logger.info(f'Creating new workflow: {workflow_id}')
 
 		# Save workflow file
+		# Exclude legacy/unnecessary fields to keep workflow files clean
+		workflow_dict = workflow.model_dump(mode='json', exclude_none=True)
+
+		# Remove top-level bloat
+		workflow_dict.pop('workflow_analysis', None)
+
+		# Clean up steps by removing legacy/verbose/null fields
+		if 'steps' in workflow_dict:
+			for step in workflow_dict['steps']:
+				# Remove legacy/verbose fields (but keep xpath as fallback selector)
+				fields_to_remove = [
+					'agent_reasoning',  # Verbose agent thinking
+					'page_context_url',  # Redundant context
+					'page_context_title',  # Redundant context
+					'elementHash',  # Internal hash
+					'elementTag',  # Can be inferred
+					'container_hint',  # Usually null
+					'position_hint',  # Usually null
+					'interaction_type',  # Usually null
+					'default_value',  # Usually null for inputs
+					'output',  # Usually null
+				]
+				for field in fields_to_remove:
+					step.pop(field, None)
+
+				# Remove empty cssSelector
+				if step.get('cssSelector') == '':
+					step.pop('cssSelector', None)
+
+				# Clean up selectorStrategies - remove if null or if all values are JavaScript href
+				if 'selectorStrategies' in step:
+					strategies = step['selectorStrategies']
+					if strategies is None:
+						step.pop('selectorStrategies', None)
+					elif isinstance(strategies, list):
+						# Filter out strategies with JavaScript href values
+						cleaned_strategies = [
+							s
+							for s in strategies
+							if not (
+								isinstance(s.get('value'), str) and s.get('value', '').lower().startswith('javascript:')
+							)
+						]
+						# Only keep if we have valid strategies
+						if cleaned_strategies:
+							step['selectorStrategies'] = cleaned_strategies
+						else:
+							step.pop('selectorStrategies', None)
+
 		with open(metadata.file_path, 'w') as f:
-			yaml.dump(workflow.model_dump(mode='json'), f, default_flow_style=False, sort_keys=False)
+			yaml.dump(workflow_dict, f, default_flow_style=False, sort_keys=False)
 
 		# Update metadata
 		self.metadata[workflow_id] = metadata

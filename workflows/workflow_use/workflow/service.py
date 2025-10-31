@@ -49,6 +49,9 @@ class Workflow:
 		page_extraction_llm: BaseChatModel | None = None,
 		fallback_to_agent: bool = True,
 		use_cloud: bool = False,
+		debug: bool = False,
+		debug_log_folder: str | Path | None = None,
+		step_wait_time: float = 0.1,
 	) -> None:
 		"""Initialize a new Workflow instance from a schema object.
 
@@ -59,6 +62,9 @@ class Workflow:
 			llm: Optional language model for fallback agent functionality
 			fallback_to_agent: Whether to fall back to agent-based execution on step failure
 			use_cloud: Whether to use browser-use cloud browser service instead of local browser
+			debug: Whether to enable debug mode (captures screenshots for each step)
+			debug_log_folder: Custom folder path for debug logs and screenshots (default: ./logs/workflow_debug)
+			step_wait_time: Time to wait between steps in seconds (default: 0.1)
 
 		Raises:
 			ValueError: If the workflow schema is invalid (though Pydantic handles most).
@@ -76,6 +82,13 @@ class Workflow:
 		self.page_extraction_llm = page_extraction_llm
 
 		self.fallback_to_agent = fallback_to_agent
+
+		# Debug mode settings
+		self.debug = debug
+		self.debug_log_folder = Path(debug_log_folder) if debug_log_folder else Path('./logs/workflow_debug')
+
+		# Step execution settings
+		self.step_wait_time = step_wait_time
 
 		# Initialize multi-strategy element finder
 		self.element_finder = ElementFinder()
@@ -96,6 +109,9 @@ class Workflow:
 		browser: Browser | None = None,
 		page_extraction_llm: BaseChatModel | None = None,
 		use_cloud: bool = False,
+		debug: bool = False,
+		debug_log_folder: str | Path | None = None,
+		step_wait_time: float = 0.1,
 	) -> Workflow:
 		"""Load a workflow from a file."""
 		with open(file_path, 'r', encoding='utf-8') as f:
@@ -108,6 +124,9 @@ class Workflow:
 			llm=llm,
 			page_extraction_llm=page_extraction_llm,
 			use_cloud=use_cloud,
+			debug=debug,
+			debug_log_folder=debug_log_folder,
+			step_wait_time=step_wait_time,
 		)
 
 	# --- Runners ---
@@ -296,6 +315,73 @@ class Workflow:
 		)
 
 		return await agent.run()
+
+	async def _run_extraction_step(self, step, step_index: int) -> ActionResult:
+		"""
+		Lightweight extraction that uses LLM directly without spinning up an agent.
+		Much faster and cheaper than using a full agent for simple page content extraction.
+		"""
+		from browser_use.agent.views import ActionResult
+
+		# Get extraction goal
+		extraction_goal = ''
+		if hasattr(step, 'goal'):
+			extraction_goal = step.goal
+		elif hasattr(step, 'extractionGoal'):
+			extraction_goal = step.extractionGoal
+		else:
+			extraction_goal = 'Extract information from the page'
+
+		# Get current page content using markdown extraction
+		page = await self.browser.get_current_page()
+		page_text, _ = await page._extract_clean_markdown()
+		page_url = await page.get_url()
+
+		# Use page_extraction_llm if available, otherwise fall back to main llm
+		extraction_llm = self.page_extraction_llm or self.llm
+
+		# Build extraction prompt
+		# Limit page text to avoid token limits
+		truncated_page_text = page_text[:10000] if page_text else ''
+
+		extraction_prompt = f"""You are extracting information from a web page.
+
+Page URL: {page_url}
+
+Extraction Goal:
+{extraction_goal}
+
+Page Content:
+{truncated_page_text}
+
+Instructions:
+- Extract the requested information accurately
+- Return ONLY the extracted data, no explanations
+- If the information is not found, return an empty string or appropriate null value
+- Format the output as requested in the extraction goal
+
+Extracted Information:"""
+
+		# Call LLM directly
+		messages = [UserMessage(content=extraction_prompt)]
+		response = await extraction_llm.ainvoke(messages)
+
+		# Extract the text content from response
+		# ainvoke returns ChatInvokeCompletion with a 'completion' attribute
+		extracted_content = ''
+		if hasattr(response, 'completion'):
+			extracted_content = response.completion
+		elif isinstance(response, str):
+			extracted_content = response
+
+		logger.info(f'Extracted content: {extracted_content[:200]}...')
+
+		# Return as ActionResult
+		return ActionResult(
+			is_done=False,
+			extracted_content=extracted_content,
+			include_in_memory=True,
+		)
 
 	# async def _fallback_to_agent(
 	# 	self,
@@ -516,27 +602,11 @@ class Workflow:
 
 			action_name = step_resolved.type or '[No action specified]'
 
-			# Extraction steps ALWAYS use agent/LLM, even in deterministic mode
+			# Extraction steps use lightweight LLM extraction (no agent needed)
 			is_extraction_step = action_name in ['extract', 'extract_page_content']
 			if is_extraction_step:
-				logger.info(f'Step {step_index + 1}: Extraction step detected - using agent with LLM')
-				# Convert to agent step
-				from workflow_use.schema.views import AgentTaskWorkflowStep
-
-				# Create agent task based on extraction step type
-				if action_name == 'extract':
-					task = getattr(step_resolved, 'extractionGoal', 'Extract information from the page')
-				else:  # extract_page_content
-					task = getattr(step_resolved, 'goal', 'Extract text from the page')
-
-				# Create an AgentTaskWorkflowStep on the fly
-				agent_step = AgentTaskWorkflowStep(
-					type='agent',
-					task=task,
-					description=step_resolved.description if hasattr(step_resolved, 'description') else None,
-					output=step_resolved.output if hasattr(step_resolved, 'output') else None,
-				)
-				result = await self._run_agent_step(agent_step, step_index)
+				logger.info(f'Step {step_index + 1}: Extraction step detected - using lightweight LLM extraction')
+				result = await self._run_extraction_step(step_resolved, step_index)
 
 			# Check if this is a selector step without cssSelector - use semantic execution
 			elif action_name in ['click', 'input', 'key_press', 'select_change']:
@@ -702,6 +772,45 @@ class Workflow:
 		# await self.browser.close() # <-- Commented out for testing
 		return result
 
+	async def _capture_debug_screenshot(self, step_index: int, step_description: str, prefix: str = '') -> None:
+		"""Capture a screenshot for debugging purposes.
+
+		Args:
+			step_index: The index of the current step
+			step_description: Description of the step for the filename
+			prefix: Optional prefix for the filename (e.g., 'before', 'after', 'error')
+		"""
+		if not self.debug:
+			return
+
+		try:
+			# Create debug log folder if it doesn't exist
+			self.debug_log_folder.mkdir(parents=True, exist_ok=True)
+
+			# Clean step description for filename (remove special characters)
+			import re
+			clean_description = re.sub(r'[^\w\s-]', '', step_description)
+			clean_description = re.sub(r'[-\s]+', '_', clean_description)
+			clean_description = clean_description[:50]  # Limit length
+
+			# Create timestamp for uniqueness
+			from datetime import datetime
+			timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+
+			# Build filename
+			prefix_str = f'{prefix}_' if prefix else ''
+			filename = f'step_{step_index + 1:02d}_{prefix_str}{clean_description}_{timestamp}.png'
+			screenshot_path = self.debug_log_folder / filename
+
+			# Capture screenshot
+			page = await self.browser.get_current_page()
+			await page.screenshot(path=str(screenshot_path), full_page=True)
+
+			logger.info(f'📸 Debug screenshot saved: {screenshot_path}')
+
+		except Exception as e:
+			logger.warning(f'Failed to capture debug screenshot: {e}')
+
 	async def run(
 		self,
 		inputs: dict[str, Any] | None = None,
@@ -730,10 +839,24 @@ class Workflow:
 
 		results: List[ActionResult | AgentHistoryList] = []
 
+		# Log debug mode status
+		if self.debug:
+			logger.info(f'🐛 Debug mode enabled - screenshots will be saved to: {self.debug_log_folder}')
+			# Create debug folder at the start
+			self.debug_log_folder.mkdir(parents=True, exist_ok=True)
+
+		# Log step wait time if configured
+		if self.step_wait_time > 0.1:  # Only log if it's been changed from default
+			logger.info(f'⏱️  Step wait time configured: {self.step_wait_time}s between steps')
+
 		await self.browser.start()
 		try:
 			for step_index, step_dict in enumerate(self.schema.steps):  # self.steps now holds dictionaries
-				await asyncio.sleep(0.1)
+				# Wait between steps (configurable)
+				if step_index > 0:  # Don't wait before the first step
+					await asyncio.sleep(self.step_wait_time)
+					if self.step_wait_time > 0:
+						logger.debug(f'Waited {self.step_wait_time}s between steps')
 
 				# Check if cancellation was requested
 				if cancel_event and cancel_event.is_set():
@@ -743,11 +866,23 @@ class Workflow:
 				# Use description from the step dictionary
 				step_description = step_dict.description or 'No description provided'
 				logger.info(f'--- Running Step {step_index + 1}/{len(self.schema.steps)} -- {step_description} ---')
+
+				# Capture screenshot before step execution (if debug enabled)
+				await self._capture_debug_screenshot(step_index, step_description, prefix='before')
+
 				# Resolve placeholders using the current context (works on the dictionary)
 				step_resolved = self._resolve_placeholders(step_dict)
 
 				# Execute step using the unified _execute_step method
-				result = await self._execute_step(step_index, step_resolved)
+				try:
+					result = await self._execute_step(step_index, step_resolved)
+
+					# Capture screenshot after successful step execution (if debug enabled)
+					await self._capture_debug_screenshot(step_index, step_description, prefix='after')
+				except Exception as e:
+					# Capture screenshot on error (if debug enabled)
+					await self._capture_debug_screenshot(step_index, step_description, prefix='error')
+					raise  # Re-raise the exception after capturing screenshot
 
 				results.append(result)
 				# Persist outputs using the resolved step dictionary
