@@ -11,6 +11,7 @@ from browser_use.llm.base import BaseChatModel, BaseMessage
 from workflow_use.builder.service import BuilderService
 from workflow_use.healing.deterministic_converter import DeterministicWorkflowConverter
 from workflow_use.healing.selector_generator import SelectorGenerator
+from workflow_use.healing.validator import WorkflowValidator
 from workflow_use.healing.variable_extractor import VariableExtractor
 from workflow_use.healing.views import ParsedAgentStep, SimpleDomElement, SimpleResult
 from workflow_use.schema.views import SelectorWorkflowSteps, WorkflowDefinitionSchema
@@ -22,13 +23,17 @@ class HealingService:
 		llm: BaseChatModel,
 		enable_variable_extraction: bool = True,
 		use_deterministic_conversion: bool = False,
+		enable_ai_validation: bool = False,
 	):
 		self.llm = llm
 		self.enable_variable_extraction = enable_variable_extraction
 		self.use_deterministic_conversion = use_deterministic_conversion
+		self.enable_ai_validation = enable_ai_validation
 		self.variable_extractor = VariableExtractor(llm=llm) if enable_variable_extraction else None
 		self.deterministic_converter = DeterministicWorkflowConverter(llm=llm) if use_deterministic_conversion else None
 		self.selector_generator = SelectorGenerator()  # Initialize multi-strategy selector generator
+		# Note: validator will be initialized with extraction_llm in generate_workflow_from_prompt
+		self.validator = None
 
 		self.interacted_elements_hash_map: dict[str, DOMInteractedElement] = {}
 
@@ -547,5 +552,32 @@ This structured format is critical for generating a reusable workflow."""
 			workflow_definition = await self.create_workflow_definition(
 				prompt, history, extract_variables=self.enable_variable_extraction
 			)
+
+		# Apply AI validation and correction if enabled
+		if self.enable_ai_validation:
+			# Initialize validator with extraction_llm (same as used for page extraction)
+			# This is more reliable than the main agent LLM
+			if not self.validator:
+				self.validator = WorkflowValidator(llm=extraction_llm)
+
+			print('\n🔍 Running AI validation on generated workflow...')
+			try:
+				validation_result = await self.validator.validate_workflow(workflow=workflow_definition, original_task=prompt)
+
+				# Print validation report
+				self.validator.print_validation_report(validation_result)
+
+				# Apply corrections if found
+				if validation_result.corrected_workflow:
+					print('\n✨ Applying AI corrections to workflow...')
+					workflow_definition = validation_result.corrected_workflow
+					print('✅ Workflow has been corrected!')
+				elif validation_result.issues:
+					print('\n⚠️  Issues found but no corrections were applied')
+				else:
+					print('\n✅ Validation passed - no issues found!')
+			except Exception as e:
+				print(f'\n⚠️  Validation failed: {e}')
+				print('Continuing with original workflow...')
 
 		return workflow_definition
