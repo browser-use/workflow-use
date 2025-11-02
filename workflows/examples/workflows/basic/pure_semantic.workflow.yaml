@@ -3,6 +3,7 @@ workflow_analysis: Pure semantic workflow that relies only on visible text ident
 name: Pure Semantic Form Fill
 description: Fill form using only visible text - no CSS selectors needed
 version: '1.0'
+default_wait_time: 0.5
 steps:
 - description: Navigate to the government form application
   type: navigation
@@ -10,6 +11,7 @@ steps:
 - description: Click the start application button
   type: click
   target_text: Start Application
+  wait_time: 1.0
 - description: Enter first name
   type: input
   target_text: First Name (Given Name) *
