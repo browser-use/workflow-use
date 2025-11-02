@@ -88,7 +88,13 @@ class Workflow:
 		self.debug_log_folder = Path(debug_log_folder) if debug_log_folder else Path('./logs/workflow_debug')
 
 		# Step execution settings - use workflow's default_wait_time if not explicitly provided
-		self.step_wait_time = step_wait_time if step_wait_time is not None else (workflow_schema.default_wait_time or 0.1)
+		# Check for None explicitly to allow default_wait_time=0 to disable waits
+		if step_wait_time is not None:
+			self.step_wait_time = step_wait_time
+		elif workflow_schema.default_wait_time is not None:
+			self.step_wait_time = workflow_schema.default_wait_time
+		else:
+			self.step_wait_time = 0.1
 
 		# Initialize multi-strategy element finder
 		self.element_finder = ElementFinder()
@@ -857,8 +863,10 @@ Extracted Information:"""
 				# Wait between steps (configurable)
 				if step_index > 0:  # Don't wait before the first step
 					# Get wait time from previous step's wait_time or use default
+					# Use 'is not None' to allow wait_time=0 to skip the delay intentionally
 					previous_step = self.schema.steps[step_index - 1]
-					wait_time = getattr(previous_step, 'wait_time', None) or self.step_wait_time
+					step_wait_time_value = getattr(previous_step, 'wait_time', None)
+					wait_time = step_wait_time_value if step_wait_time_value is not None else self.step_wait_time
 					await asyncio.sleep(wait_time)
 					if wait_time > 0:
 						logger.debug(f'Waited {wait_time}s between steps')
