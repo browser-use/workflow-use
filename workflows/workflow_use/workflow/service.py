@@ -1051,7 +1051,16 @@ Extract the values from the user's prompt and return them in the required format
 
 		try:
 			for step_index, step_dict in enumerate(self.schema.steps):
-				await asyncio.sleep(0.1)
+				# Wait between steps (configurable) - same logic as run() method
+				if step_index > 0:  # Don't wait before the first step
+					# Get wait time from previous step's wait_time or use default
+					# Use 'is not None' to allow wait_time=0 to skip the delay intentionally
+					previous_step = self.schema.steps[step_index - 1]
+					step_wait_time_value = getattr(previous_step, 'wait_time', None)
+					wait_time = step_wait_time_value if step_wait_time_value is not None else self.step_wait_time
+					await asyncio.sleep(wait_time)
+					if wait_time > 0:
+						logger.debug(f'Waited {wait_time}s between steps')
 
 				# Check if cancellation was requested
 				if cancel_event and cancel_event.is_set():

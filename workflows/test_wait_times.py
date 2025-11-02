@@ -1,18 +1,23 @@
 """Test script to verify wait_time functionality in workflows.
 
-This test suite covers three critical areas:
+This test suite covers four critical areas:
 
 1. Runtime execution logic (test_runtime_wait_logic):
-   - Verifies that asyncio.sleep is called with correct durations
+   - Verifies that asyncio.sleep is called with correct durations in run()
    - Tests default_wait_time, per-step wait_time, and wait_time=0
    - Ensures the execution loop in workflow/service.py works correctly
 
-2. Actual timing validation (test_actual_timing):
+2. No-AI execution path (test_run_with_no_ai_wait_logic):
+   - Verifies run_with_no_ai uses the same wait logic as run()
+   - Ensures architectural consistency between execution paths
+   - Tests that both methods respect default_wait_time and per-step wait_time
+
+3. Actual timing validation (test_actual_timing):
    - Measures real wall-clock time during workflow execution
    - Validates that workflows actually pause for the expected duration
    - Ensures timing is within acceptable tolerance
 
-3. Schema validation (test_wait_times):
+4. Schema validation (test_wait_times):
    - Tests that wait_time values are loaded correctly from YAML
    - Validates Workflow initialization respects default_wait_time
    - Tests edge cases like wait_time=0 and default_wait_time=0
@@ -296,10 +301,94 @@ async def test_actual_timing():
 	print('')
 
 
+async def test_run_with_no_ai_wait_logic():
+	"""Test that run_with_no_ai also respects wait time configuration."""
+	print('🧪 Testing run_with_no_ai wait logic...\n')
+
+	from browser_use.agent.views import ActionResult
+
+	# Create a test workflow with various wait times
+	workflow_schema = WorkflowDefinitionSchema(
+		name='No AI Wait Test',
+		description='Test wait times in run_with_no_ai',
+		version='1.0',
+		default_wait_time=0.3,
+		steps=[
+			{'type': 'navigation', 'url': 'https://example.com', 'description': 'Step 1'},
+			{'type': 'extract', 'extractionGoal': 'Test 2', 'description': 'Step 2 (wait 0.6s)', 'wait_time': 0.6},
+			{'type': 'extract', 'extractionGoal': 'Test 3', 'description': 'Step 3 (wait 0s)', 'wait_time': 0},
+			{'type': 'extract', 'extractionGoal': 'Test 4', 'description': 'Step 4 (default 0.3s)'},
+		],
+		input_schema=[],
+	)
+
+	# Mock the SemanticWorkflowExecutor
+	sleep_calls = []
+	original_sleep = asyncio.sleep
+
+	async def mock_sleep(duration):
+		sleep_calls.append(duration)
+		await original_sleep(0.001)
+
+	# Mock Browser and LLM
+	mock_browser = Mock()
+	mock_browser.start = AsyncMock()
+	mock_browser.stop = AsyncMock()
+	mock_browser.get_current_page = AsyncMock(return_value=Mock())
+
+	mock_llm = Mock()
+
+	# Import and patch
+	from workflow_use.workflow.service import Workflow
+	from workflow_use.workflow.semantic_executor import SemanticWorkflowExecutor
+
+	with patch('asyncio.sleep', mock_sleep):
+		with patch.object(
+			SemanticWorkflowExecutor,
+			'execute_step',
+			new_callable=lambda: AsyncMock(return_value=ActionResult(extracted_content='test')),
+		):
+			workflow = Workflow(
+				workflow_schema=workflow_schema,
+				llm=mock_llm,
+				browser=mock_browser,
+			)
+
+			# Run the workflow with no AI
+			await workflow.run_with_no_ai(inputs={}, close_browser_at_end=False)
+
+	# Verify sleep was called with correct durations
+	print('Sleep calls during run_with_no_ai execution:')
+	for i, duration in enumerate(sleep_calls):
+		print(f'  Sleep {i + 1}: {duration}s')
+
+	# Expected: No sleep before step 1, then 0.3s, 0.6s, 0s
+	expected_sleeps = [0.3, 0.6, 0.0]
+
+	assert len(sleep_calls) >= len(expected_sleeps), (
+		f'Expected at least {len(expected_sleeps)} sleep calls, got {len(sleep_calls)}'
+	)
+
+	# Check the first few sleeps match our expectations
+	for i, expected in enumerate(expected_sleeps):
+		actual = sleep_calls[i]
+		assert actual == expected, f'Sleep {i + 1}: expected {expected}s, got {actual}s'
+
+	print('\n✅ run_with_no_ai wait logic tests passed!')
+	print('  ✓ Step 1 (no wait_time) → waited 0.3s (default)')
+	print('  ✓ Step 2 (wait_time=0.6) → waited 0.6s')
+	print('  ✓ Step 3 (wait_time=0) → waited 0s (skip)')
+	print('  ✓ Consistent with run() method behavior')
+	print('')
+
+
 async def run_all_tests():
 	"""Run all wait_time tests."""
 	# Run runtime test first (most important)
 	await test_runtime_wait_logic()
+
+	# Run run_with_no_ai test
+	await test_run_with_no_ai_wait_logic()
 
 	# Run actual timing test
 	await test_actual_timing()
