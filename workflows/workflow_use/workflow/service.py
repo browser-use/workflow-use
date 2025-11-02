@@ -51,7 +51,7 @@ class Workflow:
 		use_cloud: bool = False,
 		debug: bool = False,
 		debug_log_folder: str | Path | None = None,
-		step_wait_time: float = 0.1,
+		step_wait_time: float | None = None,
 	) -> None:
 		"""Initialize a new Workflow instance from a schema object.
 
@@ -64,7 +64,7 @@ class Workflow:
 			use_cloud: Whether to use browser-use cloud browser service instead of local browser
 			debug: Whether to enable debug mode (captures screenshots for each step)
 			debug_log_folder: Custom folder path for debug logs and screenshots (default: ./logs/workflow_debug)
-			step_wait_time: Time to wait between steps in seconds (default: 0.1)
+			step_wait_time: Time to wait between steps in seconds (default: uses workflow's default_wait_time or 0.1)
 
 		Raises:
 			ValueError: If the workflow schema is invalid (though Pydantic handles most).
@@ -87,8 +87,14 @@ class Workflow:
 		self.debug = debug
 		self.debug_log_folder = Path(debug_log_folder) if debug_log_folder else Path('./logs/workflow_debug')
 
-		# Step execution settings
-		self.step_wait_time = step_wait_time
+		# Step execution settings - use workflow's default_wait_time if not explicitly provided
+		# Check for None explicitly to allow default_wait_time=0 to disable waits
+		if step_wait_time is not None:
+			self.step_wait_time = step_wait_time
+		elif workflow_schema.default_wait_time is not None:
+			self.step_wait_time = workflow_schema.default_wait_time
+		else:
+			self.step_wait_time = 0.1
 
 		# Initialize multi-strategy element finder
 		self.element_finder = ElementFinder()
@@ -856,9 +862,14 @@ Extracted Information:"""
 			for step_index, step_dict in enumerate(self.schema.steps):  # self.steps now holds dictionaries
 				# Wait between steps (configurable)
 				if step_index > 0:  # Don't wait before the first step
-					await asyncio.sleep(self.step_wait_time)
-					if self.step_wait_time > 0:
-						logger.debug(f'Waited {self.step_wait_time}s between steps')
+					# Get wait time from previous step's wait_time or use default
+					# Use 'is not None' to allow wait_time=0 to skip the delay intentionally
+					previous_step = self.schema.steps[step_index - 1]
+					step_wait_time_value = getattr(previous_step, 'wait_time', None)
+					wait_time = step_wait_time_value if step_wait_time_value is not None else self.step_wait_time
+					await asyncio.sleep(wait_time)
+					if wait_time > 0:
+						logger.debug(f'Waited {wait_time}s between steps')
 
 				# Check if cancellation was requested
 				if cancel_event and cancel_event.is_set():
@@ -1040,7 +1051,16 @@ Extract the values from the user's prompt and return them in the required format
 
 		try:
 			for step_index, step_dict in enumerate(self.schema.steps):
-				await asyncio.sleep(0.1)
+				# Wait between steps (configurable) - same logic as run() method
+				if step_index > 0:  # Don't wait before the first step
+					# Get wait time from previous step's wait_time or use default
+					# Use 'is not None' to allow wait_time=0 to skip the delay intentionally
+					previous_step = self.schema.steps[step_index - 1]
+					step_wait_time_value = getattr(previous_step, 'wait_time', None)
+					wait_time = step_wait_time_value if step_wait_time_value is not None else self.step_wait_time
+					await asyncio.sleep(wait_time)
+					if wait_time > 0:
+						logger.debug(f'Waited {wait_time}s between steps')
 
 				# Check if cancellation was requested
 				if cancel_event and cancel_event.is_set():

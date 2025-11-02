@@ -61,6 +61,11 @@ class DeterministicWorkflowConverter:
 				'page_title': getattr(history.state, 'title', None),
 			}
 
+			# Capture step duration if available
+			step_duration = None
+			if history.metadata and hasattr(history.metadata, 'duration_seconds'):
+				step_duration = history.metadata.duration_seconds
+
 			# Process each action in this history item
 			for action in history.model_output.action:
 				action_dict = action.model_dump()
@@ -93,8 +98,8 @@ class DeterministicWorkflowConverter:
 				# Get interacted element data if available
 				element_data = self._get_element_data(history, action_params)
 
-				# Convert action to semantic step with context
-				step = self._convert_action_to_step(action_type, action_params, element_data, agent_context)
+				# Convert action to semantic step with context and duration
+				step = self._convert_action_to_step(action_type, action_params, element_data, agent_context, step_duration)
 
 				if step:
 					print(f'   ✅ Converted to step: {step.get("type")}')
@@ -519,12 +524,21 @@ class DeterministicWorkflowConverter:
 		print('      ⚠️  No target text found at all')
 		return 'element'
 
+	def _add_wait_time_to_step(self, step: Dict[str, Any], step_duration: Optional[float]) -> Dict[str, Any]:
+		"""Add wait_time to step based on execution duration (0.75x multiplier)."""
+		if step_duration is not None and step_duration > 0:
+			wait_time = round(step_duration * 0.75, 2)
+			step['wait_time'] = wait_time
+			print(f'   ⏱️  Set wait_time={wait_time}s (based on {step_duration}s execution)')
+		return step
+
 	def _convert_action_to_step(
 		self,
 		action_type: str,
 		action_dict: Dict[str, Any],
 		element_data: Optional[Dict[str, Any]],
 		agent_context: Optional[Dict[str, Any]] = None,
+		step_duration: Optional[float] = None,
 	) -> Optional[Dict[str, Any]]:
 		"""
 		Convert a single browser-use action to a semantic workflow step with context.
@@ -534,6 +548,7 @@ class DeterministicWorkflowConverter:
 		    action_dict: The action parameters
 		    element_data: Element data extracted from the DOM
 		    agent_context: Semantic context from the agent's reasoning
+		    step_duration: Duration of the step execution in seconds
 
 		Mapping (browser-use action names):
 		- navigate → navigation step
@@ -558,7 +573,7 @@ class DeterministicWorkflowConverter:
 			if agent_context.get('reasoning'):
 				step['agent_reasoning'] = agent_context['reasoning']
 
-			return step
+			return self._add_wait_time_to_step(step, step_duration)
 
 		# Input text actions (browser-use can use either 'input' or 'input_text')
 		elif action_type in ['input', 'input_text']:
@@ -588,7 +603,7 @@ class DeterministicWorkflowConverter:
 			if agent_context.get('page_url'):
 				step['page_context_url'] = agent_context['page_url']
 
-			return step
+			return self._add_wait_time_to_step(step, step_duration)
 
 		# Click actions (browser-use uses 'click', not 'click_element')
 		elif action_type in ['click', 'click_element']:
@@ -691,7 +706,7 @@ class DeterministicWorkflowConverter:
 			if agent_context.get('page_title'):
 				step['page_context_title'] = agent_context['page_title']
 
-			return step
+			return self._add_wait_time_to_step(step, step_duration)
 
 		# Keyboard actions
 		elif action_type == 'send_keys':
@@ -716,7 +731,7 @@ class DeterministicWorkflowConverter:
 			if element_data and element_data.get('element_hash'):
 				step['elementHash'] = element_data['element_hash']
 
-			return step
+			return self._add_wait_time_to_step(step, step_duration)
 
 		# Extract content actions (browser-use can use 'extract', 'extract_content', or 'extract_page_content')
 		elif action_type in ['extract', 'extract_page_content', 'extract_content']:
@@ -728,11 +743,12 @@ class DeterministicWorkflowConverter:
 				or action_dict.get('query')
 				or 'page content'
 			)
-			return {
+			step = {
 				'type': 'extract_page_content',
 				'goal': goal,
 				'description': f'Extract: {goal}',
 			}
+			return self._add_wait_time_to_step(step, step_duration)
 
 		# Scroll actions
 		elif action_type == 'scroll':
@@ -755,16 +771,17 @@ class DeterministicWorkflowConverter:
 			if agent_context.get('page_url'):
 				step['page_context_url'] = agent_context['page_url']
 
-			return step
+			return self._add_wait_time_to_step(step, step_duration)
 
 		# Dropdown actions - convert to click for now
 		elif action_type == 'select_dropdown_option':
 			target_text = action_dict.get('text', '')
-			return {
+			step = {
 				'type': 'click',
 				'target_text': target_text,
 				'description': f'Select dropdown option: {target_text}',
 			}
+			return self._add_wait_time_to_step(step, step_duration)
 
 		# Navigation actions
 		elif action_type == 'go_back':
@@ -779,7 +796,7 @@ class DeterministicWorkflowConverter:
 			if agent_context.get('page_url'):
 				step['page_context_url'] = agent_context['page_url']
 
-			return step
+			return self._add_wait_time_to_step(step, step_duration)
 
 		elif action_type == 'go_forward':
 			step = {
@@ -793,7 +810,7 @@ class DeterministicWorkflowConverter:
 			if agent_context.get('page_url'):
 				step['page_context_url'] = agent_context['page_url']
 
-			return step
+			return self._add_wait_time_to_step(step, step_duration)
 
 		# Actions we skip or handle differently
 		elif action_type in ['done', 'switch_tab', 'close_tab', 'write_file', 'replace_file', 'read_file', 'search_google']:

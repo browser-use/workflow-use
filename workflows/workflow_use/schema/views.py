@@ -8,6 +8,9 @@ from pydantic import BaseModel, Field
 class BaseWorkflowStep(BaseModel):
 	description: Optional[str] = Field(None, description="Description of the step's purpose.")
 	output: Optional[str] = Field(None, description='Context key to store step output under.')
+	wait_time: Optional[float] = Field(
+		None, description='Time to wait after this step completes (in seconds). Overrides default_wait_time if specified.'
+	)
 	# Allow other fields captured from raw events but not explicitly modeled
 	model_config = {'extra': 'allow'}
 
@@ -205,6 +208,9 @@ class WorkflowDefinitionSchema(BaseModel):
 	name: str = Field(..., description='The name of the workflow.')
 	description: str = Field(..., description='A human-readable description of the workflow.')
 	version: str = Field(..., description='The version identifier for this workflow definition.')
+	default_wait_time: Optional[float] = Field(
+		0.1, description='Default time to wait between steps (in seconds). Can be overridden per step.'
+	)
 	steps: List[WorkflowStep] = Field(
 		...,
 		min_length=1,

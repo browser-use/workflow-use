@@ -77,6 +77,12 @@ class HealingService:
 				)
 
 			screenshot = history.state.get_screenshot() if hasattr(history.state, 'get_screenshot') else None
+
+			# Capture step duration if available
+			duration_seconds = None
+			if history.metadata and hasattr(history.metadata, 'duration_seconds'):
+				duration_seconds = history.metadata.duration_seconds
+
 			parsed_step = ParsedAgentStep(
 				url=history.state.url,
 				title=history.state.title,
@@ -90,6 +96,7 @@ class HealingService:
 					for result in history.result
 				],
 				interacted_elements=interacted_elements,
+				duration_seconds=duration_seconds,
 			)
 
 			parsed_step_json = json.dumps(parsed_step.model_dump(exclude_none=True))

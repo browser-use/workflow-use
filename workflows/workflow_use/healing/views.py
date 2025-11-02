@@ -32,3 +32,6 @@ class ParsedAgentStep[T](BaseModel):
 	results: list[SimpleResult]
 
 	interacted_elements: list[SimpleDomElement]
+
+	# Step timing information
+	duration_seconds: float | None = None
