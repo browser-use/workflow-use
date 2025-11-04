@@ -8,6 +8,17 @@ from pydantic import BaseModel, Field
 class BaseWorkflowStep(BaseModel):
 	description: Optional[str] = Field(None, description="Description of the step's purpose.")
 	output: Optional[str] = Field(None, description='Context key to store step output under.')
+
+	# Verification configuration
+	verification_checks: Optional[List[Dict[str, Any]]] = Field(
+		None,
+		description='List of verification checks to run after this step. Each check validates that the step achieved its intended outcome.',
+	)
+	expected_outcome: Optional[str] = Field(
+		None,
+		description='Description of the expected outcome after this step completes (used for AI verification).',
+	)
+
 	wait_time: Optional[float] = Field(
 		None, description='Time to wait after this step completes (in seconds). Overrides default_wait_time if specified.'
 	)

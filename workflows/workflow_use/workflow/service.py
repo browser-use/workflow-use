@@ -170,7 +170,10 @@ class Workflow:
 				strategies = all_params['selectorStrategies']
 
 				logger.info(f'   🎯 Attempting semantic multi-strategy finding ({len(strategies)} strategies)')
-				result = await self.element_finder.find_element_with_strategies(strategies, self.browser)
+				result, strategy_attempts = await self.element_finder.find_element_with_strategies(strategies, self.browser)
+
+				# Store strategy attempts for error reporting
+				self._current_strategy_attempts = strategy_attempts
 
 				if result:
 					element_index, strategy_used = result

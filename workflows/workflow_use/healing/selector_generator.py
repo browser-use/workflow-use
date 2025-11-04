@@ -58,17 +58,20 @@ class SelectorGenerator:
 	10. Direct CSS/xpath (fallback)
 	"""
 
-	def generate_strategies(self, element_data: Dict[str, Any]) -> List[SelectorStrategy]:
+	def generate_strategies(self, element_data: Dict[str, Any], include_xpath_fallback: bool = True) -> List[SelectorStrategy]:
 		"""
-		Generate SEMANTIC-ONLY selector strategies from captured element data.
+		Generate selector strategies from captured element data.
 
-		No CSS selectors, no xpaths - only human-readable semantic strategies.
+		Generates semantic strategies first, then optionally adds XPath/CSS fallbacks.
 
 		Args:
 		    element_data: Dictionary containing:
 		        - tag_name: str (e.g., 'a', 'button', 'input')
 		        - text: str (visible text content)
 		        - attributes: Dict[str, str] (element attributes)
+		        - xpath: str (optional, pre-computed XPath)
+		        - css_selector: str (optional, pre-computed CSS selector)
+		    include_xpath_fallback: If True, include XPath and CSS selectors as fallbacks
 
 		Returns:
 		    List of SelectorStrategy objects, ordered by priority
@@ -82,7 +85,7 @@ class SelectorGenerator:
 		    ...         'attributes': {'aria-label': 'Submit form'},
 		    ...     }
 		    ... )
-		    >>> # Returns: text_exact, role_text, aria_label, text_fuzzy
+		    >>> # Returns: text_exact, role_text, aria_label, text_fuzzy, xpath
 		"""
 		strategies = []
 		tag = element_data.get('tag_name', '').lower()
@@ -167,6 +170,21 @@ class SelectorGenerator:
 				)
 			)
 
+		# Strategy 8: XPath fallback (lowest priority but most powerful)
+		if include_xpath_fallback:
+			# Try to use pre-computed XPath first, then generate
+			xpath = element_data.get('xpath') or self._generate_xpath(tag, text, attrs)
+
+			if xpath:
+				strategies.append(
+					SelectorStrategy(
+						type='xpath',
+						value=xpath,
+						priority=8,
+						metadata={'tag': tag, 'fallback': True},
+					)
+				)
+
 		# Sort by priority (lower number = higher priority)
 		strategies.sort(key=lambda s: s.priority)
 
@@ -218,6 +236,144 @@ class SelectorGenerator:
 				return 'button'
 
 		return role_map.get(tag)
+
+	def _generate_xpath(self, tag: str, text: str, attrs: Dict[str, Any]) -> Optional[str]:
+		"""
+		Generate a robust XPath selector from element data.
+
+		Args:
+		    tag: HTML tag name
+		    text: Element text content
+		    attrs: Element attributes
+
+		Returns:
+		    XPath string or None
+		"""
+		try:
+			xpath_parts = []
+
+			# Start with tag
+			if tag:
+				xpath_parts.append(f'//{tag}')
+			else:
+				xpath_parts.append('//*')
+
+			# Add attribute-based conditions (most reliable)
+			conditions = []
+
+			# ID is most stable
+			if 'id' in attrs and attrs['id']:
+				conditions.append(f"@id='{self._escape_xpath_value(attrs['id'])}'")
+
+			# Name attribute (common for forms)
+			elif 'name' in attrs and attrs['name']:
+				conditions.append(f"@name='{self._escape_xpath_value(attrs['name'])}'")
+
+			# Data attributes (very stable)
+			elif any(k.startswith('data-') for k in attrs.keys()):
+				for k, v in attrs.items():
+					if k.startswith('data-') and v:
+						conditions.append(f"@{k}='{self._escape_xpath_value(v)}'")
+						break
+
+			# ARIA label
+			elif 'aria-label' in attrs and attrs['aria-label']:
+				conditions.append(f"@aria-label='{self._escape_xpath_value(attrs['aria-label'])}'")
+
+			# Placeholder
+			elif 'placeholder' in attrs and attrs['placeholder']:
+				conditions.append(f"@placeholder='{self._escape_xpath_value(attrs['placeholder'])}'")
+
+			# Text content (fallback)
+			elif text:
+				# Use contains for more robustness
+				conditions.append(f"contains(text(), '{self._escape_xpath_value(text)}')")
+
+			# Combine conditions
+			if conditions:
+				xpath_parts.append('[' + ' and '.join(conditions) + ']')
+
+			return ''.join(xpath_parts) if len(xpath_parts) > 1 else None
+
+		except Exception as e:
+			logger.debug(f'Failed to generate XPath: {e}')
+			return None
+
+	def _generate_css_selector(self, tag: str, text: str, attrs: Dict[str, Any]) -> Optional[str]:
+		"""
+		Generate a robust CSS selector from element data.
+
+		Args:
+		    tag: HTML tag name
+		    text: Element text content
+		    attrs: Element attributes
+
+		Returns:
+		    CSS selector string or None
+		"""
+		try:
+			parts = []
+
+			# Start with tag
+			if tag:
+				parts.append(tag)
+
+			# Add ID (most specific)
+			if 'id' in attrs and attrs['id']:
+				# CSS escaping for IDs with special characters
+				id_val = attrs['id'].replace(':', '\\:').replace('.', '\\.')
+				parts.append(f'#{id_val}')
+				return ''.join(parts)
+
+			# Add name attribute
+			if 'name' in attrs and attrs['name']:
+				parts.append(f'[name="{self._escape_quotes(attrs["name"])}"]')
+				return ''.join(parts)
+
+			# Add data attributes (very stable)
+			for k, v in attrs.items():
+				if k.startswith('data-') and v:
+					parts.append(f'[{k}="{self._escape_quotes(v)}"]')
+					return ''.join(parts)
+
+			# Add aria-label
+			if 'aria-label' in attrs and attrs['aria-label']:
+				parts.append(f'[aria-label="{self._escape_quotes(attrs["aria-label"])}"]')
+				return ''.join(parts)
+
+			# Add placeholder
+			if 'placeholder' in attrs and attrs['placeholder']:
+				parts.append(f'[placeholder="{self._escape_quotes(attrs["placeholder"])}"]')
+				return ''.join(parts)
+
+			# If we only have tag and no good attributes, return None
+			# (CSS can't select by text content reliably)
+			return ''.join(parts) if len(parts) > 1 else None
+
+		except Exception as e:
+			logger.debug(f'Failed to generate CSS selector: {e}')
+			return None
+
+	def _escape_xpath_value(self, value: str) -> str:
+		"""
+		Escape quotes in XPath values.
+
+		Args:
+		    value: String to escape
+
+		Returns:
+		    Escaped string suitable for XPath
+		"""
+		# If value contains single quotes, use double quotes
+		if "'" in value:
+			if '"' in value:
+				# Both types of quotes - use concat
+				parts = value.split("'")
+				return "concat('" + "', \"'\", '".join(parts) + "')"
+			else:
+				return f'"{value}"'
+		else:
+			return f"'{value}'"
 
 	def _escape_quotes(self, value: str) -> str:
 		"""Escape quotes in CSS selector values."""

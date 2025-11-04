@@ -567,6 +567,23 @@ class DeterministicWorkflowConverter:
 				'type': 'navigation',
 				'url': url,
 				'description': f'Navigate to {url}',
+				'expected_outcome': f'Successfully navigated to {url} and page loaded',
+				# Deterministic verification checks
+				'verification_checks': [
+					{
+						'name': 'url_changed',
+						'method': 'deterministic',
+						'check_function': 'check_url_matches',
+						'description': f'Verify URL changed to {url}',
+						'parameters': {'expected_url': url},
+					},
+					{
+						'name': 'page_loaded',
+						'method': 'deterministic',
+						'check_function': 'check_page_loaded',
+						'description': 'Verify page finished loading',
+					},
+				],
 			}
 
 			# Add semantic metadata for navigation
@@ -582,11 +599,29 @@ class DeterministicWorkflowConverter:
 			if not target_text:
 				target_text = 'input field'
 
+			input_value = action_dict.get('text', '')
 			step = {
 				'type': 'input',
 				'target_text': target_text,
-				'value': action_dict.get('text', ''),
+				'value': input_value,
 				'description': f'Enter text into {target_text}',
+				'expected_outcome': f'Input field "{target_text}" populated with value and no validation errors',
+				# Deterministic verification checks
+				'verification_checks': [
+					{
+						'name': 'input_value_set',
+						'method': 'deterministic',
+						'check_function': 'check_input_value',
+						'description': f'Verify input field contains the entered value',
+						'parameters': {'target_text': target_text, 'expected_value': input_value},
+					},
+					{
+						'name': 'no_validation_errors',
+						'method': 'deterministic',
+						'check_function': 'check_no_validation_errors',
+						'description': 'Verify no validation errors appeared',
+					},
+				],
 			}
 
 			# Add element hash for selector population
@@ -682,6 +717,16 @@ class DeterministicWorkflowConverter:
 				'type': 'click',
 				'target_text': target_text,
 				'description': description,
+				'expected_outcome': f'Successfully clicked "{target_text}" and page/state updated',
+				# Deterministic verification check - verify page state changed
+				'verification_checks': [
+					{
+						'name': 'page_state_changed',
+						'method': 'deterministic',
+						'check_function': 'check_page_state_changed',
+						'description': 'Verify page or DOM state changed after click',
+					}
+				],
 			}
 
 			# Add position and container hints if detected
@@ -725,6 +770,7 @@ class DeterministicWorkflowConverter:
 				'key': keys,
 				'target_text': target_text,
 				'description': f'Press {keys} key',
+				'expected_outcome': f'Key "{keys}" pressed successfully',
 			}
 
 			# Add element hash for selector population
@@ -747,6 +793,7 @@ class DeterministicWorkflowConverter:
 				'type': 'extract_page_content',
 				'goal': goal,
 				'description': f'Extract: {goal}',
+				'expected_outcome': f'Successfully extracted: {goal}',
 			}
 			return self._add_wait_time_to_step(step, step_duration)
 
@@ -763,6 +810,16 @@ class DeterministicWorkflowConverter:
 				'scrollX': 0,
 				'scrollY': pixels if down else -pixels,
 				'description': f'Scroll {"down" if down else "up"} {pages} pages',
+				'expected_outcome': f'Page scrolled {"down" if down else "up"} by {pixels} pixels',
+				# Deterministic verification check
+				'verification_checks': [
+					{
+						'name': 'scroll_position_changed',
+						'method': 'deterministic',
+						'check_function': 'check_scroll_position',
+						'description': 'Verify scroll position changed',
+					}
+				],
 			}
 
 			# Add semantic metadata
@@ -780,6 +837,7 @@ class DeterministicWorkflowConverter:
 				'type': 'click',
 				'target_text': target_text,
 				'description': f'Select dropdown option: {target_text}',
+				'expected_outcome': f'Dropdown option "{target_text}" selected',
 			}
 			return self._add_wait_time_to_step(step, step_duration)
 
@@ -788,6 +846,7 @@ class DeterministicWorkflowConverter:
 			step = {
 				'type': 'go_back',
 				'description': 'Navigate back to previous page',
+				'expected_outcome': 'Successfully navigated back to previous page',
 			}
 
 			# Add semantic metadata
@@ -802,6 +861,7 @@ class DeterministicWorkflowConverter:
 			step = {
 				'type': 'go_forward',
 				'description': 'Navigate forward to next page',
+				'expected_outcome': 'Successfully navigated forward to next page',
 			}
 
 			# Add semantic metadata
