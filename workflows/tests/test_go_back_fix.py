@@ -3,10 +3,11 @@ Quick test to verify go_back action works with NoParamsAction fix.
 """
 
 import asyncio
-import yaml
 from pathlib import Path
-from browser_use import Browser
+
+import yaml
 from browser_use.llm import ChatAnthropic
+
 from workflow_use.workflow.service import Workflow
 
 
@@ -48,7 +49,7 @@ async def test_go_back_fix():
 		# Run the workflow
 		result = await workflow.run({})
 
-		print(f'\n✅ Workflow completed!')
+		print('\n✅ Workflow completed!')
 		print(f'📊 Result: {result}')
 
 		# Clean up

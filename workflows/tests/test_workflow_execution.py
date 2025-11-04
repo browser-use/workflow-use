@@ -4,8 +4,7 @@ Unit tests for workflow execution - Empty actions and deterministic step executi
 Tests the fixes for go_back/go_forward (empty action models) and deterministic execution.
 """
 
-from unittest.mock import Mock, AsyncMock, patch
-from workflow_use.schema.views import WorkflowDefinitionSchema, NavigationStep, ClickStep
+from workflow_use.schema.views import NavigationStep
 
 
 class TestWorkflowExecution:

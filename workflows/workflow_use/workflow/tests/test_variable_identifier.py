@@ -180,7 +180,7 @@ class TestVariableIdentifier:
 		# Check schema structure
 		email_schema = next((s for s in schema if 'email' in s['name']), None)
 		assert email_schema is not None
-        assert email_schema['type'] == 'string'
+		assert email_schema['type'] == 'string'
 		assert email_schema['required'] is True
 
 	def test_already_parameterized_values(self):

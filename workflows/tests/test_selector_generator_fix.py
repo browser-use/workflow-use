@@ -2,9 +2,10 @@
 Test that CapturingController now has selector_generator attribute.
 """
 
+from browser_use.llm import ChatBrowserUse
+
 from workflow_use.healing.selector_generator import SelectorGenerator
 from workflow_use.healing.service import HealingService
-from browser_use.llm import ChatBrowserUse
 
 
 def test_selector_generator_initialization():

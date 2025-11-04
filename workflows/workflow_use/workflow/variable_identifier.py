@@ -283,8 +283,8 @@ class VariableIdentifier:
 		# Match keywords
 		for keyword, var_type in self.VARIABLE_KEYWORDS.items():
 			if keyword in combined_hints:
-				# Generate variable name from context
-				var_name = self._generate_variable_name_from_context(context, var_type)
+				# Generate variable name from context (with type-based fallback)
+				var_name = self._generate_variable_name(var_type, context)
 				confidence = 0.85  # Good confidence for context matches
 				logger.debug(f"Context match: keyword '{keyword}' → {var_type} (name: {var_name})")
 				return (var_type, confidence, var_name)
@@ -294,7 +294,8 @@ class VariableIdentifier:
 		if combined_hints:
 			# Check if hints suggest this is a name field
 			if any(term in combined_hints for term in ['name', 'full name', 'given name', 'surname', 'family name']):
-				var_name = self._generate_variable_name_from_context(context, VariableType.STRING)
+				# Generate variable name with fallback
+				var_name = self._generate_variable_name(VariableType.STRING, context)
 				if var_name and 'name' in var_name:
 					confidence = 0.75  # Decent confidence for name fields
 					logger.debug(f'Name field detected from context: {var_name}')

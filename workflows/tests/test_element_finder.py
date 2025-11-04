@@ -5,7 +5,8 @@ Tests that ElementFinder correctly searches browser-use's DOM state using semant
 and returns element indices (not Playwright element handles).
 """
 
-from unittest.mock import Mock, AsyncMock
+from unittest.mock import AsyncMock, Mock
+
 from workflow_use.workflow.element_finder import ElementFinder
 
 
