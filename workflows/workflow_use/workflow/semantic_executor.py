@@ -2041,78 +2041,38 @@ class SemanticWorkflowExecutor:
 
 	async def _detect_form_validation_errors(self) -> Dict[str, str]:
 		"""Detect form validation errors that might indicate invalid input data."""
+		from workflow_use.workflow.validation_utils import get_all_validation_errors
+
 		page = await self.browser.get_current_page()
 		validation_errors = {}
 
 		try:
-			# Common error message selectors
-			error_selectors = [
-				'.error',
-				'.error-message',
-				'.validation-error',
-				'.field-error',
-				'[role="alert"]',
-				'.alert-danger',
-				'.text-red',
-				'.text-error',
-				'.invalid-feedback',
-				'.form-error',
-				'.help-block.error',
-			]
+			# Use shared validation error detection utility
+			error_messages = await get_all_validation_errors(page)
 
-			for selector in error_selectors:
-				try:
-					error_elements = await page.get_elements_by_css_selector(selector)
-					for i, element in enumerate(error_elements):
-						if await self._element_is_visible(element):
-							error_text = await self._element_text_content(element)
-							if error_text and error_text.strip():
-								# Filter out browser internal scripts and long technical content
-								clean_text = error_text.strip()
-
-								# Skip if it looks like browser internal code
-								if any(
-									pattern in clean_text
-									for pattern in [
-										'document.getElementById',
-										'function addPageBinding',
-										'serializeAsCallArgument',
-										'__next_f',
-										'globalThis',
-										'self.__next_f',
-										'serializeAsCallArgument',
-									]
-								):
-									continue
-
-								# Skip very long messages (likely technical content)
-								if len(clean_text) > 200:
-									continue
-
-								# Only include messages that look like actual validation errors
-								if any(
-									pattern in clean_text.lower()
-									for pattern in [
-										'required',
-										'invalid',
-										'error',
-										'must',
-										'cannot',
-										'please',
-										'missing',
-										'incorrect',
-										'format',
-										'valid',
-										'enter',
-										'provide',
-										'field',
-										'complete',
-										'fill',
-									]
-								):
-									validation_errors[f'{selector}_{i}'] = clean_text
-				except Exception:
-					continue
+			# Filter to only include messages that look like actual validation errors
+			for i, error_text in enumerate(error_messages):
+				if any(
+					pattern in error_text.lower()
+					for pattern in [
+						'required',
+						'invalid',
+						'error',
+						'must',
+						'cannot',
+						'please',
+						'missing',
+						'incorrect',
+						'format',
+						'valid',
+						'enter',
+						'provide',
+						'field',
+						'complete',
+						'fill',
+					]
+				):
+					validation_errors[f'error_{i}'] = error_text
 
 			# Check for common validation patterns in text
 			if validation_errors:

@@ -458,32 +458,14 @@ class StepVerifier:
 				return False, 'No page available'
 
 			try:
-				# Look for common validation error indicators
-				error_selectors = [
-					'.error',
-					'.error-message',
-					'.validation-error',
-					'.field-error',
-					'[role="alert"]',
-					'.alert-danger',
-					'.text-red',
-					'.invalid-feedback',
-				]
+				# Use shared validation error detection utility
+				from workflow_use.workflow.validation_utils import detect_validation_errors
 
-				for selector in error_selectors:
-					try:
-						elements = await page.query_selector_all(selector)
-						if elements:
-							# Check if any are visible
-							for elem in elements:
-								is_visible = await elem.is_visible()
-								if is_visible:
-									text = await elem.text_content()
-									return False, f'Validation error found: {text}'
-					except Exception:
-						continue
-
-				return True, 'No validation errors detected'
+				has_errors, error_message = await detect_validation_errors(page)
+				if has_errors:
+					return False, f'Validation error found: {error_message}'
+				else:
+					return True, 'No validation errors detected'
 
 			except Exception as e:
 				return False, f'Error checking for validation errors: {e}'
@@ -576,7 +558,7 @@ class StepVerifier:
 			current_state = await self._capture_page_state(page)
 
 			# Prepare prompt for LLM
-			prompt = f"""You are verifying a workflow step execution.
+			prompt_text = f"""You are verifying a workflow step execution.
 
 Step Type: {getattr(step, 'type', 'unknown')}
 Step Description: {getattr(step, 'description', 'No description')}
@@ -595,9 +577,12 @@ Respond with ONLY one of:
 - UNCERTAIN: <brief reason>
 """
 
-			# Call LLM
-			response = await self.llm.get_response(prompt)
-			response_text = response.strip().upper()
+			# Call LLM using ainvoke (BaseChatModel API)
+			from browser_use.llm import UserMessage
+
+			messages = [UserMessage(content=prompt_text)]
+			result = await self.llm.ainvoke(messages)
+			response_text = result.content.strip().upper()
 
 			if response_text.startswith('PASS'):
 				reason = response_text.replace('PASS:', '').strip()
