@@ -267,31 +267,31 @@ class SelectorGenerator:
 
 			# ID is most stable
 			if 'id' in attrs and attrs['id']:
-				conditions.append(f"@id={self._escape_xpath_value(attrs['id'])}")
+				conditions.append(f'@id={self._escape_xpath_value(attrs["id"])}')
 
 			# Name attribute (common for forms)
 			elif 'name' in attrs and attrs['name']:
-				conditions.append(f"@name={self._escape_xpath_value(attrs['name'])}")
+				conditions.append(f'@name={self._escape_xpath_value(attrs["name"])}')
 
 			# Data attributes (very stable)
 			elif any(k.startswith('data-') for k in attrs.keys()):
 				for k, v in attrs.items():
 					if k.startswith('data-') and v:
-						conditions.append(f"@{k}={self._escape_xpath_value(v)}")
+						conditions.append(f'@{k}={self._escape_xpath_value(v)}')
 						break
 
 			# ARIA label
 			elif 'aria-label' in attrs and attrs['aria-label']:
-				conditions.append(f"@aria-label={self._escape_xpath_value(attrs['aria-label'])}")
+				conditions.append(f'@aria-label={self._escape_xpath_value(attrs["aria-label"])}')
 
 			# Placeholder
 			elif 'placeholder' in attrs and attrs['placeholder']:
-				conditions.append(f"@placeholder={self._escape_xpath_value(attrs['placeholder'])}")
+				conditions.append(f'@placeholder={self._escape_xpath_value(attrs["placeholder"])}')
 
 			# Text content (fallback)
 			elif text:
 				# Use contains for more robustness
-				conditions.append(f"contains(text(), {self._escape_xpath_value(text)})")
+				conditions.append(f'contains(text(), {self._escape_xpath_value(text)})')
 
 			# Combine conditions
 			if conditions:
