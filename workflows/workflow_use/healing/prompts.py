@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 
 # Use __file__ to get absolute path relative to this file's location

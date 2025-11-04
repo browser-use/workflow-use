@@ -5,8 +5,12 @@ This module generates multiple fallback strategies to find elements on a page,
 reducing dependence on AI and making workflows more deterministic.
 """
 
+import logging
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 @dataclass

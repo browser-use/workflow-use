@@ -7,7 +7,6 @@ This module provides tools to:
 3. Apply corrections to improve workflow quality
 """
 
-import json
 from pathlib import Path
 from typing import List, Optional
 
@@ -89,7 +88,7 @@ class WorkflowValidator:
 			response = await self.llm.ainvoke([system_message, user_message], output_format=WorkflowValidationResult)
 			result: WorkflowValidationResult = response.completion  # type: ignore
 		except Exception as e:
-			print(f'ERROR: Failed to validate workflow')
+			print('ERROR: Failed to validate workflow')
 			print(f'Error details: {e}')
 			# Return empty validation result
 			result = WorkflowValidationResult(issues=[], validation_summary=f'Validation failed due to error: {e}')

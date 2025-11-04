@@ -612,7 +612,7 @@ class DeterministicWorkflowConverter:
 						'name': 'input_value_set',
 						'method': 'deterministic',
 						'check_function': 'check_input_value',
-						'description': f'Verify input field contains the entered value',
+						'description': 'Verify input field contains the entered value',
 						'parameters': {'target_text': target_text, 'expected_value': input_value},
 					},
 					{

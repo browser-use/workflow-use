@@ -21,7 +21,7 @@ from workflow_use.schema.views import (
 	SelectChangeStep,
 	WorkflowStep,
 )
-from workflow_use.workflow.error_reporter import ErrorCategory, ErrorContext, ErrorReporter, StrategyAttempt
+from workflow_use.workflow.error_reporter import ErrorCategory, ErrorContext, ErrorReporter
 from workflow_use.workflow.semantic_extractor import SemanticExtractor
 from workflow_use.workflow.step_verifier import StepVerifier, VerificationResult
 
@@ -382,7 +382,7 @@ class SemanticWorkflowExecutor:
 
 		# Priority 1: Exact text match in semantic mapping (highest priority)
 		# This handles cases where the exact dynamic value was captured
-		logger.debug(f'[Priority 1] Searching for exact text matches')
+		logger.debug('[Priority 1] Searching for exact text matches')
 		for text, element_info in self.current_mapping.items():
 			text_stripped = text.split(' (in ')[0].strip()  # Remove context annotations
 
@@ -1961,8 +1961,7 @@ class SemanticWorkflowExecutor:
 		elif last_exception and 'validation errors' in str(last_exception).lower():
 			error_category = ErrorCategory.VALIDATION_ERROR
 		elif last_exception and any(
-			pattern in str(last_exception).lower()
-			for pattern in ['element not found', 'no such element', 'selector failed']
+			pattern in str(last_exception).lower() for pattern in ['element not found', 'no such element', 'selector failed']
 		):
 			error_category = ErrorCategory.ELEMENT_NOT_FOUND
 		elif last_exception and 'timeout' in str(last_exception).lower():
@@ -1983,7 +1982,6 @@ class SemanticWorkflowExecutor:
 
 			# Capture error screenshot for debugging
 			try:
-				import os
 				from pathlib import Path
 
 				# Create screenshots directory if it doesn't exist

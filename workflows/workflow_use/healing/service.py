@@ -15,7 +15,7 @@ from workflow_use.healing.selector_generator import SelectorGenerator
 from workflow_use.healing.validator import WorkflowValidator
 from workflow_use.healing.variable_extractor import VariableExtractor
 from workflow_use.healing.views import ParsedAgentStep, SimpleDomElement, SimpleResult
-from workflow_use.schema.views import SelectorWorkflowSteps, WorkflowDefinitionSchema
+from workflow_use.schema.views import WorkflowDefinitionSchema
 
 # Get the absolute path to the prompts directory
 _PROMPTS_DIR = Path(__file__).parent / 'prompts'

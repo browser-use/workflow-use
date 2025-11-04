@@ -110,7 +110,7 @@ class ErrorReporter:
 		lines.append('=' * 80)
 
 		# Step information
-		lines.append(f'\n📍 Step Information:')
+		lines.append('\n📍 Step Information:')
 		if context.step_index is not None:
 			lines.append(f'   Step #{context.step_index}: {context.step_type}')
 		else:
@@ -129,7 +129,7 @@ class ErrorReporter:
 
 		# Page context
 		if context.current_url or context.page_title:
-			lines.append(f'\n📄 Page Context:')
+			lines.append('\n📄 Page Context:')
 			if context.current_url:
 				lines.append(f'   URL: {context.current_url}')
 			if context.page_title:
@@ -140,12 +140,14 @@ class ErrorReporter:
 			lines.append(f'\n🔍 Strategies Attempted ({len(context.strategies_attempted)} total):')
 			for i, attempt in enumerate(context.strategies_attempted, 1):
 				status = '✅' if attempt.success else '❌'
-				lines.append(f'   {i}. [{attempt.priority}] {attempt.strategy_type}: {self._truncate(attempt.strategy_value, 60)} {status}')
+				lines.append(
+					f'   {i}. [{attempt.priority}] {attempt.strategy_type}: {self._truncate(attempt.strategy_value, 60)} {status}'
+				)
 				if attempt.error_message:
 					lines.append(f'      Error: {attempt.error_message}')
 
 		# Failure metrics
-		lines.append(f'\n📊 Failure Metrics:')
+		lines.append('\n📊 Failure Metrics:')
 		lines.append(f'   Retry Attempts: {context.retry_attempts}')
 		lines.append(f'   Global Failures: {context.global_failure_count}')
 		lines.append(f'   Consecutive Failures: {context.consecutive_failures}')
@@ -162,14 +164,14 @@ class ErrorReporter:
 		# Suggestions for resolution
 		suggestions = context.suggestions or self._generate_suggestions(context)
 		if suggestions:
-			lines.append(f'\n💡 Suggested Next Steps:')
+			lines.append('\n💡 Suggested Next Steps:')
 			for i, suggestion in enumerate(suggestions, 1):
 				lines.append(f'   {i}. {suggestion}')
 
 		# Root cause analysis
 		root_cause = self._analyze_root_cause(context)
 		if root_cause:
-			lines.append(f'\n🔎 Likely Root Cause:')
+			lines.append('\n🔎 Likely Root Cause:')
 			lines.append(f'   {root_cause}')
 
 		lines.append('\n' + '=' * 80 + '\n')
@@ -290,8 +292,7 @@ class ErrorReporter:
 		return {
 			'total_errors': len(self.error_history),
 			'errors_by_category': {
-				category.value: sum(1 for e in self.error_history if e.error_category == category)
-				for category in ErrorCategory
+				category.value: sum(1 for e in self.error_history if e.error_category == category) for category in ErrorCategory
 			},
 			'errors_by_step_type': {
 				step_type: sum(1 for e in self.error_history if e.step_type == step_type)

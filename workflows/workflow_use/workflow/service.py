@@ -195,7 +195,7 @@ class Workflow:
 					# This way we leverage browser-use's robust action handling
 
 				else:
-					logger.warning(f'   ⚠️  Multi-strategy finding failed, falling back to full controller')
+					logger.warning('   ⚠️  Multi-strategy finding failed, falling back to full controller')
 
 			except Exception as e:
 				logger.warning(f'   ⚠️  Error in multi-strategy finding: {e}, falling back to full controller')

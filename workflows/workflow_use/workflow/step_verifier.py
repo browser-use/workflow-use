@@ -363,7 +363,7 @@ class StepVerifier:
 				if pre_state:
 					# Check if URL changed
 					if current_state.get('url') != pre_state.get('url'):
-						return True, f"URL changed from {pre_state.get('url')} to {current_state.get('url')}"
+						return True, f'URL changed from {pre_state.get("url")} to {current_state.get("url")}'
 
 					# Check if DOM changed significantly
 					dom_changed = current_state.get('dom_hash') != pre_state.get('dom_hash')
@@ -373,7 +373,10 @@ class StepVerifier:
 					# Check if visible elements changed
 					visible_changed = current_state.get('visible_elements_count') != pre_state.get('visible_elements_count')
 					if visible_changed:
-						return True, f"Visible elements changed: {pre_state.get('visible_elements_count')} → {current_state.get('visible_elements_count')}"
+						return (
+							True,
+							f'Visible elements changed: {pre_state.get("visible_elements_count")} → {current_state.get("visible_elements_count")}',
+						)
 
 					return False, 'No significant page state changes detected'
 				else:
@@ -441,7 +444,7 @@ class StepVerifier:
 				# Gracefully degrade - assume success if we can't verify
 				# This prevents false failures from blocking workflow execution
 				logger.warning(f'Could not verify input value for "{target_text}" - assuming success')
-				return True, f'Input verification skipped (element not found, assuming success)'
+				return True, 'Input verification skipped (element not found, assuming success)'
 
 			except Exception as e:
 				# Log the error but don't fail the step
@@ -524,7 +527,7 @@ class StepVerifier:
 				pre_scroll = check.parameters.get('pre_state', {}).get('scroll_position', {})
 
 				if current_scroll != pre_scroll:
-					return True, f"Scroll changed: {pre_scroll} → {current_scroll}"
+					return True, f'Scroll changed: {pre_scroll} → {current_scroll}'
 				else:
 					return False, 'Scroll position unchanged'
 
@@ -629,7 +632,7 @@ Respond with ONLY one of:
 
 		# If uncertain or failed, try AI
 		if not passed and self.llm:
-			logger.debug(f'      Deterministic check inconclusive, trying AI verification')
+			logger.debug('      Deterministic check inconclusive, trying AI verification')
 			ai_passed, ai_detail = await self._run_ai_check(check, step, browser_session, pre_state)
 			if ai_passed:
 				return True, f'AI verification: {ai_detail} (deterministic was: {detail})'
@@ -657,9 +660,7 @@ Respond with ONLY one of:
 
 			# Calculate simple DOM hash
 			try:
-				dom_structure = await page.evaluate(
-					'document.documentElement?.outerHTML?.substring(0, 1000) || ""'
-				)
+				dom_structure = await page.evaluate('document.documentElement?.outerHTML?.substring(0, 1000) || ""')
 				state['dom_hash'] = hash(dom_structure)
 			except Exception:
 				state['dom_hash'] = 0
