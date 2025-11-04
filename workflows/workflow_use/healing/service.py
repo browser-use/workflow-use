@@ -28,11 +28,30 @@ class HealingService:
 		enable_variable_extraction: bool = True,
 		use_deterministic_conversion: bool = False,
 		enable_ai_validation: bool = False,
+		# NEW: Pattern-based variable identification (no LLM, $0 cost!)
+		enable_pattern_variable_identification: bool = True,
+		pattern_variable_confidence: float = 0.5,
+		# NEW: YAML cleanup options
+		cleanup_yaml: bool = True,
+		remove_descriptions: bool = True,
+		remove_verification_checks: bool = True,
+		remove_expected_outcomes: bool = True,
 	):
 		self.llm = llm
 		self.enable_variable_extraction = enable_variable_extraction
 		self.use_deterministic_conversion = use_deterministic_conversion
 		self.enable_ai_validation = enable_ai_validation
+
+		# Pattern-based variable identification settings
+		self.enable_pattern_variable_identification = enable_pattern_variable_identification
+		self.pattern_variable_confidence = pattern_variable_confidence
+
+		# YAML cleanup settings
+		self.cleanup_yaml = cleanup_yaml
+		self.remove_descriptions = remove_descriptions
+		self.remove_verification_checks = remove_verification_checks
+		self.remove_expected_outcomes = remove_expected_outcomes
+
 		self.variable_extractor = VariableExtractor(llm=llm) if enable_variable_extraction else None
 		self.deterministic_converter = DeterministicWorkflowConverter(llm=llm) if use_deterministic_conversion else None
 		self.selector_generator = SelectorGenerator()  # Initialize multi-strategy selector generator
@@ -43,6 +62,98 @@ class HealingService:
 
 	def _remove_none_fields_from_dict(self, d: dict) -> dict:
 		return {k: v for k, v in d.items() if v is not None}
+
+	def _post_process_workflow(self, workflow_definition: WorkflowDefinitionSchema) -> WorkflowDefinitionSchema:
+		"""
+		Post-process the generated workflow:
+		1. Apply pattern-based variable identification
+		2. Clean up verbose YAML fields
+		"""
+		try:
+			workflow_dict = workflow_definition.model_dump()
+
+			# Step 1: Pattern-based variable identification
+			if self.enable_pattern_variable_identification:
+				try:
+					print('\n🔍 Applying pattern-based variable identification...')
+					print(f'   Confidence threshold: {self.pattern_variable_confidence}')
+
+					# Import the identifier directly to avoid package issues
+					import sys
+					import importlib.util
+					from pathlib import Path
+
+					# Get the path to variable_identifier.py
+					var_id_path = Path(__file__).parent.parent / 'workflow' / 'variable_identifier.py'
+
+					if var_id_path.exists():
+						# Load the module directly
+						spec = importlib.util.spec_from_file_location('variable_identifier', var_id_path)
+						var_id_module = importlib.util.module_from_spec(spec)
+						spec.loader.exec_module(var_id_module)
+
+						# Use the identifier
+						workflow_dict = var_id_module.identify_variables_in_workflow(
+							workflow_dict, min_confidence=self.pattern_variable_confidence, use_llm=False
+						)
+
+						var_count = workflow_dict.get('metadata', {}).get('identified_variable_count', 0)
+						if var_count > 0:
+							print(f'   ✅ Identified {var_count} variables!')
+							if workflow_dict.get('input_schema'):
+								print('   Variables:')
+								for var in workflow_dict['input_schema'][:5]:  # Show first 5
+									default_info = f' (default: {var.get("default", "N/A")})' if 'default' in var else ''
+									print(f'      • {var["name"]}: {var["type"]}{default_info}')
+								if len(workflow_dict['input_schema']) > 5:
+									print(f'      ... and {len(workflow_dict["input_schema"]) - 5} more')
+						else:
+							print('   ℹ️  No variables identified (confidence too low or no input steps)')
+					else:
+						print(f'   ⚠️  variable_identifier.py not found at {var_id_path}')
+
+				except Exception as e:
+					print(f'   ⚠️  Warning: Variable identification failed: {e}')
+					import traceback
+
+					traceback.print_exc()
+
+			# Step 2: Clean up YAML
+			if self.cleanup_yaml:
+				try:
+					print('\n🧹 Cleaning up YAML (removing verbose fields)...')
+					fields_removed = 0
+
+					for step in workflow_dict.get('steps', []):
+						if self.remove_descriptions and 'description' in step:
+							del step['description']
+							fields_removed += 1
+						if self.remove_verification_checks and 'verification_checks' in step:
+							del step['verification_checks']
+							fields_removed += 1
+						if self.remove_expected_outcomes and 'expected_outcome' in step:
+							del step['expected_outcome']
+							fields_removed += 1
+
+					print(f'   ✅ Removed {fields_removed} verbose fields')
+
+				except Exception as e:
+					print(f'   ⚠️  Warning: YAML cleanup failed: {e}')
+					import traceback
+
+					traceback.print_exc()
+
+			# Recreate workflow from processed dict
+			print('\n🔄 Reconstructing workflow...')
+			return WorkflowDefinitionSchema(**workflow_dict)
+
+		except Exception as e:
+			print(f'\n❌ Post-processing failed completely: {e}')
+			import traceback
+
+			traceback.print_exc()
+			print('   Returning original workflow...')
+			return workflow_definition
 
 	def _history_to_workflow_definition(self, history_list: AgentHistoryList) -> list[UserMessage]:
 		# history
@@ -592,5 +703,8 @@ This structured format is critical for generating a reusable workflow."""
 			except Exception as e:
 				print(f'\n⚠️  Validation failed: {e}')
 				print('Continuing with original workflow...')
+
+		# Post-process: Apply variable identification and YAML cleanup
+		workflow_definition = self._post_process_workflow(workflow_definition)
 
 		return workflow_definition

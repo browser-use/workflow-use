@@ -31,8 +31,6 @@ import time
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
 
-import yaml
-
 from workflow_use.schema.views import WorkflowDefinitionSchema
 
 
@@ -244,6 +242,7 @@ async def test_actual_timing():
 	print('🧪 Testing actual execution timing...\n')
 
 	from browser_use.agent.views import ActionResult
+
 	from workflow_use.workflow.service import Workflow
 
 	# Create a workflow with known wait times
@@ -339,8 +338,8 @@ async def test_run_with_no_ai_wait_logic():
 	mock_llm = Mock()
 
 	# Import and patch
-	from workflow_use.workflow.service import Workflow
 	from workflow_use.workflow.semantic_executor import SemanticWorkflowExecutor
+	from workflow_use.workflow.service import Workflow
 
 	with patch('asyncio.sleep', mock_sleep):
 		with patch.object(

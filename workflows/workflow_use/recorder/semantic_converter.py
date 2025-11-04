@@ -8,8 +8,16 @@ logger = logging.getLogger(__name__)
 class SemanticWorkflowConverter:
 	"""Converts recorded workflows to use semantic targeting instead of CSS selectors."""
 
-	def __init__(self):
-		pass
+	def __init__(self, enable_variable_identification: bool = True, variable_config: Optional[Dict[str, Any]] = None):
+		"""
+		Initialize the semantic workflow converter.
+
+		Args:
+			enable_variable_identification: Whether to automatically identify and parameterize variables
+			variable_config: Optional configuration for variable identification (min_confidence, etc.)
+		"""
+		self.enable_variable_identification = enable_variable_identification
+		self.variable_config = variable_config or {}
 
 	def convert_workflow_to_semantic(self, workflow_data: Dict[str, Any]) -> Dict[str, Any]:
 		"""Convert a recorded workflow to use semantic targeting."""
@@ -27,6 +35,10 @@ class SemanticWorkflowConverter:
 		# Convert steps to use semantic targeting
 		if 'steps' in semantic_workflow:
 			semantic_workflow['steps'] = self._convert_steps_to_semantic(semantic_workflow['steps'])
+
+		# Identify and parameterize variables
+		if self.enable_variable_identification:
+			semantic_workflow = self._identify_and_parameterize_variables(semantic_workflow)
 
 		return semantic_workflow
 
@@ -234,6 +246,36 @@ class SemanticWorkflowConverter:
 							return class_name
 
 		return None
+
+	def _identify_and_parameterize_variables(self, workflow_data: Dict[str, Any]) -> Dict[str, Any]:
+		"""
+		Identify and parameterize variables in the workflow.
+
+		This method imports and uses the VariableIdentifier to automatically detect
+		input values that should be parameterized as variables.
+		"""
+		try:
+			from workflow_use.workflow.variable_identifier import identify_variables_in_workflow
+
+			min_confidence = self.variable_config.get('min_confidence', 0.6)
+			use_llm = self.variable_config.get('use_llm', False)
+
+			logger.info('Identifying variables in workflow...')
+			workflow_with_vars = identify_variables_in_workflow(workflow_data, min_confidence, use_llm)
+
+			if workflow_with_vars.get('metadata', {}).get('identified_variable_count', 0) > 0:
+				logger.info(f'Successfully identified {workflow_with_vars["metadata"]["identified_variable_count"]} variables')
+			else:
+				logger.info('No variables identified in workflow')
+
+			return workflow_with_vars
+
+		except ImportError as e:
+			logger.warning(f'Variable identification not available: {e}')
+			return workflow_data
+		except Exception as e:
+			logger.error(f'Error during variable identification: {e}', exc_info=True)
+			return workflow_data
 
 
 def convert_recorded_workflow_to_semantic(workflow_data: Dict[str, Any]) -> Dict[str, Any]:
