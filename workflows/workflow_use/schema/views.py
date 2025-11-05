@@ -43,9 +43,9 @@ class SelectorWorkflowSteps(BaseWorkflowStep):
 	)
 
 	# PRIMARY: Text-based semantic targeting (non-brittle)
-	target_text: str = Field(
-		...,
-		description='Visible or accessible text to identify the element. Use hierarchical context for disambiguation (e.g., "Submit (in Personal Information)", "Edit (item 2 of 3)").',
+	target_text: Optional[str] = Field(
+		None,
+		description='Visible or accessible text to identify the element. Use hierarchical context for disambiguation (e.g., "Submit (in Personal Information)", "Edit (item 2 of 3)"). If None, relies on selectorStrategies fallback.',
 	)
 
 	# OPTIONAL: Context hints for disambiguation (stored as text, not selectors)
