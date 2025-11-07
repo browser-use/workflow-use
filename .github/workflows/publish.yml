@@ -47,7 +47,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main  # Always checkout main branch for releases
+          ref: ${{ github.ref }} # Checkout the release tag commit
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
