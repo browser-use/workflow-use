@@ -168,9 +168,15 @@ class Workflow:
 		if action_name in ['click', 'input'] and all_params.get('selectorStrategies'):
 			try:
 				strategies = all_params['selectorStrategies']
+				target_text = all_params.get('target_text')  # Get target_text for validation
 
 				logger.info(f'   🎯 Attempting semantic multi-strategy finding ({len(strategies)} strategies)')
-				result, strategy_attempts = await self.element_finder.find_element_with_strategies(strategies, self.browser)
+				if target_text:
+					logger.info(f'   🎯 Validating target text: "{target_text}"')
+
+				result, strategy_attempts = await self.element_finder.find_element_with_strategies(
+					strategies, self.browser, target_text
+				)
 
 				# Store strategy attempts for error reporting
 				self._current_strategy_attempts = strategy_attempts
@@ -196,9 +202,18 @@ class Workflow:
 
 				else:
 					logger.warning('   ⚠️  Multi-strategy finding failed, falling back to full controller')
+					# If target_text was provided and we couldn't find it, raise an error
+					if target_text:
+						raise RuntimeError(
+							f'Element with target text "{target_text}" not found on the page. '
+							f'Tried {len(strategies)} strategies but none matched a visible element with this text.'
+						)
 
 			except Exception as e:
 				logger.warning(f'   ⚠️  Error in multi-strategy finding: {e}, falling back to full controller')
+				# Re-raise if it's our validation error
+				if 'target text' in str(e).lower():
+					raise
 
 		# Special handling for actions that don't accept any parameters
 		# These actions use NoParamsAction, so we pass an empty instance instead of {}

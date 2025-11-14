@@ -1233,6 +1233,7 @@ def run_workflow_command(
 
 				var_type = input_def.type.lower()  # type is a direct attribute
 				is_required = input_def.required
+				default_value = getattr(input_def, 'default', None)
 
 				type_info_str = f'type: {var_type}'
 				if is_required:
@@ -1245,21 +1246,32 @@ def run_workflow_command(
 				if hasattr(input_def, 'format') and input_def.format:
 					format_info_str = f', format: {typer.style(input_def.format, fg=typer.colors.GREEN)}'
 
-				full_prompt_text = f'{prompt_question} ({status_str}, {type_info_str}{format_info_str})'
+				# Add default value information if available
+				default_info_str = ''
+				if default_value is not None:
+					default_info_str = f', default: {typer.style(str(default_value), fg=typer.colors.BLUE)}'
+
+				full_prompt_text = f'{prompt_question} ({status_str}, {type_info_str}{format_info_str}{default_info_str})'
 
 				input_val = None
 				if var_type == 'bool':
-					input_val = typer.confirm(full_prompt_text)
+					input_val = typer.confirm(full_prompt_text, default=default_value if default_value is not None else None)
 				elif var_type == 'number':
-					input_val = typer.prompt(full_prompt_text, type=float)
+					input_val = typer.prompt(
+						full_prompt_text, type=float, default=default_value if default_value is not None else ...
+					)
 				elif var_type == 'string':  # Default to string for other unknown types as well
-					input_val = typer.prompt(full_prompt_text, type=str)
+					input_val = typer.prompt(
+						full_prompt_text, type=str, default=default_value if default_value is not None else ...
+					)
 				else:  # Should ideally not happen if schema is validated, but good to have a fallback
 					typer.secho(
 						f"Warning: Unknown type '{var_type}' for variable '{input_def.name}'. Treating as string.",
 						fg=typer.colors.YELLOW,
 					)
-					input_val = typer.prompt(full_prompt_text, type=str)
+					input_val = typer.prompt(
+						full_prompt_text, type=str, default=default_value if default_value is not None else ...
+					)
 
 				inputs[input_def.name] = input_val
 				typer.echo()  # Add space after each prompt
@@ -1369,6 +1381,7 @@ def run_workflow_no_ai_command(
 
 				var_type = input_def.type.lower()  # type is a direct attribute
 				is_required = input_def.required
+				default_value = getattr(input_def, 'default', None)
 
 				type_info_str = f'type: {var_type}'
 				if is_required:
@@ -1381,21 +1394,32 @@ def run_workflow_no_ai_command(
 				if hasattr(input_def, 'format') and input_def.format:
 					format_info_str = f', format: {typer.style(input_def.format, fg=typer.colors.GREEN)}'
 
-				full_prompt_text = f'{prompt_question} ({status_str}, {type_info_str}{format_info_str})'
+				# Add default value information if available
+				default_info_str = ''
+				if default_value is not None:
+					default_info_str = f', default: {typer.style(str(default_value), fg=typer.colors.BLUE)}'
+
+				full_prompt_text = f'{prompt_question} ({status_str}, {type_info_str}{format_info_str}{default_info_str})'
 
 				input_val = None
 				if var_type == 'bool':
-					input_val = typer.confirm(full_prompt_text)
+					input_val = typer.confirm(full_prompt_text, default=default_value if default_value is not None else None)
 				elif var_type == 'number':
-					input_val = typer.prompt(full_prompt_text, type=float)
+					input_val = typer.prompt(
+						full_prompt_text, type=float, default=default_value if default_value is not None else ...
+					)
 				elif var_type == 'string':  # Default to string for other unknown types as well
-					input_val = typer.prompt(full_prompt_text, type=str)
+					input_val = typer.prompt(
+						full_prompt_text, type=str, default=default_value if default_value is not None else ...
+					)
 				else:  # Should ideally not happen if schema is validated, but good to have a fallback
 					typer.secho(
 						f"Warning: Unknown type '{var_type}' for variable '{input_def.name}'. Treating as string.",
 						fg=typer.colors.YELLOW,
 					)
-					input_val = typer.prompt(full_prompt_text, type=str)
+					input_val = typer.prompt(
+						full_prompt_text, type=str, default=default_value if default_value is not None else ...
+					)
 
 				inputs[input_def.name] = input_val
 				typer.echo()  # Add space after each prompt
@@ -2445,7 +2469,11 @@ def run_stored_workflow(
 					if inp.required
 					else typer.style('optional', fg=typer.colors.YELLOW)
 				)
-				typer.echo(f'  • {inp.name} ({inp.type}, {required})')
+				default_value = getattr(inp, 'default', None)
+				default_str = (
+					f', default: {typer.style(str(default_value), fg=typer.colors.BLUE)}' if default_value is not None else ''
+				)
+				typer.echo(f'  • {inp.name} ({inp.type}, {required}{default_str})')
 			typer.echo()
 			typer.echo('Options:')
 			typer.echo(f'  1. Run as tool: python cli.py run-stored-workflow {workflow_id} --prompt "Your task"')

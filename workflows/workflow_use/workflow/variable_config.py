@@ -5,8 +5,8 @@ This module provides configuration options for customizing how variables
 are identified in workflow automation.
 """
 
-from typing import Dict, List, Set
 from dataclasses import dataclass, field
+from typing import Dict, Set
 
 
 @dataclass

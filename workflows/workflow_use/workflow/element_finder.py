@@ -27,7 +27,7 @@ class ElementFinder:
 	"""
 
 	async def find_element_with_strategies(
-		self, strategies: List[Dict[str, Any]], browser_session: Any
+		self, strategies: List[Dict[str, Any]], browser_session: Any, target_text: Optional[str] = None
 	) -> Tuple[Optional[tuple[int, Dict[str, Any]]], List[StrategyAttempt]]:
 		"""
 		Try strategies to find element index in browser-use's DOM state.
@@ -38,6 +38,7 @@ class ElementFinder:
 		Args:
 		    strategies: List of strategy dictionaries with 'type', 'value', 'priority', 'metadata'
 		    browser_session: Browser-use BrowserSession object
+		    target_text: Optional target text to validate element existence
 
 		Returns:
 		    Tuple of:
@@ -53,14 +54,15 @@ class ElementFinder:
 		if not strategies:
 			return None, strategy_attempts
 
-		# Get current DOM state from browser-use
+		# Get current page from browser-use
+		# Note: We don't need DOM state for XPath strategies, we can execute them directly via Playwright
 		try:
-			state = await browser_session.get_state()
-			if not state or not state.selector_map:
-				logger.warning('      ⚠️  No DOM state available')
+			page = await browser_session.get_current_page()
+			if not page:
+				logger.warning('      ⚠️  No page available')
 				return None, strategy_attempts
 		except Exception as e:
-			logger.warning(f'      ⚠️  Failed to get DOM state: {e}')
+			logger.warning(f'      ⚠️  Failed to get current page: {e}')
 			return None, strategy_attempts
 
 		# Sort by priority (should already be sorted, but ensure it)
@@ -76,12 +78,13 @@ class ElementFinder:
 			try:
 				logger.info(f'      🔍 Strategy {i}/{len(sorted_strategies)}: {strategy_type}')
 
-				# Handle XPath strategies separately (requires Playwright)
+				# For now, only support XPath strategies
+				# Other strategies (text_exact, role_text, etc.) would require DOM state which isn't available
 				if strategy_type == 'xpath':
-					result = await self._find_with_xpath(strategy_value, state, browser_session)
+					result = await self._find_with_xpath(strategy_value, page, browser_session, target_text)
 					if result:
-						index, _ = result
-						logger.info(f'         ✅ Found with XPath at index {index}')
+						element, xpath_used = result
+						logger.info('         ✅ Found element with XPath')
 						# Record successful attempt
 						strategy_attempts.append(
 							StrategyAttempt(
@@ -92,29 +95,16 @@ class ElementFinder:
 								metadata=metadata,
 							)
 						)
-						return (index, strategy), strategy_attempts
+						# Return a dummy index since we're clicking by element directly
+						return (0, strategy), strategy_attempts
 					else:
 						error_msg = 'XPath query returned no results'
 						logger.debug(f'         ⏭️  {error_msg}')
 
 				else:
-					# Search through browser-use's selector_map using semantic matching
-					for index, node in state.selector_map.items():
-						if await self._matches_strategy(node, strategy_type, strategy_value, metadata):
-							logger.info(f'         ✅ Found with {strategy_type} at index {index}')
-							# Record successful attempt
-							strategy_attempts.append(
-								StrategyAttempt(
-									strategy_type=strategy_type,
-									strategy_value=strategy_value,
-									priority=priority,
-									success=True,
-									metadata=metadata,
-								)
-							)
-							return (index, strategy), strategy_attempts
-
-					error_msg = 'No matching element found in DOM'
+					# Skip non-XPath strategies for now
+					# TODO: Implement these strategies using direct page queries
+					error_msg = f'Strategy type "{strategy_type}" not yet supported in element_finder'
 					logger.debug(f'         ⏭️  {error_msg}')
 
 			except Exception as e:
@@ -200,70 +190,174 @@ class ElementFinder:
 
 		return False
 
-	async def _find_with_xpath(self, xpath: str, state: Any, browser_session: Any) -> Optional[tuple[int, Any]]:
+	async def _validate_element_exists(
+		self, index: int, node: Any, browser_session: Any, target_text: Optional[str] = None
+	) -> bool:
 		"""
-		Find element using XPath and map it to browser-use's index.
+		Validate that element exists, is visible, and optionally matches target_text.
+
+		Args:
+		    index: Element index in browser-use's selector map
+		    node: Browser-use DOM node
+		    browser_session: Browser-use session object
+		    target_text: Optional text to validate against element's text/label/aria-label/placeholder
+		                 If provided, we log a warning if text doesn't match but still allow the element
+
+		Returns:
+		    True if element is valid and visible (text matching is advisory only)
+		"""
+		try:
+			# Check if node is visible - this is a hard requirement
+			is_visible = getattr(node, 'is_visible', True)
+			if not is_visible:
+				logger.debug(f'Element at index {index} is not visible')
+				return False
+
+			# If target_text is provided, validate it exists in the element's text sources
+			# BUT: This is advisory only - we log a warning but don't fail validation
+			# The target_text might be a descriptive label, not actual visible text
+			if target_text:
+				target_lower = target_text.lower().strip()
+
+				# Collect all text sources from the element
+				text_sources = []
+
+				# Get element's visible text
+				node_text = getattr(node, 'text', '') or ''
+				if node_text:
+					text_sources.append(node_text.lower().strip())
+
+				# Get aria-label
+				aria_label = getattr(node, 'aria_label', '') or ''
+				if aria_label:
+					text_sources.append(aria_label.lower().strip())
+
+				# Get placeholder
+				placeholder = getattr(node, 'placeholder', '') or ''
+				if placeholder:
+					text_sources.append(placeholder.lower().strip())
+
+				# Get title
+				title = getattr(node, 'title', '') or ''
+				if title:
+					text_sources.append(title.lower().strip())
+
+				# Get alt text
+				alt = getattr(node, 'alt', '') or ''
+				if alt:
+					text_sources.append(alt.lower().strip())
+
+				# Get name attribute
+				attrs = getattr(node, 'attributes', {}) or {}
+				if 'name' in attrs:
+					text_sources.append(attrs['name'].lower().strip())
+
+				# Check if target_text matches any text source
+				found_match = any(target_lower in source or source in target_lower for source in text_sources if source)
+
+				if not found_match:
+					# Don't fail - just log a warning
+					# The XPath/CSS selector is more authoritative than target_text hint
+					logger.debug(
+						f'⚠️ Target text "{target_text}" not found in element at index {index}, but proceeding with selector. '
+						f'Available text sources: {text_sources}'
+					)
+				else:
+					logger.debug(f'✓ Target text "{target_text}" validated in element at index {index}')
+
+			return True
+
+		except Exception as e:
+			logger.debug(f'Error validating element at index {index}: {e}')
+			return False
+
+	async def _find_with_xpath(
+		self, xpath: str, page: Any, browser_session: Any, target_text: Optional[str] = None
+	) -> Optional[tuple[Any, str]]:
+		"""
+		Find element using XPath via JavaScript evaluation.
 
 		Args:
 		    xpath: XPath selector
-		    state: Current browser-use DOM state
+		    page: Browser-use Page object
 		    browser_session: Browser-use session object
+		    target_text: Optional target text for validation
 
 		Returns:
-		    Tuple of (element_index, node) if found, None otherwise
+		    Tuple of (xpath, xpath_used) if found, None otherwise
+		    Note: Returns xpath string, not element object, since we'll click via JS
 		"""
 		try:
-			# Get the Playwright page from browser_session
-			page = await browser_session.get_current_page()
-			if not page:
-				logger.debug('No Playwright page available for XPath execution')
+			# Normalize XPath: ensure it starts with / for absolute paths
+			normalized_xpath = xpath
+			if xpath and not xpath.startswith('/') and not xpath.startswith('('):
+				normalized_xpath = '/' + xpath
+				logger.info(f'         🔧 Normalized XPath to: {normalized_xpath}')
+
+			logger.info(f'         🔎 Executing XPath: {normalized_xpath}')
+
+			# Execute XPath query via JavaScript to find element
+			# Escape the XPath for safe JavaScript string usage
+			escaped_xpath = normalized_xpath.replace("'", "\\'")
+			js_code = f"""() => {{
+	try {{
+		const result = document.evaluate(
+			'{escaped_xpath}',
+			document,
+			null,
+			XPathResult.FIRST_ORDERED_NODE_TYPE,
+			null
+		);
+
+		const element = result.singleNodeValue;
+		if (!element) {{
+			return null;
+		}}
+
+		// Check if element is visible
+		const rect = element.getBoundingClientRect();
+		const style = window.getComputedStyle(element);
+		const isVisible = rect.width > 0 && rect.height > 0 &&
+		                  style.visibility !== 'hidden' &&
+		                  style.display !== 'none';
+
+		return {{
+			found: true,
+			visible: isVisible,
+			tag: element.tagName,
+			text: element.textContent?.trim() || '',
+			xpath: '{escaped_xpath}'
+		}};
+	}} catch (error) {{
+		return {{ error: error.message }};
+	}}
+}}"""
+
+			result = await page.evaluate(js_code)
+
+			if not result:
+				logger.info('         ⚠️  XPath evaluation returned null')
 				return None
 
-			# Execute XPath query to find element
-			element = await page.query_selector(f'xpath={xpath}')
-			if not element:
-				logger.debug(f'XPath query returned no results: {xpath}')
+			if isinstance(result, dict) and result.get('error'):
+				logger.warning(f'         ❌ XPath evaluation error: {result["error"]}')
 				return None
 
-			# Get element properties to match against browser-use's nodes
-			try:
-				# Get text content, tag name, and attributes
-				element_data = await page.evaluate(
-					"""(el) => {
-						return {
-							text: el.textContent?.trim() || '',
-							tagName: el.tagName?.toLowerCase() || '',
-							id: el.id || '',
-							className: el.className || '',
-							ariaLabel: el.getAttribute('aria-label') || '',
-							placeholder: el.getAttribute('placeholder') || '',
-							name: el.getAttribute('name') || '',
-							boundingBox: el.getBoundingClientRect ? {
-								x: el.getBoundingClientRect().x,
-								y: el.getBoundingClientRect().y,
-								width: el.getBoundingClientRect().width,
-								height: el.getBoundingClientRect().height
-							} : null
-						};
-					}""",
-					element,
-				)
+			if not isinstance(result, dict) or not result.get('found'):
+				logger.info('         ⚠️  XPath returned no results')
+				return None
 
-				# Try to find matching node in browser-use's selector_map
-				for index, node in state.selector_map.items():
-					if self._xpath_node_matches(node, element_data):
-						logger.debug(f'Matched XPath element to index {index}')
-						return (index, node)
+			if not result.get('visible'):
+				logger.info('         ⚠️  Element found but not visible')
+				return None
 
-				logger.debug('XPath found element but could not match to browser-use index')
-
-			except Exception as e:
-				logger.debug(f'Error extracting element data: {e}')
+			logger.info(f'         ✅ Found visible element: <{result["tag"]}>')
+			# Return the xpath itself since we'll execute click via JavaScript
+			return (normalized_xpath, normalized_xpath)
 
 		except Exception as e:
-			logger.debug(f'Error executing XPath: {e}')
-
-		return None
+			logger.warning(f'         ❌ Error executing XPath: {e}')
+			return None
 
 	def _xpath_node_matches(self, node: Any, element_data: Dict[str, Any]) -> bool:
 		"""

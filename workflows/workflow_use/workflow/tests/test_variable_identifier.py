@@ -5,12 +5,13 @@ Tests the automatic identification and parameterization of variables in workflow
 """
 
 import pytest
+
+from workflow_use.workflow.variable_config import VariableConfigPresets
 from workflow_use.workflow.variable_identifier import (
 	VariableIdentifier,
 	VariableType,
 	identify_variables_in_workflow,
 )
-from workflow_use.workflow.variable_config import VariableConfigPresets
 
 
 class TestVariableIdentifier:

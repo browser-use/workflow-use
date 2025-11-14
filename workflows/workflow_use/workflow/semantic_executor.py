@@ -744,7 +744,74 @@ class SemanticWorkflowExecutor:
 		"""Execute click step using semantic mapping with improved selector strategies."""
 		page = await self.browser.get_current_page()
 
-		# Try to find element using multiple strategies (prioritize target_text)
+		# DEBUG: Check what attributes the step has
+		logger.info(f'🔍 DEBUG: Step attributes: {[attr for attr in dir(step) if not attr.startswith("_")]}')
+		logger.info(f'🔍 DEBUG: hasattr selectorStrategies: {hasattr(step, "selectorStrategies")}')
+		if hasattr(step, 'selectorStrategies'):
+			logger.info(f'🔍 DEBUG: selectorStrategies value: {step.selectorStrategies}')
+			logger.info(f'🔍 DEBUG: selectorStrategies truthy: {bool(step.selectorStrategies)}')
+
+		# PRIORITY 1: Check for explicit selectorStrategies first (most reliable)
+		# These are explicit selectors from the workflow definition and should take precedence
+		if hasattr(step, 'selectorStrategies') and step.selectorStrategies:
+			logger.info(f'🎯 Using explicit selectorStrategies from workflow ({len(step.selectorStrategies)} strategies)')
+
+			# Import ElementFinder here to avoid circular imports
+			from workflow_use.workflow.element_finder import ElementFinder
+
+			element_finder = ElementFinder()
+
+			target_text = step.target_text if hasattr(step, 'target_text') else None
+			result, strategy_attempts = await element_finder.find_element_with_strategies(
+				step.selectorStrategies, self.browser, target_text
+			)
+
+			if result:
+				xpath_or_selector, strategy_used = result
+				logger.info(f'✅ Found element using strategy: {strategy_used.get("type")} = {strategy_used.get("value")}')
+
+				# Click the element using JavaScript evaluation
+				try:
+					if strategy_used.get('type') == 'xpath':
+						# Click via JavaScript using XPath
+						escaped_xpath = xpath_or_selector.replace("'", "\\'")
+						click_js = f"""() => {{
+	try {{
+		const result = document.evaluate(
+			'{escaped_xpath}',
+			document,
+			null,
+			XPathResult.FIRST_ORDERED_NODE_TYPE,
+			null
+		);
+		const element = result.singleNodeValue;
+		if (element) {{
+			element.click();
+			return {{ success: true, tag: element.tagName }};
+		}}
+		return {{ success: false, error: 'Element not found' }};
+	}} catch (error) {{
+		return {{ success: false, error: error.message }};
+	}}
+}}"""
+						click_result = await page.evaluate(click_js)
+
+						if click_result and click_result.get('success'):
+							msg = f'🖱️ Clicked element using XPath: {xpath_or_selector}'
+							logger.info(msg)
+							return ActionResult(extracted_content=msg, include_in_memory=True)
+						else:
+							raise Exception(f'Failed to click element: {click_result.get("error", "Unknown error")}')
+					else:
+						raise Exception(f'Unsupported strategy type: {strategy_used.get("type")}')
+
+				except Exception as e:
+					logger.error(f'Failed to click element: {e}')
+					raise Exception(f'Failed to click element: {e}')
+			else:
+				logger.warning('⚠️ selectorStrategies failed to find element, falling back to semantic mapping')
+
+		# PRIORITY 2: Try semantic mapping (find by target_text in current_mapping)
 		element_info = None
 		target_identifier = None
 		selector_to_use = None
@@ -794,7 +861,7 @@ class SemanticWorkflowExecutor:
 				selector_to_use = element_info['selectors']
 				logger.info(f"Using semantic mapping: '{target_identifier}' -> {selector_to_use}")
 
-		# Final fallback to original CSS selector or XPath
+		# PRIORITY 3: Final fallback to legacy CSS selector or XPath fields
 		if not selector_to_use:
 			if step.cssSelector:
 				selector_to_use = step.cssSelector
@@ -981,11 +1048,21 @@ class SemanticWorkflowExecutor:
 		page = await self.browser.get_current_page()
 
 		# STRATEGY 0: Try direct text-based clicking first (most semantic)
+		# BUT: Only fail if we don't have a selector to fall back to
+		# target_text might be just a descriptive label, not actual visible text
 		if target_text and target_text.strip():
 			element_tag = element_info.get('tag', '').lower() if element_info else None
 			if await self._click_element_by_text_direct(target_text, element_tag):
 				return True
-			logger.info('Direct text click failed, falling back to selector-based approach')
+			# If text-based click failed but we have a selector, try it
+			# Only refuse to click if we have NO selector strategies at all
+			if not selector or selector == 'None':
+				logger.error(f'Element with target text "{target_text}" not found on the page')
+				logger.error('Refusing to click without validating target text exists or having a selector')
+				return False
+			else:
+				logger.warning(f"⚠️ Could not find element by text: '{target_text}'")
+				logger.info(f'🔄 Falling back to selector strategy: {selector}')
 
 		try:
 			# Strategy -1: Check if element_info indicates this is a radio/checkbox, even if selector doesn't show it

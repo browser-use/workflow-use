@@ -7,7 +7,6 @@ and other error messages displayed on web pages.
 
 from typing import List, Optional, Tuple
 
-
 # Common CSS selectors for error messages across different frameworks and patterns
 VALIDATION_ERROR_SELECTORS = [
 	'.error',

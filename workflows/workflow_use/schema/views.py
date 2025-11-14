@@ -203,6 +203,11 @@ class WorkflowInputSchemaDefinition(BaseModel):
 		description='None if the property is optional, True if the property is required.',
 	)
 
+	default: Optional[str | int | float | bool] = Field(
+		None,
+		description='Default value for the input. If provided, this value will be used when no input is given.',
+	)
+
 
 # --- Top-Level Workflow Definition File ---
 # Uses the Union WorkflowStep type
