@@ -12,6 +12,53 @@ from typing import Dict, List, Optional
 logger = logging.getLogger(__name__)
 
 
+def escape_xpath_string(value: str) -> str:
+	"""
+	Escape a string value for safe use in XPath expressions.
+
+	XPath 1.0 doesn't have a native escape mechanism for quotes, so we use concat()
+	when the string contains single quotes.
+
+	Args:
+	    value: The string value to escape
+
+	Returns:
+	    Escaped string safe for XPath, or concat() expression if needed
+
+	Examples:
+	    >>> escape_xpath_string('hello')
+	    "'hello'"
+	    >>> escape_xpath_string("it's")
+	    'concat("it", "\'", "s")'
+	    >>> escape_xpath_string('say "hello"')
+	    '\'say "hello"\''
+	"""
+	if not value:
+		return "''"
+
+	# If no single quotes, use single quotes (simple case)
+	if "'" not in value:
+		return f"'{value}'"
+
+	# If no double quotes, use double quotes
+	if '"' not in value:
+		return f'"{value}"'
+
+	# Contains both single and double quotes - use concat()
+	# Split by single quote and build concat expression
+	parts = value.split("'")
+	concat_parts = []
+	for i, part in enumerate(parts):
+		if part:
+			# Use double quotes for parts that don't contain quotes
+			concat_parts.append(f'"{part}"')
+		if i < len(parts) - 1:
+			# Add the single quote separator
+			concat_parts.append('"\'"')
+
+	return f'concat({", ".join(concat_parts)})'
+
+
 class XPathOptimizer:
 	"""
 	Optimize XPath selectors for robustness and maintainability.
@@ -135,29 +182,36 @@ class XPathOptimizer:
 
 		# 1. ID selector (highest priority)
 		if attrs.get('id'):
-			xpaths.append(f"//{tag}[@id='{attrs['id']}']")
+			escaped_id = escape_xpath_string(attrs['id'])
+			xpaths.append(f'//{tag}[@id={escaped_id}]')
 
 		# 2. Name attribute (good for forms)
 		if attrs.get('name'):
-			xpaths.append(f"//{tag}[@name='{attrs['name']}']")
+			escaped_name = escape_xpath_string(attrs['name'])
+			xpaths.append(f'//{tag}[@name={escaped_name}]')
 
 		# 3. Data attributes (very stable, often unique)
 		for attr_name, attr_value in attrs.items():
 			if attr_name.startswith('data-') and attr_value:
-				xpaths.append(f"//{tag}[@{attr_name}='{attr_value}']")
+				escaped_value = escape_xpath_string(attr_value)
+				xpaths.append(f'//{tag}[@{attr_name}={escaped_value}]')
 
 		# 4. ARIA attributes (semantic, stable)
 		if attrs.get('aria-label'):
-			xpaths.append(f"//{tag}[@aria-label='{attrs['aria-label']}']")
+			escaped_label = escape_xpath_string(attrs['aria-label'])
+			xpaths.append(f'//{tag}[@aria-label={escaped_label}]')
 		if attrs.get('aria-labelledby'):
-			xpaths.append(f"//{tag}[@aria-labelledby='{attrs['aria-labelledby']}']")
+			escaped_labelledby = escape_xpath_string(attrs['aria-labelledby'])
+			xpaths.append(f'//{tag}[@aria-labelledby={escaped_labelledby}]')
 
 		# 5. Role attribute
 		if attrs.get('role'):
+			escaped_role = escape_xpath_string(attrs['role'])
 			if text:
-				xpaths.append(f"//{tag}[@role='{attrs['role']}' and contains(text(), '{text}')]")
+				escaped_text = escape_xpath_string(text)
+				xpaths.append(f'//{tag}[@role={escaped_role} and contains(text(), {escaped_text})]')
 			else:
-				xpaths.append(f"//{tag}[@role='{attrs['role']}']")
+				xpaths.append(f'//{tag}[@role={escaped_role}]')
 
 		# 6. Unique class combinations
 		if attrs.get('class'):
@@ -165,16 +219,18 @@ class XPathOptimizer:
 			# Try single unique class first
 			for cls in classes:
 				if cls and not cls.startswith('css-'):  # Skip dynamic classes
-					xpaths.append(f"//{tag}[contains(@class, '{cls}')]")
+					escaped_class = escape_xpath_string(cls)
+					xpaths.append(f'//{tag}[contains(@class, {escaped_class})]')
 					break  # Only try first non-dynamic class
 
 		# 7. Text content
 		if text:
+			escaped_text = escape_xpath_string(text)
 			# Exact text
-			xpaths.append(f"//{tag}[text()='{text}']")
+			xpaths.append(f'//{tag}[text()={escaped_text}]')
 			# Contains text (more flexible)
 			if len(text) > 3:
-				xpaths.append(f"//{tag}[contains(text(), '{text}')]")
+				xpaths.append(f'//{tag}[contains(text(), {escaped_text})]')
 
 		return xpaths
 
@@ -205,7 +261,8 @@ class XPathOptimizer:
 				# If we have element info, add context
 				if element_info and element_info.get('text'):
 					text = element_info['text']
-					xpaths.append(f"//{part['tag']}//{target_tag}[contains(text(), '{text}')]")
+					escaped_text = escape_xpath_string(text)
+					xpaths.append(f'//{part["tag"]}//{target_tag}[contains(text(), {escaped_text})]')
 
 		# Special case: Table cell targeting
 		if len(parts) >= 3:

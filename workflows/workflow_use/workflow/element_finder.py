@@ -55,7 +55,6 @@ class ElementFinder:
 			return None, strategy_attempts
 
 		# Get current page from browser-use
-		# Note: We don't need DOM state for XPath strategies, we can execute them directly via Playwright
 		try:
 			page = await browser_session.get_current_page()
 			if not page:
@@ -64,6 +63,15 @@ class ElementFinder:
 		except Exception as e:
 			logger.warning(f'      ⚠️  Failed to get current page: {e}')
 			return None, strategy_attempts
+
+		# Get selector map for semantic strategies
+		selector_map = None
+		try:
+			selector_map = await browser_session.get_selector_map()
+			if selector_map:
+				logger.debug(f'      📋 Retrieved selector map with {len(selector_map)} elements')
+		except Exception as e:
+			logger.debug(f'      ⚠️  Could not get selector map: {e}')
 
 		# Sort by priority (should already be sorted, but ensure it)
 		sorted_strategies = sorted(strategies, key=lambda s: s.get('priority', 999))
@@ -78,12 +86,11 @@ class ElementFinder:
 			try:
 				logger.info(f'      🔍 Strategy {i}/{len(sorted_strategies)}: {strategy_type}')
 
-				# For now, only support XPath strategies
-				# Other strategies (text_exact, role_text, etc.) would require DOM state which isn't available
+				# Try XPath strategies via Playwright
 				if strategy_type == 'xpath':
 					result = await self._find_with_xpath(strategy_value, page, browser_session, target_text)
 					if result:
-						element, xpath_used = result
+						xpath_string, xpath_used = result
 						logger.info('         ✅ Found element with XPath')
 						# Record successful attempt
 						strategy_attempts.append(
@@ -95,16 +102,50 @@ class ElementFinder:
 								metadata=metadata,
 							)
 						)
-						# Return a dummy index since we're clicking by element directly
-						return (0, strategy), strategy_attempts
+						# Return XPath string for semantic_executor.py to use in JavaScript click
+						# Note: This differs from semantic strategies which return element_index for service.py
+						return (xpath_string, strategy), strategy_attempts
 					else:
 						error_msg = 'XPath query returned no results'
 						logger.debug(f'         ⏭️  {error_msg}')
 
+				# Try semantic strategies using selector map
+				elif selector_map and strategy_type in [
+					'text_exact',
+					'role_text',
+					'aria_label',
+					'placeholder',
+					'title',
+					'alt_text',
+					'text_fuzzy',
+				]:
+					result = await self._find_with_semantic_strategy(
+						strategy_type, strategy_value, metadata, selector_map, target_text
+					)
+					if result:
+						element_index, matched_element = result
+						logger.info(f'         ✅ Found element with {strategy_type}')
+						# Record successful attempt
+						strategy_attempts.append(
+							StrategyAttempt(
+								strategy_type=strategy_type,
+								strategy_value=strategy_value,
+								priority=priority,
+								success=True,
+								metadata=metadata,
+							)
+						)
+						return (element_index, strategy), strategy_attempts
+					else:
+						error_msg = 'No matching element found in DOM'
+						logger.debug(f'         ⏭️  {error_msg}')
+
 				else:
-					# Skip non-XPath strategies for now
-					# TODO: Implement these strategies using direct page queries
-					error_msg = f'Strategy type "{strategy_type}" not yet supported in element_finder'
+					# Strategy type not supported or no selector map available
+					if not selector_map:
+						error_msg = 'Selector map not available for semantic strategy'
+					else:
+						error_msg = f'Strategy type "{strategy_type}" not supported'
 					logger.debug(f'         ⏭️  {error_msg}')
 
 			except Exception as e:
@@ -127,12 +168,133 @@ class ElementFinder:
 		logger.warning(f'      ❌ All {len(sorted_strategies)} strategies failed')
 		return None, strategy_attempts
 
+	async def _find_with_semantic_strategy(
+		self,
+		strategy_type: str,
+		strategy_value: str,
+		metadata: Dict[str, Any],
+		selector_map: Dict[str, Any],
+		target_text: Optional[str] = None,
+	) -> Optional[tuple[int, Dict[str, Any]]]:
+		"""
+		Find element using semantic strategy in browser-use's selector map.
+
+		Args:
+		    strategy_type: Type of semantic strategy (text_exact, role_text, etc.)
+		    strategy_value: Value to match
+		    metadata: Additional matching metadata
+		    selector_map: Browser-use's selector map (dict of index -> element)
+		    target_text: Optional target text for validation
+
+		Returns:
+		    Tuple of (element_index, element_data) if found, None otherwise
+		"""
+		try:
+			# Iterate through selector map to find matching element
+			for index, element in selector_map.items():
+				# Handle both dict and object formats
+				if isinstance(element, dict):
+					node = element
+				else:
+					# Convert object to dict-like access
+					node = element
+
+				# Check if element matches the strategy
+				if await self._matches_strategy(node, strategy_type, strategy_value, metadata):
+					# Validate element exists and is visible
+					if await self._validate_element_in_map(index, node, target_text):
+						return (int(index), node)
+
+			return None
+
+		except Exception as e:
+			logger.debug(f'Error finding element with semantic strategy: {e}')
+			return None
+
+	async def _validate_element_in_map(self, index: int, node: Any, target_text: Optional[str] = None) -> bool:
+		"""
+		Validate that element in selector map is visible and optionally matches target_text.
+
+		Args:
+		    index: Element index in browser-use's selector map
+		    node: Browser-use DOM element (dict or object)
+		    target_text: Optional text to validate
+
+		Returns:
+		    True if element is valid and visible
+		"""
+		try:
+			# Helper to get attribute from dict or object
+			def get_attr(obj, attr, default=''):
+				if isinstance(obj, dict):
+					return obj.get(attr, default)
+				return getattr(obj, attr, default)
+
+			# Check if node is visible - this is a hard requirement
+			is_visible = get_attr(node, 'is_visible', True)
+			if not is_visible:
+				logger.debug(f'Element at index {index} is not visible')
+				return False
+
+			# If target_text is provided, validate it (advisory only)
+			if target_text:
+				target_lower = target_text.lower().strip()
+
+				# Collect all text sources from the element
+				text_sources = []
+
+				# Get element's visible text
+				node_text = get_attr(node, 'text', '') or ''
+				if node_text:
+					text_sources.append(node_text.lower().strip())
+
+				# Get aria-label
+				aria_label = get_attr(node, 'aria_label', '') or ''
+				if aria_label:
+					text_sources.append(aria_label.lower().strip())
+
+				# Get placeholder
+				placeholder = get_attr(node, 'placeholder', '') or ''
+				if placeholder:
+					text_sources.append(placeholder.lower().strip())
+
+				# Get title
+				title = get_attr(node, 'title', '') or ''
+				if title:
+					text_sources.append(title.lower().strip())
+
+				# Get alt text
+				alt = get_attr(node, 'alt', '') or ''
+				if alt:
+					text_sources.append(alt.lower().strip())
+
+				# Get name attribute
+				attrs = get_attr(node, 'attributes', {}) or {}
+				if isinstance(attrs, dict) and 'name' in attrs:
+					text_sources.append(attrs['name'].lower().strip())
+
+				# Check if target_text matches any text source
+				found_match = any(target_lower in source or source in target_lower for source in text_sources if source)
+
+				if not found_match:
+					logger.debug(
+						f'⚠️ Target text "{target_text}" not found in element at index {index}, but proceeding with selector.'
+					)
+				else:
+					logger.debug(f'✓ Target text "{target_text}" validated in element at index {index}')
+
+			return True
+
+		except Exception as e:
+			logger.debug(f'Error validating element at index {index}: {e}')
+			return False
+
 	async def _matches_strategy(self, node: Any, strategy_type: str, value: str, metadata: Dict[str, Any]) -> bool:
 		"""
 		Check if a DOM node matches a semantic strategy.
 
 		Args:
-		    node: EnhancedDOMTreeNode from browser-use
+		    node: EnhancedDOMTreeNode from browser-use (dict or object)
 		    strategy_type: Type of strategy (text_exact, role_text, etc.)
 		    value: Value to match
 		    metadata: Additional matching metadata
@@ -141,44 +303,50 @@ class ElementFinder:
 		    True if node matches the strategy
 		"""
 		try:
+			# Helper to get attribute from dict or object
+			def get_attr(obj, attr, default=''):
+				if isinstance(obj, dict):
+					return obj.get(attr, default)
+				return getattr(obj, attr, default)
+
 			# Semantic Strategy 1: Exact text match
 			if strategy_type == 'text_exact':
-				node_text = getattr(node, 'text', '') or ''
+				node_text = get_attr(node, 'text', '') or ''
 				return node_text.strip() == value
 
 			# Semantic Strategy 2: Role + text
 			elif strategy_type == 'role_text':
 				expected_role = metadata.get('role', '').lower()
-				node_role = getattr(node, 'role', '') or getattr(node, 'tag_name', '')
-				node_role = node_role.lower()
-				node_text = getattr(node, 'text', '') or ''
+				node_role = get_attr(node, 'role', '') or get_attr(node, 'tag_name', '')
+				node_role = node_role.lower() if node_role else ''
+				node_text = get_attr(node, 'text', '') or ''
 
 				return node_role == expected_role and node_text.strip() == value
 
 			# Semantic Strategy 3: ARIA label
 			elif strategy_type == 'aria_label':
-				aria_label = getattr(node, 'aria_label', '') or ''
+				aria_label = get_attr(node, 'aria_label', '') or ''
 				return aria_label.strip() == value
 
 			# Semantic Strategy 4: Placeholder
 			elif strategy_type == 'placeholder':
-				placeholder = getattr(node, 'placeholder', '') or ''
+				placeholder = get_attr(node, 'placeholder', '') or ''
 				return placeholder.strip() == value
 
 			# Semantic Strategy 5: Title attribute
 			elif strategy_type == 'title':
-				title = getattr(node, 'title', '') or ''
+				title = get_attr(node, 'title', '') or ''
 				return title.strip() == value
 
 			# Semantic Strategy 6: Alt text (images)
 			elif strategy_type == 'alt_text':
-				alt = getattr(node, 'alt', '') or ''
+				alt = get_attr(node, 'alt', '') or ''
 				return alt.strip() == value
 
 			# Semantic Strategy 7: Fuzzy text match
 			elif strategy_type == 'text_fuzzy':
 				threshold = metadata.get('threshold', 0.8)
-				node_text = getattr(node, 'text', '') or ''
+				node_text = get_attr(node, 'text', '') or ''
 				return self._fuzzy_match(value, node_text.strip(), threshold)
 
 			# Note: XPath and CSS strategies are handled separately in find_element_with_strategies

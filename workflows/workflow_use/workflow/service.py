@@ -182,23 +182,34 @@ class Workflow:
 				self._current_strategy_attempts = strategy_attempts
 
 				if result:
-					element_index, strategy_used = result
-					logger.info(f'   ✅ Element found at index {element_index} using strategy: {strategy_used.get("type")}')
+					element_index_or_xpath, strategy_used = result
+					strategy_type = strategy_used.get('type')
+					logger.info(f'   ✅ Element found using strategy: {strategy_type}')
 
-					# Use the found index to execute the action through browser-use's controller
-					# This ensures we use browser-use's native semantic action system
-					if action_name == 'click':
-						# Override the index param with our found index
-						params['index'] = element_index
-						logger.info(f'   ✅ Will click element at index {element_index} (semantic-only)')
+					# XPath strategies return a string, not an index
+					# They should be handled by semantic_executor, not here
+					if strategy_type == 'xpath':
+						logger.info('   ⚠️  XPath strategy found - this should be handled by semantic_executor, not service.py')
+						logger.info('   ⚠️  Falling back to full controller')
+					else:
+						# Semantic strategies return element index
+						element_index = element_index_or_xpath
+						logger.info(f'   ✅ Element found at index {element_index}')
 
-					elif action_name == 'input':
-						# Override the index param with our found index
-						params['index'] = element_index
-						logger.info(f'   ✅ Will input to element at index {element_index} (semantic-only)')
+						# Use the found index to execute the action through browser-use's controller
+						# This ensures we use browser-use's native semantic action system
+						if action_name == 'click':
+							# Override the index param with our found index
+							params['index'] = element_index
+							logger.info(f'   ✅ Will click element at index {element_index} (semantic-only)')
 
-					# Continue to controller execution below with updated index
-					# This way we leverage browser-use's robust action handling
+						elif action_name == 'input':
+							# Override the index param with our found index
+							params['index'] = element_index
+							logger.info(f'   ✅ Will input to element at index {element_index} (semantic-only)')
+
+						# Continue to controller execution below with updated index
+						# This way we leverage browser-use's robust action handling
 
 				else:
 					logger.warning('   ⚠️  Multi-strategy finding failed, falling back to full controller')
