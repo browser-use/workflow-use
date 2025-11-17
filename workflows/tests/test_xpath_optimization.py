@@ -367,7 +367,29 @@ class TestXPathOptimization:
 		assert len(xpath_values) == len(unique_values), f'Found duplicate XPath strategies: {xpath_values}'
 
 	# ============================================================================
-	# Test 19: Total Strategy Limit
+	# Test 19: Max Alternatives = 1 (Only Absolute XPath)
+	# ============================================================================
+	def test_max_alternatives_one(self):
+		"""Test that max_alternatives=1 returns only the absolute xpath (no optimized alternatives)"""
+		absolute_xpath = '/html/body/form/div[3]/table/tbody/tr[2]/td[3]/a'
+
+		element_info = {
+			'tag': 'a',
+			'text': 'License 12345',
+			'attributes': {'class': 'license-link', 'href': '/license/12345'},
+		}
+
+		# Request only 1 alternative
+		result = self.optimizer.optimize_xpath(absolute_xpath, element_info, max_alternatives=1)
+
+		# Should return exactly 1 XPath (the absolute one only)
+		assert len(result) == 1, f'Expected exactly 1 XPath with max_alternatives=1, got {len(result)}'
+
+		# Should be the absolute xpath
+		assert result[0] == absolute_xpath, f'Expected absolute xpath, got {result[0]}'
+
+	# ============================================================================
+	# Test 20: Total Strategy Limit
 	# ============================================================================
 	def test_total_strategy_limit(self):
 		"""Test that total strategies are limited to max_total_strategies"""

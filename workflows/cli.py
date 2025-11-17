@@ -1223,13 +1223,13 @@ def run_workflow_command(
 		input_definitions = workflow_obj.inputs_def  # Access inputs_def from the Workflow instance
 
 		if input_definitions:  # Check if the list is not empty
-			# Check if all inputs have defaults (can skip prompting)
-			all_inputs_have_defaults = all(
-				getattr(input_def, 'default', None) is not None or not input_def.required for input_def in input_definitions
-			)
+			# Check if all REQUIRED inputs have defaults (can skip prompting)
+			# Note: Optional inputs can be skipped, so we only check required ones
+			required_inputs = [inp for inp in input_definitions if inp.required]
+			all_required_have_defaults = all(getattr(input_def, 'default', None) is not None for input_def in required_inputs)
 
-			if all_inputs_have_defaults:
-				# All inputs have defaults or are optional, use defaults automatically
+			if all_required_have_defaults:
+				# All required inputs have defaults, use defaults automatically
 				typer.echo()  # Add space
 				typer.echo(typer.style('Using default values for workflow inputs:', bold=True))
 				typer.echo()  # Add space
@@ -1240,6 +1240,9 @@ def run_workflow_command(
 						inputs[input_def.name] = default_value
 						var_name_styled = typer.style(input_def.name, fg=typer.colors.CYAN, bold=True)
 						typer.echo(f'  • {var_name_styled} = {typer.style(str(default_value), fg=typer.colors.BLUE)}')
+					elif not input_def.required:
+						var_name_styled = typer.style(input_def.name, fg=typer.colors.CYAN, bold=True)
+						typer.echo(f'  • {var_name_styled} = {typer.style("(not provided, optional)", fg=typer.colors.YELLOW)}')
 				typer.echo()
 			else:
 				# Some inputs need user input
@@ -1391,13 +1394,13 @@ def run_workflow_no_ai_command(
 		input_definitions = workflow_obj.inputs_def  # Access inputs_def from the Workflow instance
 
 		if input_definitions:  # Check if the list is not empty
-			# Check if all inputs have defaults (can skip prompting)
-			all_inputs_have_defaults = all(
-				getattr(input_def, 'default', None) is not None or not input_def.required for input_def in input_definitions
-			)
+			# Check if all REQUIRED inputs have defaults (can skip prompting)
+			# Note: Optional inputs can be skipped, so we only check required ones
+			required_inputs = [inp for inp in input_definitions if inp.required]
+			all_required_have_defaults = all(getattr(input_def, 'default', None) is not None for input_def in required_inputs)
 
-			if all_inputs_have_defaults:
-				# All inputs have defaults or are optional, use defaults automatically
+			if all_required_have_defaults:
+				# All required inputs have defaults, use defaults automatically
 				typer.echo()  # Add space
 				typer.echo(typer.style('Using default values for workflow inputs:', bold=True))
 				typer.echo()  # Add space
@@ -1408,6 +1411,9 @@ def run_workflow_no_ai_command(
 						inputs[input_def.name] = default_value
 						var_name_styled = typer.style(input_def.name, fg=typer.colors.CYAN, bold=True)
 						typer.echo(f'  • {var_name_styled} = {typer.style(str(default_value), fg=typer.colors.BLUE)}')
+					elif not input_def.required:
+						var_name_styled = typer.style(input_def.name, fg=typer.colors.CYAN, bold=True)
+						typer.echo(f'  • {var_name_styled} = {typer.style("(not provided, optional)", fg=typer.colors.YELLOW)}')
 				typer.echo()
 			else:
 				# Some inputs need user input
@@ -2500,13 +2506,13 @@ def run_stored_workflow(
 				else:
 					typer.echo(str(result))
 		else:
-			# Check if all inputs have defaults (can run without user input)
-			all_inputs_have_defaults = all(
-				getattr(inp, 'default', None) is not None or not inp.required for inp in workflow_definition.input_schema
-			)
+			# Check if all REQUIRED inputs have defaults (can run without user input)
+			# Note: Optional inputs can be skipped, so we only check required ones
+			required_inputs = [inp for inp in workflow_definition.input_schema if inp.required]
+			all_required_have_defaults = all(getattr(inp, 'default', None) is not None for inp in required_inputs)
 
-			if all_inputs_have_defaults:
-				# All inputs have defaults or are optional, run with defaults
+			if all_required_have_defaults:
+				# All required inputs have defaults, run with defaults
 				typer.secho('▶️  Running workflow with default values...', fg=typer.colors.CYAN)
 				typer.echo()
 				typer.echo('Using default values:')
@@ -2514,14 +2520,17 @@ def run_stored_workflow(
 					default_value = getattr(inp, 'default', None)
 					if default_value is not None:
 						typer.echo(f'  • {inp.name} = {typer.style(str(default_value), fg=typer.colors.BLUE)}')
+					elif not inp.required:
+						typer.echo(f'  • {inp.name} = {typer.style("(not provided, optional)", fg=typer.colors.YELLOW)}')
 				typer.echo()
 
-				# Build inputs dict with defaults
+				# Build inputs dict with defaults (only include values that have defaults)
 				inputs = {}
 				for inp in workflow_definition.input_schema:
 					default_value = getattr(inp, 'default', None)
 					if default_value is not None:
 						inputs[inp.name] = default_value
+					# Optional parameters without defaults are simply not included
 
 				workflow = Workflow.load_from_file(
 					temp_file, llm_instance, page_extraction_llm=page_extraction_llm, use_cloud=use_cloud
@@ -2540,7 +2549,7 @@ def run_stored_workflow(
 					else:
 						typer.echo(str(result))
 			else:
-				# Has inputs but no prompt - need to collect them
+				# Has required inputs without defaults - need to collect them
 				typer.secho('This workflow requires input parameters:', fg=typer.colors.YELLOW)
 				typer.echo()
 				for inp in workflow_definition.input_schema:

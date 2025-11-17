@@ -78,23 +78,33 @@ class XPathOptimizer:
 		    absolute_xpath: Full XPath like /html/body/div[1]/div[2]/table/tbody/tr[3]/td[2]/a
 		    element_info: Optional dict with element details (tag, text, attributes, etc.)
 		    max_alternatives: Maximum number of alternatives to return (default: 2)
-		        - Always includes absolute xpath as last resort if needed
-		        - Returns best N-1 alternatives + absolute xpath fallback
+		        - If max_alternatives <= 1: Returns ONLY the absolute xpath (no optimized alternatives)
+		        - If max_alternatives >= 2: Returns best N-1 optimized alternatives + absolute xpath fallback
 
 		Returns:
-		    List of XPath alternatives (max: max_alternatives), ordered from most to least robust
+		    List of XPath alternatives (exactly max_alternatives), ordered from most to least robust
 
-		Example:
+		Examples:
 		    >>> optimizer = XPathOptimizer()
+
+		    >>> # max_alternatives=1 returns only absolute xpath
+		    >>> xpaths = optimizer.optimize_xpath(xpath, element_info, max_alternatives=1)
+		    >>> # Returns: [original_xpath]
+
+		    >>> # max_alternatives=2 returns 1 optimized + 1 absolute
 		    >>> xpaths = optimizer.optimize_xpath(
 		    ...     '/html/body/form/div[3]/table/tbody/tr[2]/td[3]/a',
 		    ...     {'tag': 'a', 'text': '12345', 'attributes': {'class': 'license-link'}},
 		    ...     max_alternatives=2,
 		    ... )
-		    >>> # Returns (2 best only): [
-		    ...     '//table//tr[2]/td[3]/a',  # Best: Table-anchored
-		    ...     original_xpath  # Fallback: Absolute path
+		    >>> # Returns: [
+		    ...     '//table//tr[2]/td[3]/a',  # Best optimized
+		    ...     original_xpath              # Absolute fallback
 		    ... ]
+
+		    >>> # max_alternatives=3 returns 2 optimized + 1 absolute
+		    >>> xpaths = optimizer.optimize_xpath(xpath, element_info, max_alternatives=3)
+		    >>> # Returns: [optimized_1, optimized_2, original_xpath]
 		"""
 		alternatives = []
 
@@ -131,14 +141,14 @@ class XPathOptimizer:
 			f'XPath optimizer: Generated {len(unique_alternatives)} unique alternatives before limiting (max_alternatives={max_alternatives})'
 		)
 
-		# Limit to best N-1 alternatives (save room for absolute xpath fallback)
-		if max_alternatives > 1:
-			unique_alternatives = unique_alternatives[: max_alternatives - 1]
+		# Limit alternatives based on max_alternatives setting
+		if max_alternatives <= 1:
+			# If max is 1 or less, return ONLY the absolute xpath (no optimized alternatives)
+			unique_alternatives = [absolute_xpath]
 		else:
-			unique_alternatives = unique_alternatives[:1]
-
-		# Always add original absolute path as last resort
-		unique_alternatives.append(absolute_xpath)
+			# Otherwise, keep best N-1 optimized alternatives and add absolute xpath as fallback
+			unique_alternatives = unique_alternatives[: max_alternatives - 1]
+			unique_alternatives.append(absolute_xpath)
 
 		logger.debug(f'XPath optimizer: Returning {len(unique_alternatives)} alternatives (limit={max_alternatives})')
 
