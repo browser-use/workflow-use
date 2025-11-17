@@ -36,6 +36,8 @@ class HealingService:
 		remove_descriptions: bool = True,
 		remove_verification_checks: bool = True,
 		remove_expected_outcomes: bool = True,
+		# NEW: XPath optimization options
+		enable_xpath_optimization: bool = True,
 	):
 		self.llm = llm
 		self.enable_variable_extraction = enable_variable_extraction
@@ -52,9 +54,16 @@ class HealingService:
 		self.remove_verification_checks = remove_verification_checks
 		self.remove_expected_outcomes = remove_expected_outcomes
 
+		# XPath optimization settings
+		self.enable_xpath_optimization = enable_xpath_optimization
+
 		self.variable_extractor = VariableExtractor(llm=llm) if enable_variable_extraction else None
 		self.deterministic_converter = DeterministicWorkflowConverter(llm=llm) if use_deterministic_conversion else None
-		self.selector_generator = SelectorGenerator()  # Initialize multi-strategy selector generator
+		self.selector_generator = SelectorGenerator(
+			enable_xpath_optimization=enable_xpath_optimization,
+			max_xpath_alternatives=2,  # Limit to 2 XPath alternatives (1 optimized + 1 absolute fallback)
+			max_total_strategies=2,  # Limit to 2 total strategies (semantic + xpath combined)
+		)  # Initialize multi-strategy selector generator
 		# Note: validator will be initialized with extraction_llm in generate_workflow_from_prompt
 		self.validator = None
 
@@ -79,7 +88,6 @@ class HealingService:
 					print(f'   Confidence threshold: {self.pattern_variable_confidence}')
 
 					# Import the identifier directly to avoid package issues
-					import sys
 					import importlib.util
 					from pathlib import Path
 

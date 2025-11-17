@@ -9,6 +9,8 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
+from workflow_use.healing.xpath_optimizer import XPathOptimizer
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -61,6 +63,23 @@ class SelectorGenerator:
 	9. Fuzzy text match (resilient to small changes)
 	10. Direct CSS/xpath (fallback)
 	"""
+
+	def __init__(self, enable_xpath_optimization: bool = True, max_xpath_alternatives: int = 2, max_total_strategies: int = 2):
+		"""
+		Initialize the SelectorGenerator.
+
+		Args:
+		    enable_xpath_optimization: If True, use XPathOptimizer to generate multiple
+		        robust XPath alternatives instead of a single XPath fallback
+		    max_xpath_alternatives: Maximum number of XPath alternatives to generate (default: 2)
+		        Includes the absolute xpath fallback, so 2 means 1 optimized + 1 absolute
+		    max_total_strategies: Maximum total number of strategies to return (default: 2)
+		        Limits the total number of strategies across all types (semantic + xpath)
+		"""
+		self.enable_xpath_optimization = enable_xpath_optimization
+		self.max_xpath_alternatives = max_xpath_alternatives
+		self.max_total_strategies = max_total_strategies
+		self.xpath_optimizer = XPathOptimizer() if enable_xpath_optimization else None
 
 	def generate_strategies(self, element_data: Dict[str, Any], include_xpath_fallback: bool = True) -> List[SelectorStrategy]:
 		"""
@@ -176,21 +195,97 @@ class SelectorGenerator:
 
 		# Strategy 8: XPath fallback (lowest priority but most powerful)
 		if include_xpath_fallback:
-			# Try to use pre-computed XPath first, then generate
-			xpath = element_data.get('xpath') or self._generate_xpath(tag, text, attrs)
+			if self.enable_xpath_optimization and self.xpath_optimizer:
+				# NEW: Use XPathOptimizer to generate multiple robust XPath alternatives
+				absolute_xpath = element_data.get('xpath', '')
 
-			if xpath:
-				strategies.append(
-					SelectorStrategy(
-						type='xpath',
-						value=xpath,
-						priority=8,
-						metadata={'tag': tag, 'fallback': True},
+				if absolute_xpath:
+					# Prepare element info for optimizer
+					element_info = {
+						'tag': tag,
+						'text': text,
+						'attributes': attrs,
+					}
+
+					# Generate optimized XPath alternatives (limited to max_xpath_alternatives)
+					try:
+						optimized_xpaths = self.xpath_optimizer.optimize_xpath(
+							absolute_xpath, element_info, max_alternatives=self.max_xpath_alternatives
+						)
+
+						# Add each optimized XPath with appropriate priority
+						# Priority starts at 3 for most robust, increases for less robust
+						base_priority = 3
+						for i, opt_xpath in enumerate(optimized_xpaths):
+							# Skip if this is the absolute xpath (we'll add it last)
+							if opt_xpath == absolute_xpath and i < len(optimized_xpaths) - 1:
+								continue
+
+							# Determine priority based on XPath characteristics
+							priority = self._calculate_xpath_priority(opt_xpath, is_absolute=(opt_xpath == absolute_xpath))
+
+							# Determine strategy type
+							strategy_name = self._determine_xpath_strategy(opt_xpath)
+
+							strategies.append(
+								SelectorStrategy(
+									type='xpath',
+									value=opt_xpath,
+									priority=priority,
+									metadata={
+										'tag': tag,
+										'strategy': strategy_name,
+										'optimized': True,
+										'index': i,
+									},
+								)
+							)
+					except Exception as e:
+						logger.debug(f'XPath optimization failed, using fallback: {e}')
+						# Fall back to simple XPath generation
+						xpath = self._generate_xpath(tag, text, attrs)
+						if xpath:
+							strategies.append(
+								SelectorStrategy(
+									type='xpath',
+									value=xpath,
+									priority=8,
+									metadata={'tag': tag, 'fallback': True},
+								)
+							)
+				else:
+					# No absolute xpath available, generate one
+					xpath = self._generate_xpath(tag, text, attrs)
+					if xpath:
+						strategies.append(
+							SelectorStrategy(
+								type='xpath',
+								value=xpath,
+								priority=8,
+								metadata={'tag': tag, 'fallback': True},
+							)
+						)
+			else:
+				# XPath optimization disabled, use original behavior
+				xpath = element_data.get('xpath') or self._generate_xpath(tag, text, attrs)
+
+				if xpath:
+					strategies.append(
+						SelectorStrategy(
+							type='xpath',
+							value=xpath,
+							priority=8,
+							metadata={'tag': tag, 'fallback': True},
+						)
 					)
-				)
 
 		# Sort by priority (lower number = higher priority)
 		strategies.sort(key=lambda s: s.priority)
+
+		# Limit total number of strategies if configured
+		if self.max_total_strategies and len(strategies) > self.max_total_strategies:
+			logger.debug(f'Limiting strategies from {len(strategies)} to {self.max_total_strategies} (keeping highest priority)')
+			strategies = strategies[: self.max_total_strategies]
 
 		return strategies
 
@@ -382,6 +477,117 @@ class SelectorGenerator:
 	def _escape_quotes(self, value: str) -> str:
 		"""Escape quotes in CSS selector values."""
 		return value.replace("'", "\\'").replace('"', '\\"')
+
+	def _calculate_xpath_priority(self, xpath: str, is_absolute: bool = False) -> int:
+		"""
+		Calculate priority score based on XPath characteristics.
+
+		Lower priority number = higher priority (tried first)
+
+		Args:
+		    xpath: The XPath string to evaluate
+		    is_absolute: Whether this is an absolute XPath
+
+		Returns:
+		    Priority score (1-10, lower is better)
+		"""
+		# Absolute XPath = lowest priority (fallback only)
+		if is_absolute or xpath.startswith('/html/body'):
+			return 10
+
+		# ID-based XPath = highest priority
+		if '@id=' in xpath or '@id =' in xpath:
+			return 2
+
+		# Name attribute-based = very high priority
+		if '@name=' in xpath or '@name =' in xpath:
+			return 2
+
+		# Data attributes = very high priority
+		if '@data-' in xpath:
+			return 2
+
+		# ARIA attributes = high priority
+		if '@aria-label=' in xpath or '@aria-labelledby=' in xpath or '@role=' in xpath:
+			return 3
+
+		# Table-anchored XPath = medium-high priority
+		if '//table//' in xpath and ('tr[' in xpath or 'td[' in xpath):
+			return 4
+
+		# Form-anchored XPath = medium-high priority
+		if '//form//' in xpath:
+			return 4
+
+		# Text-based in stable container = medium priority
+		if ('//table//' in xpath or '//form//' in xpath or '//nav//' in xpath) and 'text()' in xpath:
+			return 5
+
+		# Class-based = medium-low priority (classes can be dynamic)
+		if '@class=' in xpath or 'contains(@class' in xpath:
+			return 6
+
+		# Text-based without stable container = low priority
+		if 'text()' in xpath or 'contains(text()' in xpath:
+			return 7
+
+		# Positional selectors = very low priority
+		if '[' in xpath and ']' in xpath and xpath.count('[') > 1:
+			return 8
+
+		# Default: medium priority
+		return 5
+
+	def _determine_xpath_strategy(self, xpath: str) -> str:
+		"""
+		Determine the strategy type/name based on XPath characteristics.
+
+		Args:
+		    xpath: The XPath string to evaluate
+
+		Returns:
+		    Strategy name (e.g., 'id-based', 'table-anchored', 'text-based')
+		"""
+		if xpath.startswith('/html/body'):
+			return 'absolute-fallback'
+
+		if '@id=' in xpath or '@id =' in xpath:
+			return 'id-based'
+
+		if '@name=' in xpath or '@name =' in xpath:
+			return 'name-based'
+
+		if '@data-' in xpath:
+			return 'data-attribute'
+
+		if '@aria-label=' in xpath or '@aria-labelledby=' in xpath:
+			return 'aria-based'
+
+		if '@role=' in xpath:
+			return 'role-based'
+
+		if '//table//' in xpath and ('tr[' in xpath or 'td[' in xpath):
+			return 'table-anchored'
+
+		if '//form//' in xpath:
+			return 'form-anchored'
+
+		if '//nav//' in xpath:
+			return 'nav-anchored'
+
+		if 'text()=' in xpath:
+			return 'text-exact'
+
+		if 'contains(text()' in xpath:
+			return 'text-contains'
+
+		if '@class=' in xpath or 'contains(@class' in xpath:
+			return 'class-based'
+
+		if '[' in xpath and ']' in xpath:
+			return 'positional'
+
+		return 'relative-xpath'
 
 	def generate_strategies_dict(self, element_data: Dict[str, Any]) -> List[Dict[str, Any]]:
 		"""

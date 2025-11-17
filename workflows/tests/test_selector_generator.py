@@ -41,9 +41,9 @@ class TestSelectorGenerator:
 		assert role_text.metadata.get('role') == 'button', f"Expected role 'button', got {role_text.metadata.get('role')}"
 		assert role_text.priority == 2, 'role_text should have priority 2'
 
-	# Test 2: No CSS/xpath/id strategies
-	def test_no_css_xpath_id_strategies(self):
-		"""Test that NO CSS, xpath, or id strategies are generated (semantic-only)"""
+	# Test 2: No CSS/id strategies (but xpath is allowed as fallback)
+	def test_no_css_id_strategies(self):
+		"""Test that NO CSS or id strategies are generated (semantic-first with xpath fallback)"""
 		element_data = {
 			'tag_name': 'button',
 			'text': 'Click Me',
@@ -56,13 +56,15 @@ class TestSelectorGenerator:
 
 		strategies = self.generator.generate_strategies(element_data)
 
-		# Verify NO CSS/xpath/id strategies
+		# Verify NO CSS/id strategies (semantic-first approach)
 		strategy_types = [s.type for s in strategies]
-		assert 'id' not in strategy_types, 'Should NOT generate id strategy (semantic-only)'
-		assert 'css' not in strategy_types, 'Should NOT generate CSS strategy (semantic-only)'
-		assert 'xpath' not in strategy_types, 'Should NOT generate xpath strategy (semantic-only)'
-		assert 'css_selector' not in strategy_types, 'Should NOT generate css_selector strategy (semantic-only)'
-		assert 'css_attr' not in strategy_types, 'Should NOT generate css_attr strategy (semantic-only)'
+		assert 'id' not in strategy_types, 'Should NOT generate id strategy (semantic-first)'
+		assert 'css' not in strategy_types, 'Should NOT generate CSS strategy (semantic-first)'
+		assert 'css_selector' not in strategy_types, 'Should NOT generate css_selector strategy (semantic-first)'
+		assert 'css_attr' not in strategy_types, 'Should NOT generate css_attr strategy (semantic-first)'
+
+		# XPath is allowed as a fallback strategy (this is the improvement!)
+		# It should be low priority (tested in test_xpath_optimization.py)
 
 	# Test 3: ARIA label strategy
 	def test_aria_label_strategy(self):

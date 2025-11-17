@@ -1223,58 +1223,78 @@ def run_workflow_command(
 		input_definitions = workflow_obj.inputs_def  # Access inputs_def from the Workflow instance
 
 		if input_definitions:  # Check if the list is not empty
-			typer.echo()  # Add space
-			typer.echo(typer.style('Provide values for the following workflow inputs:', bold=True))
-			typer.echo()  # Add space
+			# Check if all inputs have defaults (can skip prompting)
+			all_inputs_have_defaults = all(
+				getattr(input_def, 'default', None) is not None or not input_def.required for input_def in input_definitions
+			)
 
-			for input_def in input_definitions:
-				var_name_styled = typer.style(input_def.name, fg=typer.colors.CYAN, bold=True)
-				prompt_question = typer.style(f'Enter value for {var_name_styled}', bold=True)
+			if all_inputs_have_defaults:
+				# All inputs have defaults or are optional, use defaults automatically
+				typer.echo()  # Add space
+				typer.echo(typer.style('Using default values for workflow inputs:', bold=True))
+				typer.echo()  # Add space
 
-				var_type = input_def.type.lower()  # type is a direct attribute
-				is_required = input_def.required
-				default_value = getattr(input_def, 'default', None)
+				for input_def in input_definitions:
+					default_value = getattr(input_def, 'default', None)
+					if default_value is not None:
+						inputs[input_def.name] = default_value
+						var_name_styled = typer.style(input_def.name, fg=typer.colors.CYAN, bold=True)
+						typer.echo(f'  • {var_name_styled} = {typer.style(str(default_value), fg=typer.colors.BLUE)}')
+				typer.echo()
+			else:
+				# Some inputs need user input
+				typer.echo()  # Add space
+				typer.echo(typer.style('Provide values for the following workflow inputs:', bold=True))
+				typer.echo()  # Add space
 
-				type_info_str = f'type: {var_type}'
-				if is_required:
-					status_str = typer.style('required', fg=typer.colors.RED)
-				else:
-					status_str = typer.style('optional', fg=typer.colors.YELLOW)
+				for input_def in input_definitions:
+					var_name_styled = typer.style(input_def.name, fg=typer.colors.CYAN, bold=True)
+					prompt_question = typer.style(f'Enter value for {var_name_styled}', bold=True)
 
-				# Add format information if available
-				format_info_str = ''
-				if hasattr(input_def, 'format') and input_def.format:
-					format_info_str = f', format: {typer.style(input_def.format, fg=typer.colors.GREEN)}'
+					var_type = input_def.type.lower()  # type is a direct attribute
+					is_required = input_def.required
+					default_value = getattr(input_def, 'default', None)
 
-				# Add default value information if available
-				default_info_str = ''
-				if default_value is not None:
-					default_info_str = f', default: {typer.style(str(default_value), fg=typer.colors.BLUE)}'
+					type_info_str = f'type: {var_type}'
+					if is_required:
+						status_str = typer.style('required', fg=typer.colors.RED)
+					else:
+						status_str = typer.style('optional', fg=typer.colors.YELLOW)
 
-				full_prompt_text = f'{prompt_question} ({status_str}, {type_info_str}{format_info_str}{default_info_str})'
+					# Add format information if available
+					format_info_str = ''
+					if hasattr(input_def, 'format') and input_def.format:
+						format_info_str = f', format: {typer.style(input_def.format, fg=typer.colors.GREEN)}'
 
-				input_val = None
-				if var_type == 'bool':
-					input_val = typer.confirm(full_prompt_text, default=default_value if default_value is not None else None)
-				elif var_type == 'number':
-					input_val = typer.prompt(
-						full_prompt_text, type=float, default=default_value if default_value is not None else ...
-					)
-				elif var_type == 'string':  # Default to string for other unknown types as well
-					input_val = typer.prompt(
-						full_prompt_text, type=str, default=default_value if default_value is not None else ...
-					)
-				else:  # Should ideally not happen if schema is validated, but good to have a fallback
-					typer.secho(
-						f"Warning: Unknown type '{var_type}' for variable '{input_def.name}'. Treating as string.",
-						fg=typer.colors.YELLOW,
-					)
-					input_val = typer.prompt(
-						full_prompt_text, type=str, default=default_value if default_value is not None else ...
-					)
+					# Add default value information if available
+					default_info_str = ''
+					if default_value is not None:
+						default_info_str = f', default: {typer.style(str(default_value), fg=typer.colors.BLUE)}'
 
-				inputs[input_def.name] = input_val
-				typer.echo()  # Add space after each prompt
+					full_prompt_text = f'{prompt_question} ({status_str}, {type_info_str}{format_info_str}{default_info_str})'
+
+					input_val = None
+					if var_type == 'bool':
+						input_val = typer.confirm(full_prompt_text, default=default_value if default_value is not None else None)
+					elif var_type == 'number':
+						input_val = typer.prompt(
+							full_prompt_text, type=float, default=default_value if default_value is not None else ...
+						)
+					elif var_type == 'string':  # Default to string for other unknown types as well
+						input_val = typer.prompt(
+							full_prompt_text, type=str, default=default_value if default_value is not None else ...
+						)
+					else:  # Should ideally not happen if schema is validated, but good to have a fallback
+						typer.secho(
+							f"Warning: Unknown type '{var_type}' for variable '{input_def.name}'. Treating as string.",
+							fg=typer.colors.YELLOW,
+						)
+						input_val = typer.prompt(
+							full_prompt_text, type=str, default=default_value if default_value is not None else ...
+						)
+
+					inputs[input_def.name] = input_val
+					typer.echo()  # Add space after each prompt
 		else:
 			typer.echo('No input schema found in the workflow, or no properties defined. Proceeding without inputs.')
 
@@ -1371,58 +1391,78 @@ def run_workflow_no_ai_command(
 		input_definitions = workflow_obj.inputs_def  # Access inputs_def from the Workflow instance
 
 		if input_definitions:  # Check if the list is not empty
-			typer.echo()  # Add space
-			typer.echo(typer.style('Provide values for the following workflow inputs:', bold=True))
-			typer.echo()  # Add space
+			# Check if all inputs have defaults (can skip prompting)
+			all_inputs_have_defaults = all(
+				getattr(input_def, 'default', None) is not None or not input_def.required for input_def in input_definitions
+			)
 
-			for input_def in input_definitions:
-				var_name_styled = typer.style(input_def.name, fg=typer.colors.CYAN, bold=True)
-				prompt_question = typer.style(f'Enter value for {var_name_styled}', bold=True)
+			if all_inputs_have_defaults:
+				# All inputs have defaults or are optional, use defaults automatically
+				typer.echo()  # Add space
+				typer.echo(typer.style('Using default values for workflow inputs:', bold=True))
+				typer.echo()  # Add space
 
-				var_type = input_def.type.lower()  # type is a direct attribute
-				is_required = input_def.required
-				default_value = getattr(input_def, 'default', None)
+				for input_def in input_definitions:
+					default_value = getattr(input_def, 'default', None)
+					if default_value is not None:
+						inputs[input_def.name] = default_value
+						var_name_styled = typer.style(input_def.name, fg=typer.colors.CYAN, bold=True)
+						typer.echo(f'  • {var_name_styled} = {typer.style(str(default_value), fg=typer.colors.BLUE)}')
+				typer.echo()
+			else:
+				# Some inputs need user input
+				typer.echo()  # Add space
+				typer.echo(typer.style('Provide values for the following workflow inputs:', bold=True))
+				typer.echo()  # Add space
 
-				type_info_str = f'type: {var_type}'
-				if is_required:
-					status_str = typer.style('required', fg=typer.colors.RED)
-				else:
-					status_str = typer.style('optional', fg=typer.colors.YELLOW)
+				for input_def in input_definitions:
+					var_name_styled = typer.style(input_def.name, fg=typer.colors.CYAN, bold=True)
+					prompt_question = typer.style(f'Enter value for {var_name_styled}', bold=True)
 
-				# Add format information if available
-				format_info_str = ''
-				if hasattr(input_def, 'format') and input_def.format:
-					format_info_str = f', format: {typer.style(input_def.format, fg=typer.colors.GREEN)}'
+					var_type = input_def.type.lower()  # type is a direct attribute
+					is_required = input_def.required
+					default_value = getattr(input_def, 'default', None)
 
-				# Add default value information if available
-				default_info_str = ''
-				if default_value is not None:
-					default_info_str = f', default: {typer.style(str(default_value), fg=typer.colors.BLUE)}'
+					type_info_str = f'type: {var_type}'
+					if is_required:
+						status_str = typer.style('required', fg=typer.colors.RED)
+					else:
+						status_str = typer.style('optional', fg=typer.colors.YELLOW)
 
-				full_prompt_text = f'{prompt_question} ({status_str}, {type_info_str}{format_info_str}{default_info_str})'
+					# Add format information if available
+					format_info_str = ''
+					if hasattr(input_def, 'format') and input_def.format:
+						format_info_str = f', format: {typer.style(input_def.format, fg=typer.colors.GREEN)}'
 
-				input_val = None
-				if var_type == 'bool':
-					input_val = typer.confirm(full_prompt_text, default=default_value if default_value is not None else None)
-				elif var_type == 'number':
-					input_val = typer.prompt(
-						full_prompt_text, type=float, default=default_value if default_value is not None else ...
-					)
-				elif var_type == 'string':  # Default to string for other unknown types as well
-					input_val = typer.prompt(
-						full_prompt_text, type=str, default=default_value if default_value is not None else ...
-					)
-				else:  # Should ideally not happen if schema is validated, but good to have a fallback
-					typer.secho(
-						f"Warning: Unknown type '{var_type}' for variable '{input_def.name}'. Treating as string.",
-						fg=typer.colors.YELLOW,
-					)
-					input_val = typer.prompt(
-						full_prompt_text, type=str, default=default_value if default_value is not None else ...
-					)
+					# Add default value information if available
+					default_info_str = ''
+					if default_value is not None:
+						default_info_str = f', default: {typer.style(str(default_value), fg=typer.colors.BLUE)}'
 
-				inputs[input_def.name] = input_val
-				typer.echo()  # Add space after each prompt
+					full_prompt_text = f'{prompt_question} ({status_str}, {type_info_str}{format_info_str}{default_info_str})'
+
+					input_val = None
+					if var_type == 'bool':
+						input_val = typer.confirm(full_prompt_text, default=default_value if default_value is not None else None)
+					elif var_type == 'number':
+						input_val = typer.prompt(
+							full_prompt_text, type=float, default=default_value if default_value is not None else ...
+						)
+					elif var_type == 'string':  # Default to string for other unknown types as well
+						input_val = typer.prompt(
+							full_prompt_text, type=str, default=default_value if default_value is not None else ...
+						)
+					else:  # Should ideally not happen if schema is validated, but good to have a fallback
+						typer.secho(
+							f"Warning: Unknown type '{var_type}' for variable '{input_def.name}'. Treating as string.",
+							fg=typer.colors.YELLOW,
+						)
+						input_val = typer.prompt(
+							full_prompt_text, type=str, default=default_value if default_value is not None else ...
+						)
+
+					inputs[input_def.name] = input_val
+					typer.echo()  # Add space after each prompt
 		else:
 			typer.echo('No input schema found in the workflow, or no properties defined. Proceeding without inputs.')
 
@@ -2460,24 +2500,64 @@ def run_stored_workflow(
 				else:
 					typer.echo(str(result))
 		else:
-			# Has inputs but no prompt - need to collect them
-			typer.secho('This workflow requires input parameters:', fg=typer.colors.YELLOW)
-			typer.echo()
-			for inp in workflow_definition.input_schema:
-				required = (
-					typer.style('required', fg=typer.colors.RED)
-					if inp.required
-					else typer.style('optional', fg=typer.colors.YELLOW)
+			# Check if all inputs have defaults (can run without user input)
+			all_inputs_have_defaults = all(
+				getattr(inp, 'default', None) is not None or not inp.required for inp in workflow_definition.input_schema
+			)
+
+			if all_inputs_have_defaults:
+				# All inputs have defaults or are optional, run with defaults
+				typer.secho('▶️  Running workflow with default values...', fg=typer.colors.CYAN)
+				typer.echo()
+				typer.echo('Using default values:')
+				for inp in workflow_definition.input_schema:
+					default_value = getattr(inp, 'default', None)
+					if default_value is not None:
+						typer.echo(f'  • {inp.name} = {typer.style(str(default_value), fg=typer.colors.BLUE)}')
+				typer.echo()
+
+				# Build inputs dict with defaults
+				inputs = {}
+				for inp in workflow_definition.input_schema:
+					default_value = getattr(inp, 'default', None)
+					if default_value is not None:
+						inputs[inp.name] = default_value
+
+				workflow = Workflow.load_from_file(
+					temp_file, llm_instance, page_extraction_llm=page_extraction_llm, use_cloud=use_cloud
 				)
-				default_value = getattr(inp, 'default', None)
-				default_str = (
-					f', default: {typer.style(str(default_value), fg=typer.colors.BLUE)}' if default_value is not None else ''
-				)
-				typer.echo(f'  • {inp.name} ({inp.type}, {required}{default_str})')
-			typer.echo()
-			typer.echo('Options:')
-			typer.echo(f'  1. Run as tool: python cli.py run-stored-workflow {workflow_id} --prompt "Your task"')
-			typer.echo(f'  2. Run with inputs: python cli.py run-workflow {metadata.file_path if metadata else temp_file}')
+				result = asyncio.run(workflow.run(inputs=inputs))
+
+				typer.secho('✅ Workflow completed!', fg=typer.colors.GREEN, bold=True)
+				typer.echo()
+				if result:
+					typer.echo('Result:')
+					# Extract the actual data from step results
+					if hasattr(result, 'step_results'):
+						for i, step_result in enumerate(result.step_results, 1):
+							if hasattr(step_result, 'extracted_content') and step_result.extracted_content:
+								typer.echo(f'Step {i}: {step_result.extracted_content}')
+					else:
+						typer.echo(str(result))
+			else:
+				# Has inputs but no prompt - need to collect them
+				typer.secho('This workflow requires input parameters:', fg=typer.colors.YELLOW)
+				typer.echo()
+				for inp in workflow_definition.input_schema:
+					required = (
+						typer.style('required', fg=typer.colors.RED)
+						if inp.required
+						else typer.style('optional', fg=typer.colors.YELLOW)
+					)
+					default_value = getattr(inp, 'default', None)
+					default_str = (
+						f', default: {typer.style(str(default_value), fg=typer.colors.BLUE)}' if default_value is not None else ''
+					)
+					typer.echo(f'  • {inp.name} ({inp.type}, {required}{default_str})')
+				typer.echo()
+				typer.echo('Options:')
+				typer.echo(f'  1. Run as tool: python cli.py run-stored-workflow {workflow_id} --prompt "Your task"')
+				typer.echo(f'  2. Run with inputs: python cli.py run-workflow {metadata.file_path if metadata else temp_file}')
 
 	finally:
 		# Cleanup temp file

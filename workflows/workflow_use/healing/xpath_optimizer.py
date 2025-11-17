@@ -70,28 +70,30 @@ class XPathOptimizer:
 	4. Include fallback strategies
 	"""
 
-	def optimize_xpath(self, absolute_xpath: str, element_info: Optional[Dict] = None) -> List[str]:
+	def optimize_xpath(self, absolute_xpath: str, element_info: Optional[Dict] = None, max_alternatives: int = 2) -> List[str]:
 		"""
 		Generate optimized XPath alternatives from an absolute XPath.
 
 		Args:
 		    absolute_xpath: Full XPath like /html/body/div[1]/div[2]/table/tbody/tr[3]/td[2]/a
 		    element_info: Optional dict with element details (tag, text, attributes, etc.)
+		    max_alternatives: Maximum number of alternatives to return (default: 2)
+		        - Always includes absolute xpath as last resort if needed
+		        - Returns best N-1 alternatives + absolute xpath fallback
 
 		Returns:
-		    List of XPath alternatives, ordered from most to least robust
+		    List of XPath alternatives (max: max_alternatives), ordered from most to least robust
 
 		Example:
 		    >>> optimizer = XPathOptimizer()
 		    >>> xpaths = optimizer.optimize_xpath(
 		    ...     '/html/body/form/div[3]/table/tbody/tr[2]/td[3]/a',
 		    ...     {'tag': 'a', 'text': '12345', 'attributes': {'class': 'license-link'}},
+		    ...     max_alternatives=2,
 		    ... )
-		    >>> # Returns: [
-		    ...     '//table//tr[2]/td[3]/a',  # Table-anchored
-		    ...     '//a[contains(@class, "license-link")]',  # Class-based
-		    ...     '//a[contains(text(), "12345")]',  # Text-based
-		    ...     original_xpath  # Absolute fallback
+		    >>> # Returns (2 best only): [
+		    ...     '//table//tr[2]/td[3]/a',  # Best: Table-anchored
+		    ...     original_xpath  # Fallback: Absolute path
 		    ... ]
 		"""
 		alternatives = []
@@ -117,16 +119,28 @@ class XPathOptimizer:
 		if shortened_xpath and shortened_xpath != absolute_xpath:
 			alternatives.append(shortened_xpath)
 
-		# Strategy 5: Original absolute path (last resort)
-		alternatives.append(absolute_xpath)
-
 		# Remove duplicates while preserving order
 		seen = set()
 		unique_alternatives = []
 		for xpath in alternatives:
-			if xpath not in seen:
+			if xpath not in seen and xpath != absolute_xpath:
 				seen.add(xpath)
 				unique_alternatives.append(xpath)
+
+		logger.debug(
+			f'XPath optimizer: Generated {len(unique_alternatives)} unique alternatives before limiting (max_alternatives={max_alternatives})'
+		)
+
+		# Limit to best N-1 alternatives (save room for absolute xpath fallback)
+		if max_alternatives > 1:
+			unique_alternatives = unique_alternatives[: max_alternatives - 1]
+		else:
+			unique_alternatives = unique_alternatives[:1]
+
+		# Always add original absolute path as last resort
+		unique_alternatives.append(absolute_xpath)
+
+		logger.debug(f'XPath optimizer: Returning {len(unique_alternatives)} alternatives (limit={max_alternatives})')
 
 		return unique_alternatives
 
