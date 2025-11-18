@@ -31,10 +31,14 @@ print('   XPaths:')
 for i, xpath in enumerate(result_1, 1):
 	print(f'      {i}. {xpath}')
 
-if len(result_1) == 1:
-	print('   ✅ PASS: Exactly 1 XPath returned')
+# Validate: Should be exactly 1 XPath and it should be the absolute one
+test_1_pass = len(result_1) == 1 and result_1[0] == absolute_xpath
+if test_1_pass:
+	print('   ✅ PASS: Exactly 1 XPath returned (absolute)')
 else:
-	print(f'   ❌ FAIL: Expected 1, got {len(result_1)}')
+	print(f'   ❌ FAIL: Expected 1 absolute XPath, got {len(result_1)}')
+	if len(result_1) > 0 and result_1[0] != absolute_xpath:
+		print(f'   ❌ FAIL: First XPath is not the absolute one!')
 
 # Test max_alternatives = 2
 print('\n📋 Test 2: max_alternatives=2')
@@ -47,10 +51,20 @@ for i, xpath in enumerate(result_2, 1):
 	is_absolute = xpath == absolute_xpath
 	print(f'      {i}. {xpath[:60]}{"..." if len(xpath) > 60 else ""} {"(absolute)" if is_absolute else "(optimized)"}')
 
-if len(result_2) == 2:
-	print('   ✅ PASS: Exactly 2 XPaths returned')
+# Validate: Should be 2 XPaths, last one should be absolute, first should be optimized
+test_2_pass = (
+	len(result_2) == 2
+	and result_2[-1] == absolute_xpath  # Last is absolute
+	and result_2[0] != absolute_xpath   # First is optimized (different from absolute)
+)
+if test_2_pass:
+	print('   ✅ PASS: Exactly 2 XPaths (1 optimized + 1 absolute)')
 else:
-	print(f'   ❌ FAIL: Expected 2, got {len(result_2)}')
+	print(f'   ❌ FAIL: Expected 2 XPaths (1 optimized + 1 absolute), got {len(result_2)}')
+	if len(result_2) >= 2 and result_2[-1] != absolute_xpath:
+		print(f'   ❌ FAIL: Last XPath is not the absolute fallback!')
+	if len(result_2) >= 1 and result_2[0] == absolute_xpath:
+		print(f'   ❌ FAIL: First XPath should be optimized, not absolute!')
 
 # Test max_alternatives = 3
 print('\n📋 Test 3: max_alternatives=3')
@@ -63,16 +77,39 @@ for i, xpath in enumerate(result_3, 1):
 	is_absolute = xpath == absolute_xpath
 	print(f'      {i}. {xpath[:60]}{"..." if len(xpath) > 60 else ""} {"(absolute)" if is_absolute else "(optimized)"}')
 
-if len(result_3) == 3:
-	print('   ✅ PASS: Exactly 3 XPaths returned')
+# Validate: Should be 3 XPaths, last one absolute, first two optimized
+optimized_count = sum(1 for xpath in result_3[:-1] if xpath != absolute_xpath)
+test_3_pass = (
+	len(result_3) == 3
+	and result_3[-1] == absolute_xpath      # Last is absolute
+	and optimized_count >= 1                # At least 1 optimized (ideally 2)
+	and all(xpath != absolute_xpath for xpath in result_3[:-1])  # All except last are different from absolute
+)
+if test_3_pass:
+	print(f'   ✅ PASS: Exactly 3 XPaths ({optimized_count} optimized + 1 absolute)')
 else:
-	print(f'   ❌ FAIL: Expected 3, got {len(result_3)}')
+	print(f'   ❌ FAIL: Expected 3 XPaths (2 optimized + 1 absolute), got {len(result_3)}')
+	if len(result_3) >= 3 and result_3[-1] != absolute_xpath:
+		print(f'   ❌ FAIL: Last XPath is not the absolute fallback!')
+	if len(result_3) >= 2:
+		non_optimized = sum(1 for xpath in result_3[:-1] if xpath == absolute_xpath)
+		if non_optimized > 0:
+			print(f'   ❌ FAIL: Found {non_optimized} non-optimized XPath(s) before the final absolute!')
 
 # Summary
 print('\n' + '=' * 80)
-all_pass = len(result_1) == 1 and len(result_2) == 2 and len(result_3) == 3
+all_pass = test_1_pass and test_2_pass and test_3_pass
 if all_pass:
 	print('🎉 All tests passed! Bug is fixed.')
+	print('   • max_alternatives=1: Returns only absolute XPath ✅')
+	print('   • max_alternatives=2: Returns 1 optimized + 1 absolute ✅')
+	print('   • max_alternatives=3: Returns 2 optimized + 1 absolute ✅')
 else:
 	print('❌ Some tests failed. Bug still exists.')
+	if not test_1_pass:
+		print('   • Test 1 (max_alternatives=1) FAILED')
+	if not test_2_pass:
+		print('   • Test 2 (max_alternatives=2) FAILED')
+	if not test_3_pass:
+		print('   • Test 3 (max_alternatives=3) FAILED')
 print('=' * 80)
