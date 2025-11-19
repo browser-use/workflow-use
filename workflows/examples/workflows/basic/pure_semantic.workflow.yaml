@@ -30,6 +30,10 @@ steps:
 - description: Select marital status
   type: click
   target_text: Single
+- description: Extract form completion status
+  type: extract_page_content
+  goal: Extract any confirmation messages, success status, or validation errors from the form page
+  output: form_status
 input_schema:
 - name: first_name
   type: string

@@ -38,6 +38,12 @@ Review the provided workflow definition and:
    - Extract steps without `extractionGoal`
    - Key press steps without `key`
 
+6. **Workflow Must End with Extract Step**
+   - ALL workflows must end with an extract step (`extract` or `extract_page_content`)
+   - This is CRITICAL because AI processing is always needed at the end
+   - Even form-filling workflows should extract confirmation/success status
+   - Example: After submitting a form, add `{"type": "extract_page_content", "goal": "Extract the confirmation message or success status"}`
+
 ### Warnings (May Cause Issues)
 
 1. **Generic Target Text**
@@ -117,6 +123,7 @@ Use these standardized issue types:
 - `incorrect_step_type`: Wrong step type for the action
 - `invalid_variable`: Variable reference doesn't exist in input_schema
 - `missing_required_field`: Required field is missing
+- `missing_final_extract`: Workflow doesn't end with extract step (CRITICAL)
 - `generic_target_text`: Target text is too generic
 - `missing_error_handling`: No conditional logic for errors
 - `hardcoded_value`: Value that should be a variable
