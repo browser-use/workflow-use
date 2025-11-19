@@ -6,7 +6,6 @@ when no callback was provided.
 """
 
 
-
 def test_step_counter_increments_without_callback():
 	"""
 	Verify that step counter increments even when on_step_recorded is None.
