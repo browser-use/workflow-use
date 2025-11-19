@@ -10,4 +10,8 @@ steps:
   url: https://google.com
 - description: Go back to example.com
   type: go_back
+- description: Extract page title to confirm navigation
+  type: extract_page_content
+  goal: Extract the page title and URL to verify that we successfully navigated back to example.com
+  output: navigation_confirmation
 version: 1.0.0

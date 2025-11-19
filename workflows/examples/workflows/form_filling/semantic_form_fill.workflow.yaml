@@ -30,6 +30,10 @@ steps:
 - description: Continue to next section
   type: click
   target_text: 'Next: Contact Information'
+- description: Extract form progress and confirmation
+  type: extract_page_content
+  goal: Extract the current section confirmation, any success messages, or validation errors shown on the page
+  output: form_status
 input_schema:
 - name: first_name
   type: string

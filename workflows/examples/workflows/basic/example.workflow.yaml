@@ -95,6 +95,10 @@ steps:
   xpath: id("single")
   elementTag: BUTTON
   elementText: null
+- description: Extract form submission confirmation and status
+  type: extract_page_content
+  goal: Extract the confirmation message, success status, or any validation errors from the current page
+  output: form_status
 input_schema:
 - name: first_name
   type: string
