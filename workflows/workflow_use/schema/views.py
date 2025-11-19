@@ -1,6 +1,6 @@
 from typing import Any, Dict, List, Literal, Optional, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
 
 
 # --- Base Step Model ---
@@ -236,6 +236,26 @@ class WorkflowDefinitionSchema(BaseModel):
 		# default=WorkflowInputSchemaDefinition(),
 		description='List of input schema definitions.',
 	)
+
+	@validator('steps')
+	def validate_ends_with_extract(cls, steps: List[WorkflowStep]) -> List[WorkflowStep]:
+		"""Validate that the workflow ends with an extract step."""
+		if not steps:
+			raise ValueError('Workflow must have at least one step')
+
+		last_step = steps[-1]
+		# Check if last step is an extract step
+		# We need to check the 'type' attribute from the step dict/model
+		step_type = getattr(last_step, 'type', None)
+
+		if step_type not in ['extract', 'extract_page_content']:
+			raise ValueError(
+				f'Workflow must end with an extract step (extract or extract_page_content). '
+				f'Current last step type: {step_type}. '
+				f'AI processing is always needed at the end of a workflow.'
+			)
+
+		return steps
 
 	# Add loader from json file
 	@classmethod

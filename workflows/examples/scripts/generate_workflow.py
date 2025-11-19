@@ -89,7 +89,7 @@ async def generate_and_store_workflow():
 		original_task=TASK_DESCRIPTION.strip(),
 	)
 
-	print(f'✅ Workflow saved to storage!\n')
+	print('✅ Workflow saved to storage!\n')
 
 	# Display summary
 	print('=' * 80)
