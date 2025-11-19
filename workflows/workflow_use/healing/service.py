@@ -677,7 +677,6 @@ class HealingService:
 				# Fire callback after successful action execution
 				if self.on_step_recorded:
 					try:
-
 						# Extract action details
 						action_dict = action.model_dump() if hasattr(action, 'model_dump') else {}
 						action_type = None
