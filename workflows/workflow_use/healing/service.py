@@ -670,12 +670,13 @@ class HealingService:
 				# Execute the actual action
 				result = await super().act(action, browser_session, *args, **kwargs)
 
+				# Increment step counter (always, regardless of callback)
+				step_counter['count'] += 1
+				step_number = step_counter['count']
+
 				# Fire callback after successful action execution
 				if self.on_step_recorded:
 					try:
-						# Increment step counter
-						step_counter['count'] += 1
-						step_number = step_counter['count']
 
 						# Extract action details
 						action_dict = action.model_dump() if hasattr(action, 'model_dump') else {}

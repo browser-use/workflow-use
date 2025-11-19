@@ -1,10 +1,27 @@
 """
 Unit tests for progress tracking callbacks in HealingService.
+
+Usage:
+    python tests/test_progress_tracking.py
 """
 
-import pytest
-from unittest.mock import Mock, AsyncMock, call
+from unittest.mock import Mock, AsyncMock
 from typing import Dict, Any
+
+try:
+    import pytest
+    HAS_PYTEST = True
+except ImportError:
+    HAS_PYTEST = False
+    # Mock pytest.mark.skip for standalone execution
+    class _MockPytest:
+        class mark:
+            @staticmethod
+            def skip(*args, **kwargs):
+                def decorator(func):
+                    return func
+                return decorator
+    pytest = _MockPytest()
 
 from workflow_use.healing.service import HealingService
 
@@ -73,19 +90,16 @@ class TestProgressTracking:
     def test_callbacks_are_optional(self):
         """Test that callbacks are truly optional (backward compatibility)."""
         from workflow_use.healing.service import HealingService
-        from langchain_openai import ChatOpenAI
 
-        # This should work without callbacks
-        llm = ChatOpenAI(model="gpt-4o")
-        service = HealingService(llm=llm)
-
-        # Method should accept no callbacks (test signature only, don't run)
+        # Test signature only (don't instantiate LLM)
         import inspect
-        sig = inspect.signature(service.generate_workflow_from_prompt)
+        sig = inspect.signature(HealingService.generate_workflow_from_prompt)
 
         # Check that callbacks are optional
         assert sig.parameters['on_step_recorded'].default is None
         assert sig.parameters['on_status_update'].default is None
+        print("   Verified: on_step_recorded defaults to None")
+        print("   Verified: on_status_update defaults to None")
 
     def test_callback_exception_handling(self):
         """Test that callback exceptions don't break workflow generation."""
@@ -224,10 +238,10 @@ class TestProgressTracking:
 class TestProgressTrackingIntegration:
     """Integration tests (require actual workflow generation - run manually)."""
 
-    @pytest.mark.skip(reason="Requires OpenAI API key and actual browser automation")
+    @pytest.mark.skip(reason="Requires browser automation - run manually")
     async def test_full_workflow_with_callbacks(self):
         """Test complete workflow generation with callbacks (manual test)."""
-        from langchain_openai import ChatOpenAI
+        from browser_use.llm import ChatBrowserUse
         from workflow_use.healing.service import HealingService
 
         steps_recorded = []
@@ -241,7 +255,7 @@ class TestProgressTrackingIntegration:
             statuses_recorded.append(status)
             print(f"Status: {status}")
 
-        llm = ChatOpenAI(model="gpt-4o", temperature=0)
+        llm = ChatBrowserUse(model='bu-latest')
         service = HealingService(llm=llm, use_deterministic_conversion=True)
 
         workflow = await service.generate_workflow_from_prompt(

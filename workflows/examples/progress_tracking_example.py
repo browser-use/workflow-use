@@ -3,12 +3,15 @@ Example: Real-time Progress Tracking for Workflow Generation
 
 This example demonstrates how to use the new on_step_recorded and on_status_update
 callbacks to track workflow generation progress in real-time.
+
+Usage:
+    python examples/progress_tracking_example.py
 """
 
 import asyncio
 from datetime import datetime
 
-from langchain_openai import ChatOpenAI
+from browser_use.llm import ChatBrowserUse
 
 from workflow_use.healing.service import HealingService
 
@@ -35,7 +38,7 @@ async def simple_console_example():
         print(f"\n🔄 {status}")
 
     # Initialize service
-    llm = ChatOpenAI(model="gpt-4o", temperature=0)
+    llm = ChatBrowserUse(model='bu-latest')
     healing_service = HealingService(
         llm=llm,
         use_deterministic_conversion=True,
@@ -77,7 +80,7 @@ async def database_storage_example():
         print(f"ℹ️  {status}")
 
     # Initialize service
-    llm = ChatOpenAI(model="gpt-4o", temperature=0)
+    llm = ChatBrowserUse(model='bu-latest')
     healing_service = HealingService(
         llm=llm,
         use_deterministic_conversion=True,
@@ -126,7 +129,7 @@ async def progress_bar_example():
         print(f"\n\n🔄 {status}")
 
     # Initialize service
-    llm = ChatOpenAI(model="gpt-4o", temperature=0)
+    llm = ChatBrowserUse(model='bu-latest')
     healing_service = HealingService(
         llm=llm,
         use_deterministic_conversion=True,
@@ -191,7 +194,7 @@ async def cloud_backend_pattern():
         print(f"ℹ️  Status update: {status}")
 
     # Initialize service
-    llm = ChatOpenAI(model="gpt-4o", temperature=0)
+    llm = ChatBrowserUse(model='bu-latest')
     healing_service = HealingService(
         llm=llm,
         use_deterministic_conversion=True,
