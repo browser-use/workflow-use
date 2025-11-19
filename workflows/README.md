@@ -57,12 +57,32 @@ python cli.py run-workflow-no-ai my_workflow.json
 - **Semantic Targeting**: Use `{variable}` in `target_text`
 - **Auto-Extraction**: LLM suggests variables automatically
 
+### 📊 Real-time Progress Tracking (NEW!)
+- **Step-by-Step Visibility**: See each browser action as it's recorded
+- **Status Updates**: Track workflow processing phases in real-time
+- **Cloud Integration Ready**: Store progress in database for live UI updates
+- **Debug Friendly**: Know exactly where workflow generation fails
+- **Zero Overhead**: Optional callbacks, fully backward compatible
+
+```python
+# Track workflow generation progress in real-time
+workflow = await service.generate_workflow_from_prompt(
+    prompt="Search for Python docs",
+    agent_llm=llm,
+    extraction_llm=llm,
+    on_step_recorded=lambda s: print(f"Step {s['step_number']}: {s['description']}"),
+    on_status_update=lambda msg: print(f"Status: {msg}"),
+)
+```
+
 ---
 
 ## Documentation
 
 - **[docs/DETERMINISTIC.md](docs/DETERMINISTIC.md)** - Deterministic workflow generation
 - **[docs/VARIABLES.md](docs/VARIABLES.md)** - Variables guide
+- **[docs/PROGRESS_TRACKING.md](docs/PROGRESS_TRACKING.md)** - Real-time progress tracking ⭐ NEW
+- **[QUICK_START_PROGRESS_TRACKING.md](QUICK_START_PROGRESS_TRACKING.md)** - 5-minute integration guide
 - **[examples/README.md](examples/README.md)** - Example scripts
 
 ---
@@ -98,6 +118,7 @@ workflows/
 │   │   ├── variables/       # Variable feature examples
 │   │   ├── demos/           # Advanced demos
 │   │   └── runner.py        # Generic workflow runner
+│   ├── progress_tracking_example.py  # ⭐ NEW: Real-time progress tracking
 │   └── workflows/           # Example workflow JSON files
 │       ├── basic/           # Basic workflow examples
 │       ├── form_filling/    # Form filling examples

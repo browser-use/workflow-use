@@ -1,7 +1,8 @@
 import hashlib
 import json
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Sequence, Union
+from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 
 import aiofiles
 from browser_use import Agent, AgentHistoryList, Browser
@@ -16,6 +17,10 @@ from workflow_use.healing.validator import WorkflowValidator
 from workflow_use.healing.variable_extractor import VariableExtractor
 from workflow_use.healing.views import ParsedAgentStep, SimpleDomElement, SimpleResult
 from workflow_use.schema.views import WorkflowDefinitionSchema
+
+# Type definitions for progress tracking callbacks
+StepRecordedCallback = Callable[[Dict[str, Any]], None]
+StatusUpdateCallback = Callable[[str], None]
 
 # Get the absolute path to the prompts directory
 _PROMPTS_DIR = Path(__file__).parent / 'prompts'
@@ -413,18 +418,47 @@ class HealingService:
 
 	# Generate workflow from prompt
 	async def generate_workflow_from_prompt(
-		self, prompt: str, agent_llm: BaseChatModel, extraction_llm: BaseChatModel, use_cloud: bool = False
+		self,
+		prompt: str,
+		agent_llm: BaseChatModel,
+		extraction_llm: BaseChatModel,
+		use_cloud: bool = False,
+		on_step_recorded: Optional[StepRecordedCallback] = None,
+		on_status_update: Optional[StatusUpdateCallback] = None,
 	) -> WorkflowDefinitionSchema:
 		"""
 		Generate a workflow definition from a prompt by:
 		1. Running a browser agent to explore and complete the task
 		2. Converting the agent history into a workflow definition
+
+		Args:
+			prompt: Natural language task description
+			agent_llm: LLM for agent decision-making
+			extraction_llm: LLM for page extraction
+			use_cloud: Whether to use cloud browser
+			on_step_recorded: Optional callback fired when a step is recorded. Receives:
+				- step_number: int (1-indexed)
+				- action_type: str (navigation, click, input_text, extract, etc.)
+				- description: str (human-readable description)
+				- url: str (current page URL)
+				- selector: Optional[str] (CSS/XPath selector if applicable)
+				- extracted_data: Optional[dict] (for extract steps)
+				- timestamp: str (ISO 8601 timestamp)
+				- target_text: Optional[str] (element text being interacted with)
+			on_status_update: Optional callback for non-step status updates
 		"""
 
 		browser = Browser(use_cloud=use_cloud)
 
+		# Status callback for initialization
+		if on_status_update:
+			on_status_update('Initializing browser...')
+
 		# Create a shared map to capture element text during agent execution
 		element_text_map = {}  # Maps index -> {'text': str, 'tag': str, 'xpath': str, etc.}
+
+		# Track step count for callbacks
+		step_counter = {'count': 0}
 
 		# Create a custom controller that captures element mappings
 		from browser_use import Controller
@@ -432,9 +466,14 @@ class HealingService:
 		class CapturingController(Controller):
 			"""Controller that captures element text mapping during execution"""
 
-			def __init__(self, selector_generator: SelectorGenerator):
+			def __init__(
+				self,
+				selector_generator: SelectorGenerator,
+				on_step_recorded: Optional[StepRecordedCallback] = None,
+			):
 				super().__init__()
 				self.selector_generator = selector_generator
+				self.on_step_recorded = on_step_recorded
 
 			async def act(self, action, browser_session, *args, **kwargs):
 				# Get the selector map before action
@@ -630,7 +669,117 @@ class HealingService:
 
 				# Execute the actual action
 				result = await super().act(action, browser_session, *args, **kwargs)
+
+				# Fire callback after successful action execution
+				if self.on_step_recorded:
+					try:
+						# Increment step counter
+						step_counter['count'] += 1
+						step_number = step_counter['count']
+
+						# Extract action details
+						action_dict = action.model_dump() if hasattr(action, 'model_dump') else {}
+						action_type = None
+						target_index = None
+						input_value = None
+						extracted_data = None
+
+						# Determine action type and extract relevant data
+						for key, value in action_dict.items():
+							if key in ['go_to_url', 'navigate']:
+								action_type = 'navigation'
+								break
+							elif key == 'click_element':
+								action_type = 'click'
+								if isinstance(value, dict):
+									target_index = value.get('index')
+								break
+							elif key == 'input_text':
+								action_type = 'input_text'
+								if isinstance(value, dict):
+									target_index = value.get('index')
+									input_value = value.get('text', '')
+								break
+							elif key == 'extract_page_content':
+								action_type = 'extract'
+								# Extract data from result if available
+								if result and hasattr(result, 'extracted_content'):
+									extracted_data = result.extracted_content
+								break
+							elif key == 'send_keys':
+								action_type = 'keypress'
+								if isinstance(value, dict):
+									input_value = value.get('keys', '')
+								break
+							elif key == 'scroll':
+								action_type = 'scroll'
+								break
+
+						# Get current URL
+						current_url = ''
+						try:
+							current_url = await browser_session.get_current_url()
+						except Exception:
+							pass
+
+						# Get target text if available from captured elements
+						target_text = None
+						selector = None
+						if target_index is not None and target_index in element_text_map:
+							element_data = element_text_map[target_index]
+							target_text = element_data.get('text', '')
+							# Use xpath or css_selector as the selector
+							selector = element_data.get('xpath') or element_data.get('css_selector')
+
+						# Generate human-readable description
+						description = self._generate_action_description(action_type, target_text, input_value, current_url)
+
+						# Create callback data
+						callback_data = {
+							'step_number': step_number,
+							'action_type': action_type or 'unknown',
+							'description': description,
+							'url': current_url,
+							'selector': selector,
+							'extracted_data': extracted_data,
+							'timestamp': datetime.now(timezone.utc).isoformat(),
+							'target_text': target_text,
+						}
+
+						# Fire the callback
+						self.on_step_recorded(callback_data)
+
+					except Exception as e:
+						print(f'⚠️  Warning: Failed to fire step recorded callback: {e}')
+
 				return result
+
+			def _generate_action_description(
+				self, action_type: Optional[str], target_text: Optional[str], input_value: Optional[str], url: str
+			) -> str:
+				"""Generate a human-readable description of the action."""
+				if action_type == 'navigation':
+					return f'Navigate to {url}'
+				elif action_type == 'click':
+					if target_text:
+						return f'Click on "{target_text}"'
+					return 'Click element'
+				elif action_type == 'input_text':
+					if target_text and input_value:
+						return f'Enter "{input_value}" into {target_text}'
+					elif input_value:
+						return f'Enter text: {input_value}'
+					return 'Input text'
+				elif action_type == 'extract':
+					return 'Extract page content'
+				elif action_type == 'keypress':
+					if input_value:
+						return f'Press keys: {input_value}'
+					return 'Press keys'
+				elif action_type == 'scroll':
+					return 'Scroll page'
+				else:
+					return f'Execute action: {action_type or "unknown"}'
 
 		# Enhance the prompt to ensure agent mentions visible text of elements in a structured format
 		enhanced_prompt = f"""{prompt}
@@ -650,12 +799,18 @@ Examples:
 The [ELEMENT: "..."] tag must contain the EXACT visible text of the button, label, link, or field you're interacting with.
 This structured format is critical for generating a reusable workflow."""
 
+		# Status callback for agent creation
+		if on_status_update:
+			on_status_update('Creating browser agent...')
+
 		agent = Agent(
 			task=enhanced_prompt,
 			browser_session=browser,
 			llm=agent_llm,
 			page_extraction_llm=extraction_llm,
-			controller=CapturingController(self.selector_generator),  # Pass selector_generator to controller
+			controller=CapturingController(
+				self.selector_generator, on_step_recorded=on_step_recorded
+			),  # Pass callbacks to controller
 			enable_memory=False,
 			use_vision=True,
 			max_failures=10,
@@ -665,15 +820,27 @@ This structured format is critical for generating a reusable workflow."""
 		self.captured_element_text_map = element_text_map
 
 		# Run the agent to get history
+		if on_status_update:
+			on_status_update('Recording workflow steps...')
+
 		print('🎬 Starting agent with element capture enabled...')
 		history = await agent.run()
 		print(f'✅ Agent completed. Captured {len(element_text_map)} element mappings total.')
+
+		if on_status_update:
+			on_status_update(f'Completed recording {step_counter["count"]} steps')
 
 		# Store the history so it can be accessed externally (for result caching)
 		self._agent_history = history
 
 		# Create workflow definition from the history
 		# Route to deterministic or LLM-based conversion based on flag
+		if on_status_update:
+			if self.use_deterministic_conversion:
+				on_status_update('Converting steps to workflow (deterministic)...')
+			else:
+				on_status_update('Analyzing workflow with AI...')
+
 		if self.use_deterministic_conversion:
 			# Pass the captured element map to the deterministic converter
 			self.deterministic_converter.captured_element_text_map = element_text_map
@@ -691,6 +858,9 @@ This structured format is critical for generating a reusable workflow."""
 			# This is more reliable than the main agent LLM
 			if not self.validator:
 				self.validator = WorkflowValidator(llm=extraction_llm)
+
+			if on_status_update:
+				on_status_update('Validating workflow with AI...')
 
 			print('\n🔍 Running AI validation on generated workflow...')
 			try:
@@ -713,6 +883,12 @@ This structured format is critical for generating a reusable workflow."""
 				print('Continuing with original workflow...')
 
 		# Post-process: Apply variable identification and YAML cleanup
+		if on_status_update:
+			on_status_update('Post-processing workflow (variable identification & cleanup)...')
+
 		workflow_definition = self._post_process_workflow(workflow_definition)
+
+		if on_status_update:
+			on_status_update('Workflow generation complete!')
 
 		return workflow_definition
