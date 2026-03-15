@@ -980,7 +980,15 @@ Extracted Information:"""
 					# Attempt self-healing if enabled
 					if self._step_healer and isinstance(step_resolved, DeterministicWorkflowStep):
 						healed = False
+						previous_attempts: list[dict] = []
+
 						for attempt in range(self._step_healer.max_healing_attempts):
+							# Exponential backoff: 1s, 2s, 4s (autoresearch-mlx pattern)
+							if attempt > 0:
+								backoff = 2 ** attempt
+								logger.info(f'🩺 Waiting {backoff}s before retry (exponential backoff)')
+								await asyncio.sleep(backoff)
+
 							logger.info(f'🩺 Healing attempt {attempt + 1}/{self._step_healer.max_healing_attempts} for step {step_index + 1}')
 							correction = await self._step_healer.heal_step(
 								step=step_resolved,
@@ -988,11 +996,15 @@ Extracted Information:"""
 								error=e,
 								browser=self.browser,
 								workflow_path=self.workflow_path,
+								previous_attempts=previous_attempts,
 							)
 
 							if not correction:
 								logger.info('🩺 Healer returned no correction, giving up')
 								break
+
+							# Track this attempt for context in subsequent retries
+							previous_attempts.append({'corrections': correction.copy()})
 
 							# Handle page state issues (wait for loading, dismiss popups, etc.)
 							page_issue = correction.pop('page_state_issue', None)
@@ -1005,10 +1017,18 @@ Extracted Information:"""
 
 							try:
 								result = await self._execute_step(step_index, step_corrected)
-								logger.info(f'🩺 Step {step_index + 1} healed successfully on attempt {attempt + 1}!')
+
+								# Success! Mark as kept and persist the fix
+								self._step_healer.mark_healing_outcome(step_index, success=True)
+								if self.workflow_path:
+									await self._step_healer.persist_if_healed(
+										self.workflow_path, step_index, correction,
+									)
 								healed = True
 								break
 							except Exception as retry_error:
+								# Mark as discarded
+								self._step_healer.mark_healing_outcome(step_index, success=False)
 								logger.warning(f'🩺 Healing attempt {attempt + 1} failed: {retry_error}')
 								e = retry_error  # Update error for next healing attempt
 
@@ -1028,6 +1048,12 @@ Extracted Information:"""
 				output_model_result = await self._convert_results_to_output_model(results, output_model)
 
 		finally:
+			# Log healing summary if any healing was attempted
+			if self._step_healer:
+				summary = self._step_healer.get_session_summary()
+				if 'No healing' not in summary:
+					logger.info(f'🩺 {summary}')
+
 			# Clean-up browser after finishing workflow
 			if close_browser_at_end:
 				self.browser.browser_profile.keep_alive = False
