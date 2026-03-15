@@ -10,19 +10,15 @@ import aiofiles
 import pandas as pd
 import typer
 from browser_use import Browser
-from browser_use.llm import ChatBrowserUse
-from browser_use.llm.base import BaseChatModel
 
 from workflow_use.builder.service import BuilderService
 from workflow_use.controller.service import WorkflowController
 from workflow_use.healing.service import HealingService
+from workflow_use.llm import get_llm
 from workflow_use.mcp.service import get_mcp_server
-from workflow_use.recorder.service import RecordingService  # Added import
+from workflow_use.recorder.service import RecordingService
 from workflow_use.storage.service import WorkflowStorageService
 from workflow_use.workflow.service import Workflow
-
-# Placeholder for recorder functionality
-# from src.recorder.service import RecorderService
 
 app = typer.Typer(
 	name='workflow-cli',
@@ -31,24 +27,18 @@ app = typer.Typer(
 	no_args_is_help=True,
 )
 
-# Default LLM instance to None
-llm_instance: BaseChatModel
+# Initialize LLM via configurable provider (reads from .env)
 try:
-	llm_instance = ChatBrowserUse(model='bu-latest')
-	page_extraction_llm = ChatBrowserUse(model='bu-latest')
+	llm_instance = get_llm('default')
+	page_extraction_llm = get_llm('extraction')
 except Exception as e:
-	typer.secho(f'Error initializing LLM: {e}. Would you like to set your BROWSER_USE_API_KEY?', fg=typer.colors.RED)
-	set_browser_use_api_key = input('Set BROWSER_USE_API_KEY? (y/n): ')
-	if set_browser_use_api_key.lower() == 'y':
-		os.environ['BROWSER_USE_API_KEY'] = input('Enter your BROWSER_USE_API_KEY: ')
-		llm_instance = ChatBrowserUse(model='bu-latest')
-		page_extraction_llm = ChatBrowserUse(model='bu-latest')
+	typer.secho(f'Error initializing LLM: {e}', fg=typer.colors.RED)
+	typer.secho('Check your .env file — set LLM_PROVIDER, LLM_BASE_URL, and LLM_MODEL', fg=typer.colors.YELLOW)
+	llm_instance = None
+	page_extraction_llm = None
 
 builder_service = BuilderService(llm=llm_instance) if llm_instance else None
-# recorder_service = RecorderService() # Placeholder
-recording_service = (
-	RecordingService()
-)  # Assuming RecordingService does not need LLM, or handle its potential None state if it does.
+recording_service = RecordingService()
 healing_service = HealingService(llm=llm_instance) if llm_instance else None
 storage_service = WorkflowStorageService()
 
@@ -1363,11 +1353,9 @@ def run_workflow_no_ai_command(
 			extraction_llm = None
 
 			try:
-				from browser_use.llm import ChatBrowserUse
-
-				dummy_llm = ChatBrowserUse(model='bu-latest')
+				dummy_llm = get_llm('default')
 				if enable_extraction:
-					extraction_llm = ChatBrowserUse(model='bu-latest')
+					extraction_llm = get_llm('extraction')
 					typer.secho('AI extraction enabled - will use LLM for extraction steps only.', fg=typer.colors.BLUE)
 			except Exception as e:
 				if enable_extraction:
@@ -2145,10 +2133,10 @@ def mcp_server_command(
 	typer.echo(typer.style('Starting MCP server...', bold=True))
 	typer.echo()  # Add space
 
-	llm_instance = ChatBrowserUse(model='bu-latest')
-	page_extraction_llm = ChatBrowserUse(model='bu-latest')
+	mcp_llm = get_llm('default')
+	mcp_extraction_llm = get_llm('extraction')
 
-	mcp = get_mcp_server(llm_instance, page_extraction_llm=page_extraction_llm, workflow_dir='./tmp')
+	mcp = get_mcp_server(mcp_llm, page_extraction_llm=mcp_extraction_llm, workflow_dir='./tmp')
 
 	mcp.run(
 		transport='sse',
@@ -2331,8 +2319,8 @@ def generate_workflow_from_task(
 	typer.echo()
 
 	# Initialize LLMs
-	agent_llm = ChatBrowserUse(model='bu-latest')
-	extraction_llm = ChatBrowserUse(model='bu-latest')
+	agent_llm = get_llm('default')
+	extraction_llm = get_llm('extraction')
 
 	typer.echo('Starting browser automation to complete the task...')
 	typer.echo(f'  Agent Model: {agent_model}')

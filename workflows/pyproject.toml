@@ -22,6 +22,8 @@ dependencies = [
     "pandas>=2.3.0",
     "markdownify>=0.11.6",
     "pyyaml>=6.0.0",
+    "langchain-openai>=1.1.0",
+    "python-dotenv>=1.0.0",
 ]
 
 

@@ -1,16 +1,10 @@
 import logging
 
 from browser_use import ActionResult, Controller
-from browser_use.llm import ChatBrowserUse
 from browser_use.llm.base import BaseChatModel
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
-
-
-page_extraction_llm = ChatBrowserUse(
-	model='bu-latest',
-)
 
 
 class ActionModel(BaseModel):

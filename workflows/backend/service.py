@@ -7,9 +7,9 @@ from typing import Dict, List, Optional, Tuple
 import aiofiles
 import yaml
 from browser_use.browser.browser import Browser
-from browser_use.llm import ChatBrowserUse
 
 from workflow_use.controller.service import WorkflowController
+from workflow_use.llm import get_llm
 from workflow_use.workflow.service import Workflow
 
 from .views import (
@@ -42,7 +42,7 @@ class WorkflowService:
 		self.log_dir.mkdir(exist_ok=True, parents=True)
 
 		# LLM / workflow executor
-		self.llm_instance = ChatBrowserUse(model='bu-latest')
+		self.llm_instance = get_llm('default')
 
 		self.browser_instance = Browser()
 		self.controller_instance = WorkflowController()
