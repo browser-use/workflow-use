@@ -35,10 +35,24 @@ export default defineBackground(() => {
   // Track recent user interactions to distinguish intentional vs side-effect navigation
   const recentUserInteractions: { [tabId: number]: number } = {}; // timestamp of last user interaction
 
-  let isRecordingEnabled = true; // Default to disabled (OFF)
+  let isRecordingEnabled = false; // Default to OFF — user clicks Start Recording
   let lastWorkflowHash: string | null = null; // Cache for the last logged workflow hash
 
-  const PYTHON_SERVER_ENDPOINT = "http://127.0.0.1:7331/event";
+  // --- Configurable backend endpoint (Phase 2) ---
+  const DEFAULT_BACKEND_URL = "http://127.0.0.1:8000";
+  let BACKEND_BASE_URL = DEFAULT_BACKEND_URL;
+  let PYTHON_SERVER_ENDPOINT = `${BACKEND_BASE_URL}/api/recorder/event`;
+
+  // Load saved backend URL from storage
+  chrome.storage.sync.get(["backendUrl"], (result) => {
+    if (result.backendUrl) {
+      BACKEND_BASE_URL = result.backendUrl;
+      PYTHON_SERVER_ENDPOINT = `${BACKEND_BASE_URL}/api/recorder/event`;
+      console.log(`[Config] Using saved backend URL: ${BACKEND_BASE_URL}`);
+    } else {
+      console.log(`[Config] Using default backend URL: ${BACKEND_BASE_URL}`);
+    }
+  });
 
   // Hashing function using SubtleCrypto (SHA-256)
   async function calculateSHA256(str: string): Promise<string> {
@@ -670,20 +684,35 @@ export default defineBackground(() => {
       );
       console.log("Cleared previous recording data.");
 
-      // Start recording
-      if (!isRecordingEnabled) {
-        isRecordingEnabled = true;
-        console.log("Recording status set to: true");
-        broadcastRecordingStatus(); // Inform content scripts and sidepanel
+      // Start recording — always broadcast to ensure content scripts activate
+      isRecordingEnabled = true;
+      lastWorkflowHash = null; // Reset hash so first update is sent
+      console.log("Recording status set to: true");
+      broadcastRecordingStatus(); // Inform content scripts and sidepanel
 
-        // Send recording started event to Python server
-        const eventToSend: HttpRecordingStartedEvent = {
-          type: "RECORDING_STARTED",
-          timestamp: Date.now(),
-          payload: { message: "Recording has started" },
-        };
-        sendEventToServer(eventToSend);
-      }
+      // Ensure content scripts are injected into all open tabs
+      // (they may not be present if extension was reloaded after tabs were opened)
+      chrome.tabs.query({}, (tabs) => {
+        tabs.forEach((tab) => {
+          if (tab.id && tab.url && !tab.url.startsWith("chrome://") && !tab.url.startsWith("chrome-extension://")) {
+            chrome.scripting.executeScript({
+              target: { tabId: tab.id },
+              files: ["content-scripts/content.js"],
+            }).catch((err) => {
+              // Content script may already be injected — that's fine
+              console.debug(`Content script inject for tab ${tab.id}: ${err.message}`);
+            });
+          }
+        });
+      });
+
+      // Send recording started event to Python server
+      const eventToSend: HttpRecordingStartedEvent = {
+        type: "RECORDING_STARTED",
+        timestamp: Date.now(),
+        payload: { message: "Recording has started" },
+      };
+      sendEventToServer(eventToSend);
       sendResponse({ status: "started" }); // Send simple confirmation
     } else if (message.type === "STOP_RECORDING") {
       console.log("Received STOP_RECORDING request.");
@@ -787,6 +816,138 @@ export default defineBackground(() => {
       sendResponse({ isRecordingEnabled });
     }
 
+    // --- Phase 2: Dashboard & Settings API Proxy ---
+    else if (message.type === "API_REQUEST") {
+      // Generic API proxy: routes requests from sidepanel through background script
+      // This avoids CORS issues since background scripts bypass CORS
+      isAsync = true;
+      (async () => {
+        try {
+          const { endpoint, method = "GET", body } = message.payload;
+          const url = `${BACKEND_BASE_URL}${endpoint}`;
+          const options: RequestInit = {
+            method,
+            headers: { "Content-Type": "application/json" },
+          };
+          if (body && method !== "GET") {
+            options.body = JSON.stringify(body);
+          }
+          const response = await fetch(url, options);
+          const data = await response.json();
+          sendResponse({ success: true, data, status: response.status });
+        } catch (error) {
+          console.error("[API_REQUEST] Error:", error);
+          sendResponse({
+            success: false,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      })();
+      return true; // Keep channel open for async
+    }
+    else if (message.type === "SAVE_WORKFLOW_TO_BACKEND") {
+      // Save recorded workflow to backend
+      isAsync = true;
+      (async () => {
+        try {
+          const { workflow, name } = message.payload;
+          const url = `${BACKEND_BASE_URL}/api/recorder/save`;
+          const response = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ workflow, name }),
+          });
+          const data = await response.json();
+          sendResponse({ success: data.success, data });
+        } catch (error) {
+          console.error("[SAVE_WORKFLOW] Error:", error);
+          sendResponse({
+            success: false,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      })();
+      return true;
+    }
+    else if (message.type === "UPDATE_BACKEND_URL") {
+      // Update the backend URL
+      const newUrl = message.payload.url;
+      if (newUrl) {
+        BACKEND_BASE_URL = newUrl;
+        PYTHON_SERVER_ENDPOINT = `${BACKEND_BASE_URL}/api/recorder/event`;
+        chrome.storage.sync.set({ backendUrl: newUrl });
+        console.log(`[Config] Backend URL updated to: ${BACKEND_BASE_URL}`);
+        sendResponse({ success: true, url: BACKEND_BASE_URL });
+      } else {
+        sendResponse({ success: false, error: "No URL provided" });
+      }
+    }
+    else if (message.type === "GET_BACKEND_URL") {
+      sendResponse({ url: BACKEND_BASE_URL });
+    }
+    else if (message.type === "CHECK_BACKEND_HEALTH") {
+      isAsync = true;
+      (async () => {
+        try {
+          const response = await fetch(`${BACKEND_BASE_URL}/api/recorder/health`, {
+            method: "GET",
+            signal: AbortSignal.timeout(5000),
+          });
+          const data = await response.json();
+          sendResponse({ connected: true, data });
+        } catch (error) {
+          sendResponse({
+            connected: false,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      })();
+      return true;
+    }
+
+    // --- Phase 2b: In-Browser Workflow Execution ---
+    else if (message.type === "EXECUTE_IN_BROWSER") {
+      // Start executing a workflow in the user's Chrome browser
+      isAsync = true;
+      (async () => {
+        try {
+          const { workflowName } = message.payload;
+          // Fetch workflow from backend
+          const response = await fetch(`${BACKEND_BASE_URL}/api/workflows/${encodeURIComponent(workflowName)}`);
+          const workflowJson = await response.json();
+          const workflow = typeof workflowJson === "string" ? JSON.parse(workflowJson) : workflowJson;
+
+          if (!workflow || !workflow.steps || workflow.steps.length === 0) {
+            sendResponse({ success: false, error: "Workflow has no steps" });
+            return;
+          }
+
+          // Start execution
+          executionEngine.start(workflow.steps, workflow.name || workflowName);
+          sendResponse({ success: true, totalSteps: workflow.steps.length });
+        } catch (error) {
+          console.error("[EXECUTE_IN_BROWSER] Error:", error);
+          sendResponse({
+            success: false,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      })();
+      return true;
+    }
+    else if (message.type === "STOP_EXECUTION") {
+      executionEngine.stop();
+      sendResponse({ success: true });
+    }
+    else if (message.type === "GET_EXECUTION_STATUS") {
+      sendResponse(executionEngine.getStatus());
+    }
+    // Handle EXECUTOR_READY from content-executor.ts
+    else if (message.type === "EXECUTOR_READY") {
+      console.log("[Execution] Executor ready on:", message.url);
+      executionEngine.onExecutorReady();
+    }
+
     // --- Removed Handlers ---
     // else if (message.type === "CLEAR_RECORDING_DATA") { ... } // Now handled by START_RECORDING
     // else if (message.type === "GET_RECORDING_STATUS") { ... } // Sidepanel uses GET_RECORDING_DATA
@@ -796,6 +957,337 @@ export default defineBackground(() => {
     // Otherwise, return false or undefined (implicitly false).
     return isAsync;
   });
+
+  // =========================================================================
+  // Phase 2b: ExecutionEngine — Orchestrates in-browser workflow replay
+  // =========================================================================
+
+  interface StepResult {
+    stepIndex: number;
+    success: boolean;
+    error?: string;
+    healed?: boolean;
+  }
+
+  class ExecutionEngine {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    private steps: Record<string, any>[] = [];
+    private currentStepIndex: number = 0;
+    private state: "idle" | "running" | "waiting_nav" | "healing" | "completed" | "failed" | "stopped" = "idle";
+    private targetTabId: number | null = null;
+    private workflowName: string = "";
+    private results: StepResult[] = [];
+    private executorReadyResolve: (() => void) | null = null;
+    private stepDelayMs: number = 1500; // Delay between steps for page stability
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    async start(steps: Record<string, any>[], name: string) {
+      this.steps = steps;
+      this.currentStepIndex = 0;
+      this.state = "running";
+      this.workflowName = name;
+      this.results = [];
+
+      // Use the currently active tab
+      const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!activeTab?.id) {
+        this.state = "failed";
+        console.error("[Execution] No active tab found");
+        return;
+      }
+      this.targetTabId = activeTab.id;
+
+      console.log(`[Execution] Starting workflow "${name}" with ${steps.length} steps on tab ${this.targetTabId}`);
+
+      // Broadcast execution started
+      this.broadcastStatus();
+
+      // Inject executor into current tab
+      await this.injectExecutor(this.targetTabId);
+
+      // Start executing steps
+      await this.executeNextStep();
+    }
+
+    stop() {
+      this.state = "stopped";
+      console.log("[Execution] Stopped by user");
+      this.broadcastStatus();
+    }
+
+    getStatus() {
+      return {
+        state: this.state,
+        currentStepIndex: this.currentStepIndex,
+        totalSteps: this.steps.length,
+        workflowName: this.workflowName,
+        results: this.results,
+      };
+    }
+
+    onExecutorReady() {
+      if (this.executorReadyResolve) {
+        this.executorReadyResolve();
+        this.executorReadyResolve = null;
+      }
+    }
+
+    private async injectExecutor(tabId: number) {
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId },
+          files: ["content-executor.js"],
+        });
+        console.log(`[Execution] Executor injected into tab ${tabId}`);
+      } catch (err) {
+        console.warn(`[Execution] Executor injection: ${err}`);
+      }
+
+      // Wait for EXECUTOR_READY with timeout
+      await Promise.race([
+        new Promise<void>((resolve) => { this.executorReadyResolve = resolve; }),
+        new Promise<void>((resolve) => setTimeout(resolve, 3000)), // 3s timeout
+      ]);
+    }
+
+    private async executeNextStep() {
+      if (this.state !== "running" || this.currentStepIndex >= this.steps.length) {
+        if (this.state === "running") {
+          this.state = "completed";
+          console.log(`[Execution] Workflow "${this.workflowName}" completed!`);
+        }
+        this.broadcastStatus();
+        return;
+      }
+
+      const step = this.steps[this.currentStepIndex];
+      const stepType = step.type as string;
+
+      console.log(`[Execution] Step ${this.currentStepIndex + 1}/${this.steps.length}: ${stepType}`);
+      this.broadcastStatus();
+
+      // Handle navigation steps directly from background
+      if (stepType === "navigation") {
+        const url = step.url as string;
+        if (url && this.targetTabId) {
+          console.log(`[Execution] Navigating to: ${url}`);
+          this.state = "waiting_nav";
+
+          // Navigate
+          chrome.tabs.update(this.targetTabId, { url });
+
+          // Wait for page load
+          await this.waitForPageLoad(this.targetTabId);
+
+          // Re-inject executor
+          await this.injectExecutor(this.targetTabId);
+
+          this.state = "running";
+          this.results.push({ stepIndex: this.currentStepIndex, success: true });
+          this.currentStepIndex++;
+
+          // Delay then continue
+          await this.delay(this.stepDelayMs);
+          await this.executeNextStep();
+        }
+        return;
+      }
+
+      // For all other steps, send to content executor
+      if (!this.targetTabId) {
+        this.state = "failed";
+        this.broadcastStatus();
+        return;
+      }
+
+      try {
+        const result = await this.sendStepToExecutor(this.targetTabId, step);
+
+        if (result.success) {
+          this.results.push({ stepIndex: this.currentStepIndex, success: true });
+          this.currentStepIndex++;
+
+          // Check if this step might have caused navigation
+          const navigationDetected = await this.checkForNavigation(this.targetTabId);
+          if (navigationDetected) {
+            await this.waitForPageLoad(this.targetTabId);
+            await this.injectExecutor(this.targetTabId);
+          }
+
+          // Delay then continue
+          await this.delay(this.stepDelayMs);
+          await this.executeNextStep();
+        } else {
+          console.error(`[Execution] Step ${this.currentStepIndex} failed: ${result.error}`);
+
+          // Try healing via backend LLM
+          const healed = await this.tryHealing(step, result.error || "Unknown error");
+          if (healed) {
+            this.results.push({ stepIndex: this.currentStepIndex, success: true, healed: true });
+            this.currentStepIndex++;
+            await this.delay(this.stepDelayMs);
+            await this.executeNextStep();
+          } else {
+            this.results.push({ stepIndex: this.currentStepIndex, success: false, error: result.error });
+            this.state = "failed";
+            this.broadcastStatus();
+          }
+        }
+      } catch (error) {
+        console.error(`[Execution] Step ${this.currentStepIndex} threw:`, error);
+        this.results.push({
+          stepIndex: this.currentStepIndex,
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        this.state = "failed";
+        this.broadcastStatus();
+      }
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    private sendStepToExecutor(tabId: number, step: Record<string, any>): Promise<{ success: boolean; error?: string }> {
+      return new Promise((resolve) => {
+        chrome.tabs.sendMessage(
+          tabId,
+          { type: "EXECUTE_STEP", step, stepIndex: this.currentStepIndex },
+          (response) => {
+            if (chrome.runtime.lastError) {
+              resolve({ success: false, error: chrome.runtime.lastError.message });
+            } else if (response) {
+              resolve({ success: response.success, error: response.error });
+            } else {
+              resolve({ success: false, error: "No response from executor" });
+            }
+          }
+        );
+      });
+    }
+
+    private waitForPageLoad(tabId: number): Promise<void> {
+      return new Promise((resolve) => {
+        const timeout = setTimeout(() => {
+          chrome.tabs.onUpdated.removeListener(listener);
+          resolve();
+        }, 15000); // 15s timeout
+
+        const listener = (updatedTabId: number, changeInfo: chrome.tabs.TabChangeInfo) => {
+          if (updatedTabId === tabId && changeInfo.status === "complete") {
+            clearTimeout(timeout);
+            chrome.tabs.onUpdated.removeListener(listener);
+            // Extra delay for dynamic content
+            setTimeout(resolve, 1000);
+          }
+        };
+
+        chrome.tabs.onUpdated.addListener(listener);
+      });
+    }
+
+    private checkForNavigation(tabId: number): Promise<boolean> {
+      return new Promise((resolve) => {
+        let detected = false;
+        const timeout = setTimeout(() => {
+          chrome.tabs.onUpdated.removeListener(listener);
+          resolve(detected);
+        }, 2000); // 2s window to detect navigation
+
+        const listener = (updatedTabId: number, changeInfo: chrome.tabs.TabChangeInfo) => {
+          if (updatedTabId === tabId && (changeInfo.url || changeInfo.status === "loading")) {
+            detected = true;
+            clearTimeout(timeout);
+            chrome.tabs.onUpdated.removeListener(listener);
+            resolve(true);
+          }
+        };
+
+        chrome.tabs.onUpdated.addListener(listener);
+      });
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    private async tryHealing(step: Record<string, any>, error: string): Promise<boolean> {
+      if (!this.targetTabId) return false;
+
+      this.state = "healing";
+      this.broadcastStatus();
+      console.log(`[Execution] Attempting self-healing for step ${this.currentStepIndex}...`);
+
+      try {
+        // Capture screenshot
+        const screenshotDataUrl = await new Promise<string | null>((resolve) => {
+          chrome.tabs.captureVisibleTab({ format: "png" }, (dataUrl) => {
+            if (chrome.runtime.lastError) {
+              resolve(null);
+            } else {
+              resolve(dataUrl);
+            }
+          });
+        });
+
+        if (!screenshotDataUrl) {
+          console.warn("[Execution] Could not capture screenshot for healing");
+          this.state = "running";
+          return false;
+        }
+
+        // Send to backend for LLM healing
+        const healResponse = await fetch(`${BACKEND_BASE_URL}/api/ext-execute/heal`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            step,
+            stepIndex: this.currentStepIndex,
+            error,
+            screenshot: screenshotDataUrl,
+            pageUrl: await this.getTabUrl(this.targetTabId),
+          }),
+        });
+
+        if (!healResponse.ok) {
+          console.warn("[Execution] Healing endpoint not available (backend may not have ext-execute router yet)");
+          this.state = "running";
+          return false;
+        }
+
+        const healData = await healResponse.json();
+        if (healData.correctedStep) {
+          // Retry with corrected step
+          this.state = "running";
+          const retryResult = await this.sendStepToExecutor(this.targetTabId, healData.correctedStep);
+          return retryResult.success;
+        }
+      } catch (err) {
+        console.warn("[Execution] Healing failed:", err);
+      }
+
+      this.state = "running";
+      return false;
+    }
+
+    private getTabUrl(tabId: number): Promise<string> {
+      return new Promise((resolve) => {
+        chrome.tabs.get(tabId, (tab) => {
+          resolve(tab?.url || "");
+        });
+      });
+    }
+
+    private delay(ms: number): Promise<void> {
+      return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    private broadcastStatus() {
+      chrome.runtime.sendMessage({
+        type: "execution_status_updated",
+        payload: this.getStatus(),
+      }).catch(() => {
+        // Sidepanel might not be open
+      });
+    }
+  }
+
+  const executionEngine = new ExecutionEngine();
 
   // Optional: Save data periodically or on browser close (less reliable)
   // chrome.storage.local.set({ sessionLogs, tabInfo });

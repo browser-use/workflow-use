@@ -13,8 +13,8 @@ export default defineConfig({
       // WXT-specific overrides (optional)
     }),
   manifest: {
-    permissions: ["tabs", "sidePanel", "<all_urls>"],
-    host_permissions: ["http://127.0.0.1/*"],
+    permissions: ["tabs", "sidePanel", "storage", "scripting", "activeTab", "<all_urls>"],
+    host_permissions: ["http://127.0.0.1/*", "http://localhost/*"],
     // options_page: "options.html",
     // action: {
     //   default_popup: "popup.html",

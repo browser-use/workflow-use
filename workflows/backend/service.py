@@ -6,7 +6,7 @@ from typing import Dict, List, Optional, Tuple
 
 import aiofiles
 import yaml
-from browser_use.browser.browser import Browser
+from browser_use import Browser
 
 from workflow_use.controller.service import WorkflowController
 from workflow_use.llm import get_llm

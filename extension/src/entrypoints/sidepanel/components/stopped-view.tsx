@@ -8,6 +8,8 @@ export const StoppedView: React.FC = () => {
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [workflowName, setWorkflowName] = useState("");
   const [workflowDescription, setWorkflowDescription] = useState("");
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const downloadJson = (customName?: string, customDescription?: string) => {
     if (!workflow) return;
@@ -49,8 +51,65 @@ export const StoppedView: React.FC = () => {
     downloadJson();
   };
 
+  const saveToBackend = async (customName: string, customDescription?: string) => {
+    if (!workflow) return;
+
+    setSaveStatus("saving");
+    setSaveError(null);
+
+    const enhancedWorkflow = {
+      ...workflow,
+      name: customName,
+      description: customDescription || workflow.description,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      workflow_analysis: `Recorded workflow with ${workflow.steps?.length || 0} steps. ${workflow.steps?.some(s => (s as any).type === 'extract') ? 'Includes AI extraction steps for intelligent data gathering.' : ''}`
+    };
+
+    // Remove internal fields from steps before saving
+    const cleanedWorkflow = {
+      ...enhancedWorkflow,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      steps: enhancedWorkflow.steps?.map((step: any) => {
+        const cleaned = { ...step };
+        delete cleaned.timestamp;
+        delete cleaned.tabId;
+        delete cleaned.frameUrl;
+        delete cleaned.xpath;
+        delete cleaned.elementTag;
+        delete cleaned.elementText;
+        delete cleaned.screenshot;
+        // Convert targetText to target_text
+        if (cleaned.targetText) {
+          cleaned.target_text = cleaned.targetText;
+          delete cleaned.targetText;
+        }
+        return cleaned;
+      }),
+    };
+
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: "SAVE_WORKFLOW_TO_BACKEND",
+        payload: { workflow: cleanedWorkflow, name: customName },
+      });
+
+      if (response?.success) {
+        setSaveStatus("saved");
+        setTimeout(() => setSaveStatus("idle"), 3000);
+      } else {
+        setSaveStatus("error");
+        setSaveError(response?.data?.error || response?.error || "Failed to save");
+      }
+    } catch (error) {
+      setSaveStatus("error");
+      setSaveError(error instanceof Error ? error.message : "Connection failed");
+    }
+  };
+
   const handleSaveWithDetails = () => {
     if (workflowName.trim()) {
+      // Save to backend AND download locally
+      saveToBackend(workflowName.trim(), workflowDescription.trim());
       downloadJson(workflowName.trim(), workflowDescription.trim());
       setShowSaveDialog(false);
       setWorkflowName("");
@@ -100,6 +159,19 @@ export const StoppedView: React.FC = () => {
           </Button>
         </div>
       </div>
+
+      {/* Save Status Banner */}
+      {saveStatus === "saved" && (
+        <div className="mx-3 mt-2 p-2 bg-green-50 border border-green-200 rounded text-xs text-green-700">
+          Workflow saved to backend! View it in the Workflows tab.
+        </div>
+      )}
+      {saveStatus === "error" && (
+        <div className="mx-3 mt-2 p-2 bg-red-50 border border-red-200 rounded text-xs text-red-700">
+          Save failed: {saveError}
+          <button onClick={() => setSaveStatus("idle")} className="ml-2 font-medium">x</button>
+        </div>
+      )}
       
       {/* Save Dialog */}
       {showSaveDialog && (
