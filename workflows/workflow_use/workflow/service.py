@@ -24,6 +24,7 @@ from workflow_use.schema.views import (
 	WorkflowInputSchemaDefinition,
 	WorkflowStep,
 )
+from workflow_use.healing.step_healer import StepHealer
 from workflow_use.workflow.element_finder import ElementFinder
 from workflow_use.workflow.prompts import AGENT_STEP_SYSTEM_PROMPT, STRUCTURED_OUTPUT_PROMPT
 from workflow_use.workflow.step_agent.controller import WorkflowStepAgentController
@@ -52,6 +53,8 @@ class Workflow:
 		debug: bool = False,
 		debug_log_folder: str | Path | None = None,
 		step_wait_time: float | None = None,
+		enable_self_healing: bool = True,
+		workflow_path: str | Path | None = None,
 	) -> None:
 		"""Initialize a new Workflow instance from a schema object.
 
@@ -65,6 +68,8 @@ class Workflow:
 			debug: Whether to enable debug mode (captures screenshots for each step)
 			debug_log_folder: Custom folder path for debug logs and screenshots (default: ./logs/workflow_debug)
 			step_wait_time: Time to wait between steps in seconds (default: uses workflow's default_wait_time or 0.1)
+			enable_self_healing: Whether to use LLM vision to heal failed steps (default: True)
+			workflow_path: Path to workflow file for persisting healing fixes
 
 		Raises:
 			ValueError: If the workflow schema is invalid (though Pydantic handles most).
@@ -96,6 +101,18 @@ class Workflow:
 		else:
 			self.step_wait_time = 0.1
 
+		# Self-healing settings
+		self.enable_self_healing = enable_self_healing
+		self.workflow_path = str(workflow_path) if workflow_path else None
+		self._step_healer: StepHealer | None = None
+		if enable_self_healing and llm:
+			healing_llm = page_extraction_llm or llm
+			self._step_healer = StepHealer(
+				llm=healing_llm,
+				max_healing_attempts=2,
+				persist_fixes=workflow_path is not None,
+			)
+
 		# Initialize multi-strategy element finder
 		self.element_finder = ElementFinder()
 
@@ -118,6 +135,7 @@ class Workflow:
 		debug: bool = False,
 		debug_log_folder: str | Path | None = None,
 		step_wait_time: float = 0.1,
+		enable_self_healing: bool = True,
 	) -> Workflow:
 		"""Load a workflow from a file."""
 		with open(file_path, 'r', encoding='utf-8') as f:
@@ -133,6 +151,8 @@ class Workflow:
 			debug=debug,
 			debug_log_folder=debug_log_folder,
 			step_wait_time=step_wait_time,
+			enable_self_healing=enable_self_healing,
+			workflow_path=file_path,
 		)
 
 	# --- Runners ---
@@ -848,6 +868,38 @@ Extracted Information:"""
 		except Exception as e:
 			logger.warning(f'Failed to capture debug screenshot: {e}')
 
+	def _apply_healing_corrections(self, step: WorkflowStep, corrections: Dict[str, Any]) -> WorkflowStep:
+		"""Apply healing corrections to a workflow step, returning a new corrected step."""
+		step_dict = step.model_dump(exclude_none=True)
+
+		for key, value in corrections.items():
+			step_dict[key] = value
+
+		# Reconstruct the step using the schema's discriminated union
+		step_type = step_dict.get('type')
+		from workflow_use.schema.views import (
+			ClickStep,
+			InputStep,
+			KeyPressStep,
+			NavigationStep,
+			SelectChangeStep,
+		)
+
+		type_map = {
+			'click': ClickStep,
+			'input': InputStep,
+			'key_press': KeyPressStep,
+			'navigation': NavigationStep,
+			'select_change': SelectChangeStep,
+		}
+
+		step_class = type_map.get(step_type)
+		if step_class:
+			return step_class(**step_dict)
+
+		# Fallback: return original step (corrections couldn't be applied)
+		return step
+
 	async def run(
 		self,
 		inputs: dict[str, Any] | None = None,
@@ -915,7 +967,7 @@ Extracted Information:"""
 				# Resolve placeholders using the current context (works on the dictionary)
 				step_resolved = self._resolve_placeholders(step_dict)
 
-				# Execute step using the unified _execute_step method
+				# Execute step with self-healing retry on failure
 				try:
 					result = await self._execute_step(step_index, step_resolved)
 
@@ -924,7 +976,66 @@ Extracted Information:"""
 				except Exception as e:
 					# Capture screenshot on error (if debug enabled)
 					await self._capture_debug_screenshot(step_index, step_description, prefix='error')
-					raise  # Re-raise the exception after capturing screenshot
+
+					# Attempt self-healing if enabled
+					if self._step_healer and isinstance(step_resolved, DeterministicWorkflowStep):
+						healed = False
+						previous_attempts: list[dict] = []
+
+						for attempt in range(self._step_healer.max_healing_attempts):
+							# Exponential backoff: 1s, 2s, 4s (autoresearch-mlx pattern)
+							if attempt > 0:
+								backoff = 2 ** attempt
+								logger.info(f'🩺 Waiting {backoff}s before retry (exponential backoff)')
+								await asyncio.sleep(backoff)
+
+							logger.info(f'🩺 Healing attempt {attempt + 1}/{self._step_healer.max_healing_attempts} for step {step_index + 1}')
+							correction = await self._step_healer.heal_step(
+								step=step_resolved,
+								step_index=step_index,
+								error=e,
+								browser=self.browser,
+								workflow_path=self.workflow_path,
+								previous_attempts=previous_attempts,
+							)
+
+							if not correction:
+								logger.info('🩺 Healer returned no correction, giving up')
+								break
+
+							# Track this attempt for context in subsequent retries
+							previous_attempts.append({'corrections': correction.copy()})
+
+							# Handle page state issues (wait for loading, dismiss popups, etc.)
+							page_issue = correction.pop('page_state_issue', None)
+							wait_time = correction.pop('wait_before_retry', 0)
+							if page_issue == 'loading' or wait_time > 0:
+								await asyncio.sleep(max(wait_time, 2))
+
+							# Apply corrections to the resolved step
+							step_corrected = self._apply_healing_corrections(step_resolved, correction)
+
+							try:
+								result = await self._execute_step(step_index, step_corrected)
+
+								# Success! Mark as kept and persist the fix
+								self._step_healer.mark_healing_outcome(step_index, success=True)
+								if self.workflow_path:
+									await self._step_healer.persist_if_healed(
+										self.workflow_path, step_index, correction,
+									)
+								healed = True
+								break
+							except Exception as retry_error:
+								# Mark as discarded
+								self._step_healer.mark_healing_outcome(step_index, success=False)
+								logger.warning(f'🩺 Healing attempt {attempt + 1} failed: {retry_error}')
+								e = retry_error  # Update error for next healing attempt
+
+						if not healed:
+							raise  # Re-raise the last exception
+					else:
+						raise  # No healer available, re-raise
 
 				results.append(result)
 				# Persist outputs using the resolved step dictionary
@@ -937,6 +1048,12 @@ Extracted Information:"""
 				output_model_result = await self._convert_results_to_output_model(results, output_model)
 
 		finally:
+			# Log healing summary if any healing was attempted
+			if self._step_healer:
+				summary = self._step_healer.get_session_summary()
+				if 'No healing' not in summary:
+					logger.info(f'🩺 {summary}')
+
 			# Clean-up browser after finishing workflow
 			if close_browser_at_end:
 				self.browser.browser_profile.keep_alive = False
