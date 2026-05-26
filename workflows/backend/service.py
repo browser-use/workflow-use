@@ -187,7 +187,9 @@ class WorkflowService:
 					str(workflow_path), llm=self.llm_instance, browser=self.browser_instance, controller=self.controller_instance
 				)
 			except Exception as e:
-				print(f'Error loading workflow: {e}')
+				await self._write_log(log_file, f'[{ts}] Error loading workflow: {e}\n')
+				self.active_tasks[task_id].status = 'failed'
+				self.active_tasks[task_id].error = str(e)
 				return
 
 			await self._write_log(log_file, f'[{ts}] Executing workflow...\n')

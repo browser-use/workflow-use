@@ -18,9 +18,14 @@ from .views import (
 
 router = APIRouter(prefix='/api/workflows')
 
+_service_instance: WorkflowService | None = None
+
 
 def get_service() -> WorkflowService:
-	return WorkflowService()
+	global _service_instance
+	if _service_instance is None:
+		_service_instance = WorkflowService()
+	return _service_instance
 
 
 @router.get('', response_model=WorkflowListResponse)
