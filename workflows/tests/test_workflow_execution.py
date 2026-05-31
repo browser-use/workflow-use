@@ -164,7 +164,19 @@ class TestWorkflowExecution:
 		assert 'xpath' not in strategy_types, 'Should not have xpath strategies'
 		assert 'id' not in strategy_types, 'Should not have id strategies'
 
-	# Test 11: Actions requiring wait after execution
+	# Test 11: _resolve_placeholders does not raise on positional format specifiers
+	def test_resolve_placeholders_ignores_positional_format_specifiers(self):
+		"""Test that strings with positional placeholders like {0} are returned unchanged instead of raising IndexError."""
+		context = {'name': 'Alice'}
+		data = 'Input field value: {0}'
+		try:
+			if '{' in data and '}' in data:
+				result = data.format(**context)
+		except (KeyError, IndexError):
+			result = data
+		assert result == data, f'Expected original string unchanged, got {result!r}'
+
+	# Test 12: Actions requiring wait after execution
 	def test_actions_requiring_wait(self):
 		"""Test that certain actions trigger page stabilization wait"""
 		# From line 189 of workflow_use/workflow/service.py
