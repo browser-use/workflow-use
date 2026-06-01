@@ -517,9 +517,11 @@ Extracted Information:"""
 					formatted_data = data.format(**self.context)
 					return formatted_data
 				return data  # No placeholders, return as is
-			except KeyError:
-				# A key in the placeholder was not found in the context.
-				# Return the original string as per previous behavior.
+			except (KeyError, IndexError, ValueError):
+				# A key in the placeholder was not found in the context (KeyError),
+				# or a positional format specifier like {0} was present (IndexError),
+				# or the format string was otherwise invalid (ValueError).
+				# Return the original string unchanged.
 				return data
 
 		# TODO: This next things are not really supported atm, we'll need to to do it in the future.

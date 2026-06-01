@@ -158,6 +158,23 @@ class TestWorkflowExecution:
 			assert 'priority' in strategy, "Strategy missing 'priority'"
 			assert 'metadata' in strategy, "Strategy missing 'metadata'"
 
+	# Test 11: _resolve_placeholders returns original string for positional format specifiers
+	def test_resolve_placeholders_positional_format_specifier(self):
+		"""Positional placeholders like {0} must not crash; original string is returned unchanged."""
+		def _resolve_placeholders(data, context):
+			if isinstance(data, str):
+				try:
+					if '{' in data and '}' in data:
+						return data.format(**context)
+					return data
+				except (KeyError, IndexError, ValueError):
+					return data
+			return data
+
+		url = "https://example.com/item/{0}/details"
+		result = _resolve_placeholders(url, {})
+		assert result == url, f"Expected original URL, got: {result}"
+
 		# Validate semantic-only (no CSS/xpath)
 		strategy_types = [s['type'] for s in strategies]
 		assert 'css' not in strategy_types, 'Should not have CSS strategies'
