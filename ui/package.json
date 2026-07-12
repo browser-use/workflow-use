@@ -13,27 +13,27 @@
     "postinstall": "test -n \"$NOYARNPOSTINSTALL\" || npm run type-gen"
   },
   "dependencies": {
-    "@tailwindcss/vite": "^4.1.7",
-    "@xyflow/react": "^12.5.1",
-    "openapi-fetch": "^0.14.0",
-    "openapi-react-query": "^0.5.0",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "tailwindcss": "^4.1.7",
-    "zod": "^3.24.4"
+    "@tailwindcss/vite": "4.1.7",
+    "@xyflow/react": "12.6.4",
+    "openapi-fetch": "0.14.0",
+    "openapi-react-query": "0.5.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "tailwindcss": "4.1.7",
+    "zod": "3.24.4"
   },
   "devDependencies": {
-    "@types/node": "^22.15.19",
-    "@types/react": "^18.2.53",
-    "@types/react-dom": "^18.2.18",
-    "@typescript-eslint/eslint-plugin": "^6.20.0",
-    "@typescript-eslint/parser": "^6.20.0",
-    "@vitejs/plugin-react": "^4.2.1",
-    "eslint": "^8.56.0",
-    "eslint-plugin-react-hooks": "^4.6.0",
-    "eslint-plugin-react-refresh": "^0.4.5",
-    "openapi-typescript": "^7.8.0",
-    "typescript": "^5.3.3",
-    "vite": "^5.0.12"
+    "@types/node": "22.15.19",
+    "@types/react": "18.3.21",
+    "@types/react-dom": "18.3.7",
+    "@typescript-eslint/eslint-plugin": "6.21.0",
+    "@typescript-eslint/parser": "6.21.0",
+    "@vitejs/plugin-react": "4.4.1",
+    "eslint": "8.57.1",
+    "eslint-plugin-react-hooks": "4.6.2",
+    "eslint-plugin-react-refresh": "0.4.20",
+    "openapi-typescript": "7.8.0",
+    "typescript": "5.8.3",
+    "vite": "5.4.19"
   }
 }

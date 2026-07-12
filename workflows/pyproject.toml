@@ -12,23 +12,23 @@ classifiers = [
 ]
 
 dependencies = [
-    "aiofiles>=24.1.0",
-    "browser-use>=0.9.4",
-    "fastapi>=0.115.12",
-    "fastmcp>=2.3.4",
-    "typer>=0.15.3",
-    "uvicorn>=0.34.2",
+    "aiofiles==24.1.0",
+    "browser-use==0.9.5",
+    "fastapi==0.115.12",
+    "fastmcp==2.5.2",
+    "typer==0.16.0",
+    "uvicorn==0.34.2",
     "faiss-cpu==1.13.2",
-    "pandas>=2.3.0",
-    "markdownify>=0.11.6",
-    "pyyaml>=6.0.0",
+    "pandas==2.3.0",
+    "markdownify==1.2.0",
+    "pyyaml==6.0.3",
 ]
 
 
 [tool.uv]
 dev-dependencies = [
-    "build>=1.2.2.post1",
-    "ruff>=0.11.8",
+    "build==1.2.2.post1",
+    "ruff==0.11.12",
 ]
 
 [tool.codespell]
