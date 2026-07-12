@@ -15,9 +15,9 @@ dependencies = [
     "aiofiles==24.1.0",
     "browser-use==0.9.5",
     "fastapi==0.115.12",
-    "fastmcp==2.5.2",
+    "fastmcp==3.4.0",
     "typer==0.16.0",
-    "uvicorn==0.34.2",
+    "uvicorn==0.35.0",
     "faiss-cpu==1.13.2",
     "pandas==2.3.0",
     "markdownify==1.2.0",
@@ -29,6 +29,11 @@ dependencies = [
 dev-dependencies = [
     "build==1.2.2.post1",
     "ruff==0.11.12",
+]
+# Security constraint for a transitive dependency (pulled in by browser-use).
+# authlib <= 1.6.8 is vulnerable (CVE-2026-27962); force >= 1.6.9.
+constraint-dependencies = [
+    "authlib>=1.6.9",
 ]
 
 [tool.codespell]

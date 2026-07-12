@@ -17,7 +17,8 @@ def get_mcp_server(
 	name: str = 'WorkflowService',
 	description: str = 'Exposes workflows as MCP tools.',
 ):
-	mcp_app = FastMCP(name=name, description=description)
+	# fastmcp 3.x renamed the server-level `description` kwarg to `instructions`.
+	mcp_app = FastMCP(name=name, instructions=description)
 
 	_setup_workflow_tools(mcp_app, llm_instance, page_extraction_llm, workflow_dir)
 	return mcp_app

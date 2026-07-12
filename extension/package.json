@@ -42,5 +42,8 @@
     "tw-animate-css": "1.3.4",
     "typescript": "5.8.3",
     "wxt": "0.20.7"
+  },
+  "overrides": {
+    "shell-quote": "1.10.0"
   }
 }
