@@ -13,14 +13,14 @@ classifiers = [
 
 dependencies = [
     "aiofiles==24.1.0",
-    "browser-use==0.9.5",
+    "browser-use==0.13.4",
     "fastapi==0.115.12",
     "fastmcp==3.4.0",
     "typer==0.16.0",
     "uvicorn==0.35.0",
     "faiss-cpu==1.13.2",
     "pandas==2.3.0",
-    "markdownify==1.2.0",
+    "markdownify==1.2.2",
     "pyyaml==6.0.3",
 ]
 
@@ -40,11 +40,6 @@ constraint-dependencies = [
     "cryptography>=48.0.1", # CVE-2026-26007 / GHSA-537c-gmf6-5ccf (< 48.0.1)
     "pillow>=12.2.0",       # CVE-2026-40192 / CVE-2026-42311 / CVE-2026-25990 (< 12.2.0)
     "soupsieve>=2.8.4",     # CVE-2026-49476 / CVE-2026-49477 (<= 2.8.3)
-]
-# browser-use==0.9.5 hard-pins aiohttp==3.12.15, so a constraint can't lift it;
-# override the pin to clear CVE-2025-69223 (aiohttp <= 3.13.2).
-override-dependencies = [
-    "aiohttp>=3.13.3",
 ]
 
 [tool.codespell]
