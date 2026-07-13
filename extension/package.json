@@ -44,6 +44,18 @@
     "wxt": "0.20.7"
   },
   "overrides": {
-    "shell-quote": "1.10.0"
+    "shell-quote": "1.10.0",
+    "node-forge": "1.4.0",
+    "tar": "7.5.20",
+    "rollup": "4.62.2",
+    "minimatch@3": "3.1.5",
+    "minimatch@9": "9.0.9",
+    "minimatch@10": "10.2.5",
+    "flatted": "3.4.2",
+    "picomatch@4": "4.0.5",
+    "defu": "6.1.7",
+    "tmp": "0.2.7",
+    "vite": "6.4.3",
+    "ws": "8.21.0"
   }
 }

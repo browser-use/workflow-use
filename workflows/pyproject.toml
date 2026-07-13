@@ -30,10 +30,21 @@ dev-dependencies = [
     "build==1.2.2.post1",
     "ruff==0.11.12",
 ]
-# Security constraint for a transitive dependency (pulled in by browser-use).
-# authlib <= 1.6.8 is vulnerable (CVE-2026-27962); force >= 1.6.9.
+# Security constraints for transitive dependencies (pulled in by browser-use
+# and friends). Each floor lifts the resolved version out of a vulnerable range.
 constraint-dependencies = [
-    "authlib>=1.6.9",
+    "authlib>=1.6.9",       # CVE-2026-27962 (<= 1.6.8)
+    "urllib3>=2.7.0",       # CVE-2026-44431 / CVE-2025-66418 / CVE-2025-66471 / CVE-2026-21441
+    "pyasn1>=0.6.3",        # CVE-2026-23490 / CVE-2026-30922 (<= 0.6.2)
+    "protobuf>=6.33.5,<7",  # CVE-2026-0994 (<= 6.33.4); stay on the 6.x line
+    "cryptography>=48.0.1", # CVE-2026-26007 / GHSA-537c-gmf6-5ccf (< 48.0.1)
+    "pillow>=12.2.0",       # CVE-2026-40192 / CVE-2026-42311 / CVE-2026-25990 (< 12.2.0)
+    "soupsieve>=2.8.4",     # CVE-2026-49476 / CVE-2026-49477 (<= 2.8.3)
+]
+# browser-use==0.9.5 hard-pins aiohttp==3.12.15, so a constraint can't lift it;
+# override the pin to clear CVE-2025-69223 (aiohttp <= 3.13.2).
+override-dependencies = [
+    "aiohttp>=3.13.3",
 ]
 
 [tool.codespell]
