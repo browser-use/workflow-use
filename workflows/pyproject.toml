@@ -16,6 +16,11 @@ dependencies = [
     "browser-use==0.13.4",
     "fastapi==0.139.2",
     "fastmcp==3.4.0",
+    # starlette is transitive (via fastapi/fastmcp) but pinned directly so the
+    # security floor lands in the published wheel's Requires-Dist, not just the
+    # uv lockfile. Clears CVE-2025-62727 (<= 0.49.0) / CVE-2026-48818 (< 1.1.0)
+    # / CVE-2026-54283 (< 1.3.1); requires fastapi>=0.139 (no upper starlette cap).
+    "starlette==1.3.1",
     "typer==0.16.0",
     "uvicorn==0.35.0",
     "faiss-cpu==1.13.2",
@@ -40,7 +45,6 @@ constraint-dependencies = [
     "cryptography>=48.0.1", # CVE-2026-26007 / GHSA-537c-gmf6-5ccf (< 48.0.1)
     "pillow>=12.2.0",       # CVE-2026-40192 / CVE-2026-42311 / CVE-2026-25990 (< 12.2.0)
     "soupsieve>=2.8.4",     # CVE-2026-49476 / CVE-2026-49477 (<= 2.8.3)
-    "starlette>=1.3.1",     # CVE-2025-62727 (<= 0.49.0) / CVE-2026-48818 (< 1.1.0) / CVE-2026-54283 (< 1.3.1); needs fastapi>=0.139
 ]
 
 [tool.codespell]
