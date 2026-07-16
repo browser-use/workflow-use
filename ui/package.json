@@ -34,7 +34,7 @@
     "eslint-plugin-react-refresh": "0.4.20",
     "openapi-typescript": "7.8.0",
     "typescript": "5.8.3",
-    "vite": "5.4.21"
+    "vite": "6.4.3"
   },
   "overrides": {
     "tar": "7.5.20",
