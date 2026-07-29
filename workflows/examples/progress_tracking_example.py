@@ -79,6 +79,14 @@ async def database_storage_example():
 		status_history.append({'timestamp': datetime.now().isoformat(), 'status': status})
 		print(f'ℹ️  {status}')
 
+	pending_tasks: list[asyncio.Task[None]] = []
+
+	def schedule_step(data: dict) -> None:
+		pending_tasks.append(asyncio.create_task(step_callback(data)))
+
+	def schedule_status(status: str) -> None:
+		pending_tasks.append(asyncio.create_task(status_callback(status)))
+
 	# Initialize service
 	llm = ChatBrowserUse(model='bu-latest')
 	healing_service = HealingService(
@@ -93,9 +101,12 @@ async def database_storage_example():
 		agent_llm=llm,
 		extraction_llm=llm,
 		use_cloud=False,
-		on_step_recorded=lambda data: asyncio.create_task(step_callback(data)),
-		on_status_update=lambda status: asyncio.create_task(status_callback(status)),
+		on_step_recorded=schedule_step,
+		on_status_update=schedule_status,
 	)
+
+	if pending_tasks:
+		await asyncio.gather(*pending_tasks)
 
 	# Display stored data
 	print(f'\n📊 Stored {len(stored_steps)} steps and {len(status_history)} status updates')
@@ -193,6 +204,14 @@ async def cloud_backend_pattern():
 
 		print(f'ℹ️  Status update: {status}')
 
+	pending_tasks: list[asyncio.Task[None]] = []
+
+	def schedule_step(data: dict) -> None:
+		pending_tasks.append(asyncio.create_task(step_callback(data)))
+
+	def schedule_status(status: str) -> None:
+		pending_tasks.append(asyncio.create_task(status_callback(status)))
+
 	# Initialize service
 	llm = ChatBrowserUse(model='bu-latest')
 	healing_service = HealingService(
@@ -209,9 +228,12 @@ async def cloud_backend_pattern():
 		agent_llm=llm,
 		extraction_llm=llm,
 		use_cloud=False,
-		on_step_recorded=lambda data: asyncio.create_task(step_callback(data)),
-		on_status_update=lambda status: asyncio.create_task(status_callback(status)),
+		on_step_recorded=schedule_step,
+		on_status_update=schedule_status,
 	)
+
+	if pending_tasks:
+		await asyncio.gather(*pending_tasks)
 
 	# Display final metadata (what would be in your database)
 	print('\n' + '=' * 80)

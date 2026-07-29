@@ -83,8 +83,10 @@ Called for non-step status updates during workflow processing. Receives a string
 ### Example 1: Simple Console Logging
 
 ```python
-from workflow_use.healing.service import HealingService
+import asyncio
+
 from browser_use.llm import ChatBrowserUse
+from workflow_use.healing.service import HealingService
 
 def step_callback(step_data: dict):
     print(f"Step {step_data['step_number']}: {step_data['description']}")
@@ -94,16 +96,20 @@ def step_callback(step_data: dict):
 def status_callback(status: str):
     print(f"Status: {status}")
 
-llm = ChatBrowserUse(model='bu-latest')
-healing_service = HealingService(llm=llm, use_deterministic_conversion=True)
+async def main():
+    llm = ChatBrowserUse(model='bu-latest')
+    healing_service = HealingService(llm=llm, use_deterministic_conversion=True)
 
-workflow = await healing_service.generate_workflow_from_prompt(
-    prompt="Search for Python on Google",
-    agent_llm=llm,
-    extraction_llm=llm,
-    on_step_recorded=step_callback,
-    on_status_update=status_callback,
-)
+    await healing_service.generate_workflow_from_prompt(
+        prompt="Search for Python on Google",
+        agent_llm=llm,
+        extraction_llm=llm,
+        on_step_recorded=step_callback,
+        on_status_update=status_callback,
+    )
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 **Output:**
@@ -130,7 +136,7 @@ Status: Workflow generation complete!
 
 ```python
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 
 async def step_callback(step_data: dict):
     """Store step immediately in database for real-time display."""
@@ -160,15 +166,28 @@ async def status_callback(status: str):
 
             await session.commit()
 
-# Generate with progress tracking
-workflow = await healing_service.generate_workflow_from_prompt(
-    prompt=task_prompt,
-    agent_llm=llm,
-    extraction_llm=llm,
-    use_cloud=False,
-    on_step_recorded=lambda data: asyncio.create_task(step_callback(data)),
-    on_status_update=lambda status: asyncio.create_task(status_callback(status)),
-)
+pending_tasks: list[asyncio.Task[None]] = []
+
+def schedule_step(data: dict) -> None:
+    pending_tasks.append(asyncio.create_task(step_callback(data)))
+
+def schedule_status(status: str) -> None:
+    pending_tasks.append(asyncio.create_task(status_callback(status)))
+
+async def main():
+    await healing_service.generate_workflow_from_prompt(
+        prompt=task_prompt,
+        agent_llm=llm,
+        extraction_llm=llm,
+        use_cloud=False,
+        on_step_recorded=schedule_step,
+        on_status_update=schedule_status,
+    )
+    if pending_tasks:
+        await asyncio.gather(*pending_tasks)
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 **Frontend polling (every 2 seconds):**
@@ -197,6 +216,8 @@ async def get_workflow_progress(workflow_id: str):
 ### Example 3: Progress Bar
 
 ```python
+import asyncio
+
 def step_callback(step_data: dict):
     """Update progress bar as steps are recorded."""
     bar = "█" * step_data["step_number"] + "░" * (10 - step_data["step_number"])
@@ -205,13 +226,17 @@ def step_callback(step_data: dict):
 def status_callback(status: str):
     print(f"\n\n{status}")
 
-workflow = await healing_service.generate_workflow_from_prompt(
-    prompt="Search for Python documentation",
-    agent_llm=llm,
-    extraction_llm=llm,
-    on_step_recorded=step_callback,
-    on_status_update=status_callback,
-)
+async def main():
+    await healing_service.generate_workflow_from_prompt(
+        prompt="Search for Python documentation",
+        agent_llm=llm,
+        extraction_llm=llm,
+        on_step_recorded=step_callback,
+        on_status_update=status_callback,
+    )
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 **Output:**
@@ -270,13 +295,18 @@ generate_workflow_from_prompt() starts
 Callbacks can be synchronous functions:
 
 ```python
+import asyncio
+
 def step_callback(step_data: dict):
     print(f"Step recorded: {step_data['description']}")
 
-workflow = await healing_service.generate_workflow_from_prompt(
-    ...,
-    on_step_recorded=step_callback,
-)
+async def main():
+    await healing_service.generate_workflow_from_prompt(
+        ...,
+        on_step_recorded=step_callback,
+    )
+
+asyncio.run(main())
 ```
 
 ### Asynchronous Callbacks
@@ -284,26 +314,42 @@ workflow = await healing_service.generate_workflow_from_prompt(
 For async operations (database writes, API calls), wrap in `asyncio.create_task`:
 
 ```python
+import asyncio
+
 async def async_step_callback(step_data: dict):
     async with db_session() as session:
         await session.execute(...)
 
-workflow = await healing_service.generate_workflow_from_prompt(
-    ...,
-    on_step_recorded=lambda data: asyncio.create_task(async_step_callback(data)),
-)
+pending_tasks: list[asyncio.Task[None]] = []
+
+def schedule_step(data: dict) -> None:
+    pending_tasks.append(asyncio.create_task(async_step_callback(data)))
+
+async def main():
+    await healing_service.generate_workflow_from_prompt(
+        ...,
+        on_step_recorded=schedule_step,
+    )
+    if pending_tasks:
+        await asyncio.gather(*pending_tasks)
+
+asyncio.run(main())
 ```
 
 ## Error Handling
 
-Callbacks are wrapped in try-except blocks to prevent callback errors from breaking workflow generation:
+Both callback types are wrapped in try-except blocks to prevent callback errors from breaking workflow generation:
 
 ```python
+# Step callbacks are isolated where each action is recorded.
 try:
     self.on_step_recorded(callback_data)
 except Exception as e:
     print(f'⚠️  Warning: Failed to fire step recorded callback: {e}')
     # Workflow generation continues normally
+
+# Status callbacks use a shared exception-isolating helper.
+_emit_status_update(on_status_update, 'Initializing browser...')
 ```
 
 This ensures that even if your callback fails (e.g., database connection error), the workflow generation will complete successfully.
@@ -320,7 +366,10 @@ This ensures that even if your callback fails (e.g., database connection error),
 
 ✅ **Good - Non-blocking async:**
 ```python
-on_step_recorded=lambda data: asyncio.create_task(store_in_db(data))
+def schedule_store(data: dict) -> None:
+    asyncio.create_task(store_in_db(data))
+
+on_step_recorded=schedule_store
 ```
 
 ✅ **Good - Fast synchronous:**
@@ -339,20 +388,25 @@ def step_callback(data):
 The callbacks are **fully optional** and **backward compatible**. Existing code continues to work unchanged:
 
 ```python
-# Old code - still works perfectly
-workflow = await healing_service.generate_workflow_from_prompt(
-    prompt="Search for Python",
-    agent_llm=llm,
-    extraction_llm=llm,
-)
+import asyncio
 
-# New code - with callbacks
-workflow = await healing_service.generate_workflow_from_prompt(
-    prompt="Search for Python",
-    agent_llm=llm,
-    extraction_llm=llm,
-    on_step_recorded=my_callback,  # Optional
-)
+# Old code - still works perfectly
+async def main():
+    await healing_service.generate_workflow_from_prompt(
+        prompt="Search for Python",
+        agent_llm=llm,
+        extraction_llm=llm,
+    )
+
+    # New code - with callbacks
+    await healing_service.generate_workflow_from_prompt(
+        prompt="Search for Python",
+        agent_llm=llm,
+        extraction_llm=llm,
+        on_step_recorded=my_callback,  # Optional
+    )
+
+asyncio.run(main())
 ```
 
 ## Debugging with Callbacks
@@ -360,6 +414,7 @@ workflow = await healing_service.generate_workflow_from_prompt(
 ### Example: Debug Logger
 
 ```python
+import asyncio
 import logging
 
 logger = logging.getLogger(__name__)
@@ -377,18 +432,23 @@ def debug_step_callback(step_data: dict):
 def debug_status_callback(status: str):
     logger.info(f"Status: {status}")
 
-workflow = await healing_service.generate_workflow_from_prompt(
-    prompt="Search for Python",
-    agent_llm=llm,
-    extraction_llm=llm,
-    on_step_recorded=debug_step_callback,
-    on_status_update=debug_status_callback,
-)
+async def main():
+    await healing_service.generate_workflow_from_prompt(
+        prompt="Search for Python",
+        agent_llm=llm,
+        extraction_llm=llm,
+        on_step_recorded=debug_step_callback,
+        on_status_update=debug_status_callback,
+    )
+
+asyncio.run(main())
 ```
 
 ### Example: Failure Detection
 
 ```python
+import asyncio
+
 failure_detected = {'failed': False, 'last_step': None}
 
 def detect_failure_callback(step_data: dict):
@@ -399,19 +459,22 @@ def detect_failure_callback(step_data: dict):
     if step_data['action_type'] == 'extract' and not step_data.get('extracted_data'):
         print(f"⚠️  Warning: Extraction at step {step_data['step_number']} returned no data")
 
-try:
-    workflow = await healing_service.generate_workflow_from_prompt(
-        prompt="Complex task",
-        agent_llm=llm,
-        extraction_llm=llm,
-        on_step_recorded=detect_failure_callback,
-    )
-except Exception as e:
-    print(f"❌ Workflow generation failed!")
-    if failure_detected['last_step']:
-        print(f"Last successful step: {failure_detected['last_step']['step_number']}")
-        print(f"Last action: {failure_detected['last_step']['description']}")
-        print(f"Last URL: {failure_detected['last_step']['url']}")
+async def main():
+    try:
+        await healing_service.generate_workflow_from_prompt(
+            prompt="Complex task",
+            agent_llm=llm,
+            extraction_llm=llm,
+            on_step_recorded=detect_failure_callback,
+        )
+    except Exception:
+        print("❌ Workflow generation failed!")
+        if failure_detected['last_step']:
+            print(f"Last successful step: {failure_detected['last_step']['step_number']}")
+            print(f"Last action: {failure_detected['last_step']['description']}")
+            print(f"Last URL: {failure_detected['last_step']['url']}")
+
+asyncio.run(main())
 ```
 
 ## Integration with Browser-Use Cloud
@@ -440,6 +503,7 @@ class Workflow(Base):
 ### Backend Implementation
 
 ```python
+import asyncio
 from datetime import datetime, timezone
 
 async def generate_workflow_with_tracking(
@@ -448,6 +512,7 @@ async def generate_workflow_with_tracking(
     llm: BaseChatModel
 ):
     """Generate workflow with real-time progress tracking."""
+    pending_tasks: list[asyncio.Task[None]] = []
 
     async def step_callback(step_data: dict):
         """Store step immediately in database."""
@@ -496,14 +561,22 @@ async def generate_workflow_with_tracking(
     # Generate workflow with progress tracking
     healing_service = HealingService(llm=llm, use_deterministic_conversion=True)
 
+    def schedule_step(data: dict) -> None:
+        pending_tasks.append(asyncio.create_task(step_callback(data)))
+
+    def schedule_status(status: str) -> None:
+        pending_tasks.append(asyncio.create_task(status_callback(status)))
+
     workflow = await healing_service.generate_workflow_from_prompt(
         prompt=task_prompt,
         agent_llm=llm,
         extraction_llm=llm,
         use_cloud=False,
-        on_step_recorded=lambda data: asyncio.create_task(step_callback(data)),
-        on_status_update=lambda status: asyncio.create_task(status_callback(status)),
+        on_step_recorded=schedule_step,
+        on_status_update=schedule_status,
     )
+    if pending_tasks:
+        await asyncio.gather(*pending_tasks)
 
     return workflow
 ```
@@ -590,13 +663,15 @@ See `examples/progress_tracking_example.py` for complete working examples includ
 ### Before (No Progress Tracking)
 
 ```python
-workflow = await healing_service.generate_workflow_from_prompt(
-    prompt="Search for Python",
-    agent_llm=llm,
-    extraction_llm=llm,
-)
-# Wait... no visibility into what's happening
-# Workflow returned when complete
+async def generate_without_tracking():
+    workflow = await healing_service.generate_workflow_from_prompt(
+        prompt="Search for Python",
+        agent_llm=llm,
+        extraction_llm=llm,
+    )
+    # Wait... no visibility into what's happening
+    # Workflow returned when complete
+    return workflow
 ```
 
 ### After (With Progress Tracking)
@@ -608,15 +683,17 @@ def step_callback(step_data: dict):
 def status_callback(status: str):
     print(f"Status: {status}")
 
-workflow = await healing_service.generate_workflow_from_prompt(
-    prompt="Search for Python",
-    agent_llm=llm,
-    extraction_llm=llm,
-    on_step_recorded=step_callback,  # NEW: Real-time step tracking
-    on_status_update=status_callback,  # NEW: Status updates
-)
-# See each step as it's recorded!
-# Know exactly what's happening at each phase!
+async def generate_with_tracking():
+    workflow = await healing_service.generate_workflow_from_prompt(
+        prompt="Search for Python",
+        agent_llm=llm,
+        extraction_llm=llm,
+        on_step_recorded=step_callback,  # NEW: Real-time step tracking
+        on_status_update=status_callback,  # NEW: Status updates
+    )
+    # See each step as it's recorded!
+    # Know exactly what's happening at each phase!
+    return workflow
 ```
 
 ## FAQ
@@ -678,7 +755,10 @@ on_step_recorded=my_callback()
 on_step_recorded=async_callback
 
 # ✅ Non-blocking
-on_step_recorded=lambda data: asyncio.create_task(async_callback(data))
+def schedule_callback(data: dict) -> None:
+    asyncio.create_task(async_callback(data))
+
+on_step_recorded=schedule_callback
 ```
 
 ### Missing Steps in Database

@@ -124,6 +124,8 @@ Comprehensive test suite covering:
 ### Backend Implementation
 
 ```python
+import asyncio
+
 async def step_callback(step_data: dict):
     """Store step immediately in database for real-time display."""
     async with await database.get_session() as session:
@@ -134,33 +136,51 @@ async def step_callback(step_data: dict):
             workflow.generation_metadata['steps'] = steps
             await session.commit()
 
-# Generate with callbacks
-workflow = await healing_service.generate_workflow_from_prompt(
-    prompt=task_prompt,
-    agent_llm=llm,
-    extraction_llm=llm,
-    use_cloud=False,
-    on_step_recorded=lambda data: asyncio.create_task(step_callback(data)),
-    on_status_update=lambda status: asyncio.create_task(status_callback(status)),
-)
+async def status_callback(status: str):
+    """Store status updates using the application's persistence layer."""
+    ...
+
+pending_tasks: list[asyncio.Task[None]] = []
+
+def schedule_step(data: dict) -> None:
+    pending_tasks.append(asyncio.create_task(step_callback(data)))
+
+def schedule_status(status: str) -> None:
+    pending_tasks.append(asyncio.create_task(status_callback(status)))
+
+async def main():
+    await healing_service.generate_workflow_from_prompt(
+        prompt=task_prompt,
+        agent_llm=llm,
+        extraction_llm=llm,
+        use_cloud=False,
+        on_step_recorded=schedule_step,
+        on_status_update=schedule_status,
+    )
+    if pending_tasks:
+        await asyncio.gather(*pending_tasks)
+
+asyncio.run(main())
 ```
 
 ### Frontend Polling
 
 ```python
+# `router`, `database`, and `get_workflow` are supplied by the application.
 @router.get("/api/workflows/{workflow_id}/progress")
 async def get_workflow_progress(workflow_id: str):
     """Poll for real-time workflow generation progress."""
-    workflow = await get_workflow(session, workflow_id)
-    metadata = workflow.generation_metadata or {}
+    async with await database.get_session() as session:
+        workflow = await get_workflow(session, workflow_id)
+        metadata = workflow.generation_metadata or {}
 
-    return {
-        "workflow_id": workflow_id,
-        "status": workflow.status,
-        "steps_recorded": len(metadata.get('steps', [])),
-        "latest_step": metadata.get('steps', [])[-1] if metadata.get('steps') else None,
-        "is_complete": workflow.status == 'completed'
-    }
+        return {
+            "workflow_id": workflow_id,
+            "status": workflow.status,
+            "steps_recorded": len(metadata.get('steps', [])),
+            "latest_step": metadata.get('steps', [])[-1] if metadata.get('steps') else None,
+            "is_complete": workflow.status == 'completed'
+        }
 ```
 
 Frontend polls every 2 seconds to display real-time progress.
@@ -176,16 +196,23 @@ Both callbacks default to `None`, ensuring existing code continues to work uncha
 ### 3. Exception Handling
 Callback errors are caught and logged but don't break workflow generation:
 ```python
+# Step callbacks are isolated at their call site.
 try:
     self.on_step_recorded(callback_data)
 except Exception as e:
     print(f'⚠️  Warning: Failed to fire step recorded callback: {e}')
+
+# Status callbacks are routed through an exception-isolating helper.
+_emit_status_update(on_status_update, 'Initializing browser...')
 ```
 
 ### 4. Non-Blocking Async Pattern
 Async callbacks use `asyncio.create_task()` to avoid blocking workflow generation:
 ```python
-on_step_recorded=lambda data: asyncio.create_task(async_callback(data))
+def schedule_callback(data: dict) -> None:
+    asyncio.create_task(async_callback(data))
+
+on_step_recorded=schedule_callback
 ```
 
 ### 5. Rich Step Data
@@ -230,6 +257,8 @@ Callbacks receive comprehensive data including:
 ## Usage Example
 
 ```python
+import asyncio
+
 from workflow_use.healing.service import HealingService
 from browser_use.llm import ChatBrowserUse
 
@@ -240,18 +269,22 @@ def step_callback(step_data: dict):
 def status_callback(status: str):
     print(f"Status: {status}")
 
-# Initialize service
-llm = ChatBrowserUse(model='bu-latest')
-healing_service = HealingService(llm=llm, use_deterministic_conversion=True)
+async def main():
+    # Initialize service
+    llm = ChatBrowserUse(model='bu-latest')
+    healing_service = HealingService(llm=llm, use_deterministic_conversion=True)
 
-# Generate with progress tracking
-workflow = await healing_service.generate_workflow_from_prompt(
-    prompt="Search for Python documentation",
-    agent_llm=llm,
-    extraction_llm=llm,
-    on_step_recorded=step_callback,  # NEW!
-    on_status_update=status_callback,  # NEW!
-)
+    # Generate with progress tracking
+    await healing_service.generate_workflow_from_prompt(
+        prompt="Search for Python documentation",
+        agent_llm=llm,
+        extraction_llm=llm,
+        on_step_recorded=step_callback,  # NEW!
+        on_status_update=status_callback,  # NEW!
+    )
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 ## Benefits
@@ -309,7 +342,7 @@ workflow = await healing_service.generate_workflow_from_prompt(
 - ✅ No breaking changes
 - ✅ Optional feature (opt-in)
 - ✅ Works with existing code unchanged
-- ✅ Python 3.8+
+- ✅ Python 3.11+
 
 ## Summary
 

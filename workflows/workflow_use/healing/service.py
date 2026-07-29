@@ -22,6 +22,18 @@ from workflow_use.schema.views import WorkflowDefinitionSchema
 StepRecordedCallback = Callable[[Dict[str, Any]], None]
 StatusUpdateCallback = Callable[[str], None]
 
+
+def _emit_status_update(callback: Optional[StatusUpdateCallback], status: str) -> None:
+	"""Fire a status callback without allowing callback failures to stop generation."""
+	if callback is None:
+		return
+
+	try:
+		callback(status)
+	except Exception as e:
+		print(f'⚠️  Warning: Failed to fire status update callback: {e}')
+
+
 # Get the absolute path to the prompts directory
 _PROMPTS_DIR = Path(__file__).parent / 'prompts'
 
@@ -451,8 +463,7 @@ class HealingService:
 		browser = Browser(use_cloud=use_cloud)
 
 		# Status callback for initialization
-		if on_status_update:
-			on_status_update('Initializing browser...')
+		_emit_status_update(on_status_update, 'Initializing browser...')
 
 		# Create a shared map to capture element text during agent execution
 		element_text_map = {}  # Maps index -> {'text': str, 'tag': str, 'xpath': str, etc.}
@@ -800,8 +811,7 @@ The [ELEMENT: "..."] tag must contain the EXACT visible text of the button, labe
 This structured format is critical for generating a reusable workflow."""
 
 		# Status callback for agent creation
-		if on_status_update:
-			on_status_update('Creating browser agent...')
+		_emit_status_update(on_status_update, 'Creating browser agent...')
 
 		agent = Agent(
 			task=enhanced_prompt,
@@ -820,26 +830,23 @@ This structured format is critical for generating a reusable workflow."""
 		self.captured_element_text_map = element_text_map
 
 		# Run the agent to get history
-		if on_status_update:
-			on_status_update('Recording workflow steps...')
+		_emit_status_update(on_status_update, 'Recording workflow steps...')
 
 		print('🎬 Starting agent with element capture enabled...')
 		history = await agent.run()
 		print(f'✅ Agent completed. Captured {len(element_text_map)} element mappings total.')
 
-		if on_status_update:
-			on_status_update(f'Completed recording {step_counter["count"]} steps')
+		_emit_status_update(on_status_update, f'Completed recording {step_counter["count"]} steps')
 
 		# Store the history so it can be accessed externally (for result caching)
 		self._agent_history = history
 
 		# Create workflow definition from the history
 		# Route to deterministic or LLM-based conversion based on flag
-		if on_status_update:
-			if self.use_deterministic_conversion:
-				on_status_update('Converting steps to workflow (deterministic)...')
-			else:
-				on_status_update('Analyzing workflow with AI...')
+		if self.use_deterministic_conversion:
+			_emit_status_update(on_status_update, 'Converting steps to workflow (deterministic)...')
+		else:
+			_emit_status_update(on_status_update, 'Analyzing workflow with AI...')
 
 		if self.use_deterministic_conversion:
 			# Pass the captured element map to the deterministic converter
@@ -859,8 +866,7 @@ This structured format is critical for generating a reusable workflow."""
 			if not self.validator:
 				self.validator = WorkflowValidator(llm=extraction_llm)
 
-			if on_status_update:
-				on_status_update('Validating workflow with AI...')
+			_emit_status_update(on_status_update, 'Validating workflow with AI...')
 
 			print('\n🔍 Running AI validation on generated workflow...')
 			try:
@@ -883,12 +889,10 @@ This structured format is critical for generating a reusable workflow."""
 				print('Continuing with original workflow...')
 
 		# Post-process: Apply variable identification and YAML cleanup
-		if on_status_update:
-			on_status_update('Post-processing workflow (variable identification & cleanup)...')
+		_emit_status_update(on_status_update, 'Post-processing workflow (variable identification & cleanup)...')
 
 		workflow_definition = self._post_process_workflow(workflow_definition)
 
-		if on_status_update:
-			on_status_update('Workflow generation complete!')
+		_emit_status_update(on_status_update, 'Workflow generation complete!')
 
 		return workflow_definition

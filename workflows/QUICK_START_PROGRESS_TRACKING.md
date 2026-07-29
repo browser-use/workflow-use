@@ -6,11 +6,12 @@
 
 **Before:**
 ```python
-workflow = await healing_service.generate_workflow_from_prompt(
-    prompt="Search for Python",
-    agent_llm=llm,
-    extraction_llm=llm,
-)
+async def generate_without_tracking():
+    return await healing_service.generate_workflow_from_prompt(
+        prompt="Search for Python",
+        agent_llm=llm,
+        extraction_llm=llm,
+    )
 ```
 
 **After:**
@@ -20,13 +21,14 @@ def step_cb(data): print(f"Step {data['step_number']}: {data['description']}")
 def status_cb(status): print(f"Status: {status}")
 
 # Add callbacks to method call (2 parameters)
-workflow = await healing_service.generate_workflow_from_prompt(
-    prompt="Search for Python",
-    agent_llm=llm,
-    extraction_llm=llm,
-    on_step_recorded=step_cb,    # NEW
-    on_status_update=status_cb,  # NEW
-)
+async def generate_with_tracking():
+    return await healing_service.generate_workflow_from_prompt(
+        prompt="Search for Python",
+        agent_llm=llm,
+        extraction_llm=llm,
+        on_step_recorded=step_cb,    # NEW
+        on_status_update=status_cb,  # NEW
+    )
 ```
 
 **That's it!** You now have real-time progress tracking.
@@ -36,19 +38,38 @@ workflow = await healing_service.generate_workflow_from_prompt(
 ## Step 2: For Database Storage (Browser-Use Cloud)
 
 ```python
+import asyncio
+
+# Application-specific dependencies: replace these imports with your database
+# session factory and workflow query helper.
+from your_app.database import database, get_workflow
+
+workflow_id = "your-workflow-id"
+
 async def step_callback(step_data: dict):
     """Store step in database for real-time display."""
-    async with db.session() as session:
+    async with await database.get_session() as session:
         workflow = await get_workflow(session, workflow_id)
         workflow.generation_metadata['steps'].append(step_data)
         await session.commit()
 
-workflow = await healing_service.generate_workflow_from_prompt(
-    prompt=task_prompt,
-    agent_llm=llm,
-    extraction_llm=llm,
-    on_step_recorded=lambda d: asyncio.create_task(step_callback(d)),  # Non-blocking
-)
+pending_tasks: list[asyncio.Task[None]] = []
+
+def schedule_step(step_data: dict) -> None:
+    """Schedule the async write while satisfying the callback's None return type."""
+    pending_tasks.append(asyncio.create_task(step_callback(step_data)))
+
+async def main():
+    await healing_service.generate_workflow_from_prompt(
+        prompt=task_prompt,
+        agent_llm=llm,
+        extraction_llm=llm,
+        on_step_recorded=schedule_step,
+    )
+    if pending_tasks:
+        await asyncio.gather(*pending_tasks)
+
+asyncio.run(main())
 ```
 
 ---
@@ -56,16 +77,19 @@ workflow = await healing_service.generate_workflow_from_prompt(
 ## Step 3: Create Polling Endpoint
 
 ```python
-@router.get("/workflows/{id}/progress")
-async def get_progress(id: str):
-    workflow = await get_workflow(session, id)
-    metadata = workflow.generation_metadata or {}
+# Application-specific dependencies: `router`, `database`, and `get_workflow`
+# must come from your web and persistence layers.
+@router.get("/workflows/{workflow_id}/progress")
+async def get_progress(workflow_id: str):
+    async with await database.get_session() as session:
+        workflow = await get_workflow(session, workflow_id)
+        metadata = workflow.generation_metadata or {}
 
-    return {
-        "steps_recorded": len(metadata.get('steps', [])),
-        "latest_step": metadata.get('steps', [])[-1] if metadata.get('steps') else None,
-        "is_complete": workflow.status == 'completed'
-    }
+        return {
+            "steps_recorded": len(metadata.get('steps', [])),
+            "latest_step": metadata.get('steps', [])[-1] if metadata.get('steps') else None,
+            "is_complete": workflow.status == 'completed'
+        }
 ```
 
 ---
@@ -104,20 +128,24 @@ def log_step(data):
 def log_status(status):
     print(f"🔄 {status}")
 
-# Initialize
-llm = ChatBrowserUse(model='bu-latest')
-service = HealingService(llm=llm, use_deterministic_conversion=True)
+async def main():
+    # Initialize
+    llm = ChatBrowserUse(model='bu-latest')
+    service = HealingService(llm=llm, use_deterministic_conversion=True)
 
-# Generate with tracking
-workflow = await service.generate_workflow_from_prompt(
-    prompt="Go to example.com and extract the title",
-    agent_llm=llm,
-    extraction_llm=llm,
-    on_step_recorded=log_step,
-    on_status_update=log_status,
-)
+    # Generate with tracking
+    workflow = await service.generate_workflow_from_prompt(
+        prompt="Go to example.com and extract the title",
+        agent_llm=llm,
+        extraction_llm=llm,
+        on_step_recorded=log_step,
+        on_status_update=log_status,
+    )
 
-print(f"✅ Done! Generated {len(workflow.steps)} steps")
+    print(f"✅ Done! Generated {len(workflow.steps)} steps")
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 **Output:**
@@ -181,18 +209,24 @@ print(f"✅ Done! Generated {len(workflow.steps)} steps")
 ### Pattern 1: Store in List
 ```python
 steps = []
-workflow = await service.generate_workflow_from_prompt(
-    ...,
-    on_step_recorded=lambda d: steps.append(d)
-)
+
+async def generate():
+    return await service.generate_workflow_from_prompt(
+        ...,
+        on_step_recorded=lambda d: steps.append(d)
+    )
 ```
 
 ### Pattern 2: Async Database Write
 ```python
-workflow = await service.generate_workflow_from_prompt(
-    ...,
-    on_step_recorded=lambda d: asyncio.create_task(store_in_db(d))
-)
+def schedule_db_write(data: dict) -> None:
+    asyncio.create_task(store_in_db(data))
+
+async def generate():
+    return await service.generate_workflow_from_prompt(
+        ...,
+        on_step_recorded=schedule_db_write,
+    )
 ```
 
 ### Pattern 3: Progress Bar
@@ -201,10 +235,11 @@ def show_progress(data):
     bar = "█" * data["step_number"] + "░" * (10 - data["step_number"])
     print(f"\r[{bar}] {data['description'][:40]}...", end="")
 
-workflow = await service.generate_workflow_from_prompt(
-    ...,
-    on_step_recorded=show_progress
-)
+async def generate():
+    return await service.generate_workflow_from_prompt(
+        ...,
+        on_step_recorded=show_progress
+    )
 ```
 
 ---
@@ -233,7 +268,10 @@ on_step_recorded=my_callback()
 **Problem:** Async callback blocking workflow
 **Solution:** Wrap in `asyncio.create_task()`
 ```python
-on_step_recorded=lambda d: asyncio.create_task(async_callback(d))
+def schedule_callback(data: dict) -> None:
+    asyncio.create_task(async_callback(data))
+
+on_step_recorded=schedule_callback
 ```
 
 **Problem:** Steps missing from database

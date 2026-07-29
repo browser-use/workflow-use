@@ -8,17 +8,19 @@ Fixed 4 issues identified in the progress tracking implementation.
 ## Issue 1: Documentation File in Wrong Location ✅ FIXED
 
 ### Root Cause
-`docs/PROGRESS_TRACKING.md` was created in `workflow-use/docs/` instead of `workflow-use/workflows/docs/`, causing the README link to 404.
+`docs/PROGRESS_TRACKING.md` was created at the repository root instead of
+`workflows/docs/PROGRESS_TRACKING.md`, causing the README link to 404.
 
 ### Fix Applied
 ```bash
-mv ../docs/PROGRESS_TRACKING.md docs/
+# Run from the repository root
+mv docs/PROGRESS_TRACKING.md workflows/docs/
 ```
 
 ### Verification
 ```bash
-$ ls -lh docs/PROGRESS_TRACKING.md
--rw-r--r-- 1 user staff 22K Nov 19 19:49 docs/PROGRESS_TRACKING.md
+$ ls -lh workflows/docs/PROGRESS_TRACKING.md
+-rw-r--r-- 1 user staff 22K Nov 19 19:49 workflows/docs/PROGRESS_TRACKING.md
 ```
 
 ### Impact
@@ -30,17 +32,20 @@ $ ls -lh docs/PROGRESS_TRACKING.md
 ## Issue 2: Example File in Wrong Location ✅ FIXED
 
 ### Root Cause
-`progress_tracking_example.py` was created in `workflow-use/examples/` instead of `workflow-use/workflows/examples/`, causing the README structure diagram to be misleading.
+`progress_tracking_example.py` was created in the repository-root `examples/`
+directory instead of `workflows/examples/`, causing the README structure
+diagram to be misleading.
 
 ### Fix Applied
 ```bash
-mv ../examples/progress_tracking_example.py examples/
+# Run from the repository root
+mv examples/progress_tracking_example.py workflows/examples/
 ```
 
 ### Verification
 ```bash
-$ ls -lh examples/progress_tracking_example.py
--rw-r--r-- 1 user staff 8.9K Nov 19 19:49 examples/progress_tracking_example.py
+$ ls -lh workflows/examples/progress_tracking_example.py
+-rw-r--r-- 1 user staff 8.9K Nov 19 19:49 workflows/examples/progress_tracking_example.py
 ```
 
 ### Impact
@@ -150,8 +155,9 @@ Running progress tracking tests...
 
 ### Moved Supporting Documentation Files
 ```bash
-mv ../IMPLEMENTATION_SUMMARY.md .
-mv ../QUICK_START_PROGRESS_TRACKING.md .
+# Run from the repository root
+mv IMPLEMENTATION_SUMMARY.md workflows/
+mv QUICK_START_PROGRESS_TRACKING.md workflows/
 ```
 
 These files were also in the wrong directory and are now in `workflows/` where they belong.
@@ -163,19 +169,18 @@ These files were also in the wrong directory and are now in `workflows/` where t
 ### Files Modified
 1. `workflow_use/healing/service.py` - Fixed step counter logic (1 line moved)
 2. `tests/test_progress_tracking.py` - Already fixed (no changes needed)
-3. Files moved to correct locations (6 files)
+3. Files moved to correct locations (4 files)
 
 ### Files Moved
 ```
 Before:
-workflow-use/
-├── docs/PROGRESS_TRACKING.md                    ❌ Wrong location
-├── examples/progress_tracking_example.py        ❌ Wrong location
-├── IMPLEMENTATION_SUMMARY.md                    ❌ Wrong location
-└── QUICK_START_PROGRESS_TRACKING.md            ❌ Wrong location
+docs/PROGRESS_TRACKING.md                         ❌ Wrong location
+examples/progress_tracking_example.py             ❌ Wrong location
+IMPLEMENTATION_SUMMARY.md                         ❌ Wrong location
+QUICK_START_PROGRESS_TRACKING.md                  ❌ Wrong location
 
 After:
-workflow-use/workflows/
+workflows/
 ├── docs/PROGRESS_TRACKING.md                    ✅ Correct location
 ├── examples/progress_tracking_example.py        ✅ Correct location
 ├── IMPLEMENTATION_SUMMARY.md                    ✅ Correct location
@@ -198,13 +203,13 @@ uv run python tests/test_progress_tracking.py
 uv run python tests/test_step_counter_without_callback.py
 
 # Verify files exist in correct locations
-ls -lh docs/PROGRESS_TRACKING.md
-ls -lh examples/progress_tracking_example.py
-ls -lh QUICK_START_PROGRESS_TRACKING.md
-ls -lh IMPLEMENTATION_SUMMARY.md
+ls -lh workflows/docs/PROGRESS_TRACKING.md
+ls -lh workflows/examples/progress_tracking_example.py
+ls -lh workflows/QUICK_START_PROGRESS_TRACKING.md
+ls -lh workflows/IMPLEMENTATION_SUMMARY.md
 
 # Verify code compiles
-uv run python -m py_compile workflow_use/healing/service.py
+uv run --directory workflows python -m py_compile workflow_use/healing/service.py
 ```
 
 ### Expected Output
