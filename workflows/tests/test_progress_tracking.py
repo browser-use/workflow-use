@@ -27,7 +27,7 @@ except ImportError:
 
 	pytest = _MockPytest()
 
-from workflow_use.healing.service import HealingService
+from workflow_use.healing.service import HealingService, _emit_status_update
 
 
 class TestProgressTracking:
@@ -86,7 +86,7 @@ class TestProgressTracking:
 
 		# Simulate status updates
 		for status in expected_statuses:
-			status_callback(status)
+			_emit_status_update(status_callback, status)
 
 		# Verify all statuses were called
 		assert status_callback.call_count == len(expected_statuses)
@@ -105,20 +105,18 @@ class TestProgressTracking:
 		print('   Verified: on_step_recorded defaults to None')
 		print('   Verified: on_status_update defaults to None')
 
-	def test_callback_exception_handling(self):
-		"""Test that callback exceptions don't break workflow generation."""
+	def test_status_callback_exception_handling(self):
+		"""Test that status callback exceptions don't break workflow generation."""
+		statuses = []
 
-		def failing_callback(data: Dict[str, Any]):
+		def failing_callback(status: str):
+			statuses.append(status)
 			raise Exception('Callback error!')
 
-		# In real implementation, this should be caught and logged
-		# without breaking the workflow generation
-		try:
-			failing_callback({'step_number': 1})
-		except Exception as e:
-			# In actual implementation, this exception is caught
-			# Here we just verify it would be raised
-			assert str(e) == 'Callback error!'
+		_emit_status_update(failing_callback, 'Initializing browser...')
+
+		# Reaching this assertion proves the callback failure was isolated.
+		assert statuses == ['Initializing browser...']
 
 	def test_async_callback_pattern(self):
 		"""Test that async callbacks can be wrapped with create_task."""
@@ -126,17 +124,22 @@ class TestProgressTracking:
 
 		async_callback = AsyncMock()
 
-		# Pattern used in examples
-		wrapper = lambda data: asyncio.create_task(async_callback(data))
+		pending_tasks = []
+
+		# Pattern used in examples. The wrapper intentionally returns None to
+		# satisfy StepRecordedCallback while the task runs asynchronously.
+		def wrapper(data: Dict[str, Any]) -> None:
+			pending_tasks.append(asyncio.create_task(async_callback(data)))
 
 		# Verify wrapper is callable
 		assert callable(wrapper)
 
 		# Test in async context
 		async def test_async():
-			task = wrapper({'step_number': 1})
-			assert isinstance(task, asyncio.Task)
-			await task
+			assert wrapper({'step_number': 1}) is None
+			assert len(pending_tasks) == 1
+			assert isinstance(pending_tasks[0], asyncio.Task)
+			await pending_tasks[0]
 			assert async_callback.called
 
 		# Run test
@@ -315,7 +318,7 @@ if __name__ == '__main__':
 	print('   ✓ Passed')
 
 	print('\n5. Testing callback exception handling...')
-	test.test_callback_exception_handling()
+	test.test_status_callback_exception_handling()
 	print('   ✓ Passed')
 
 	print('\n6. Testing async callback pattern...')
