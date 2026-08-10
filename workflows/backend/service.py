@@ -6,7 +6,7 @@ from typing import Dict, List, Optional, Tuple
 
 import aiofiles
 import yaml
-from browser_use.browser.browser import Browser
+from browser_use import Browser
 from browser_use.llm import ChatBrowserUse
 
 from workflow_use.controller.service import WorkflowController
@@ -41,8 +41,11 @@ class WorkflowService:
 		self.log_dir: Path = self.tmp_dir / 'logs'
 		self.log_dir.mkdir(exist_ok=True, parents=True)
 
-		# LLM / workflow executor
-		self.llm_instance = ChatBrowserUse(model='bu-latest')
+		# LLM / workflow executor (optional — deterministic runs work without it)
+		try:
+			self.llm_instance = ChatBrowserUse(model='bu-latest')
+		except ValueError:
+			self.llm_instance = None
 
 		self.browser_instance = Browser()
 		self.controller_instance = WorkflowController()

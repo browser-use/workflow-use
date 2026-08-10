@@ -32,17 +32,16 @@ app = typer.Typer(
 )
 
 # Default LLM instance to None
-llm_instance: BaseChatModel
+llm_instance: BaseChatModel | None = None
+page_extraction_llm: BaseChatModel | None = None
 try:
 	llm_instance = ChatBrowserUse(model='bu-latest')
 	page_extraction_llm = ChatBrowserUse(model='bu-latest')
 except Exception as e:
-	typer.secho(f'Error initializing LLM: {e}. Would you like to set your BROWSER_USE_API_KEY?', fg=typer.colors.RED)
-	set_browser_use_api_key = input('Set BROWSER_USE_API_KEY? (y/n): ')
-	if set_browser_use_api_key.lower() == 'y':
-		os.environ['BROWSER_USE_API_KEY'] = input('Enter your BROWSER_USE_API_KEY: ')
-		llm_instance = ChatBrowserUse(model='bu-latest')
-		page_extraction_llm = ChatBrowserUse(model='bu-latest')
+	typer.secho(
+		f'LLM not available ({e}). Continuing without LLM — no-AI commands still work.',
+		fg=typer.colors.YELLOW,
+	)
 
 builder_service = BuilderService(llm=llm_instance) if llm_instance else None
 # recorder_service = RecorderService() # Placeholder
