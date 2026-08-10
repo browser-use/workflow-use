@@ -26,6 +26,7 @@ import { NodeConfigMenu } from "./node-config-menu";
 import { PlayButton } from "./play-button";
 import NoWorkflowsMessage from "./no-workflow-message";
 import { $api, fetchClient } from "../lib/api";
+import { useQueryClient } from "@tanstack/react-query";
 
 const WorkflowLayout: React.FC = () => {
   const [selected, setSelected] = useState<string | null>(null);
@@ -41,6 +42,16 @@ const WorkflowLayout: React.FC = () => {
     Record<string, WorkflowMetadata>
   >({});
   const { fitView } = useReactFlow();
+  const queryClient = useQueryClient();
+
+  // After a GUI recording is saved, reload the list and select the new file
+  const handleRecordingSaved = useCallback(
+    (workflowFile: string) => {
+      queryClient.invalidateQueries();
+      setSelected(workflowFile);
+    },
+    [queryClient]
+  );
 
   // ----- Queries using $api -----
   // Fetch all workflows
@@ -218,6 +229,7 @@ const WorkflowLayout: React.FC = () => {
         selected={selected}
         workflowMetadata={workflowMetadata}
         allWorkflowsMetadata={allWorkflowsMetadata}
+        onRecordingSaved={handleRecordingSaved}
         onUpdateMetadata={async (metadata: WorkflowMetadata) => {
           if (selected) {
             await updateWorkflowMetadata(selected, metadata);

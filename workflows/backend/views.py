@@ -28,6 +28,12 @@ class WorkflowExecuteRequest(BaseModel):
 	inputs: Dict[str, Any]
 
 
+class RecordingStatusResponse(BaseModel):
+	status: str  # 'idle' | 'recording' | 'saving' | 'done' | 'error' | 'no_data'
+	message: Optional[str] = None
+	workflow_file: Optional[str] = None
+
+
 # Response Models
 class WorkflowResponse(BaseModel):
 	success: bool

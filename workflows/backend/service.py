@@ -10,9 +10,13 @@ from browser_use import Browser
 from browser_use.llm import ChatBrowserUse
 
 from workflow_use.controller.service import WorkflowController
+from workflow_use.recorder.semantic_converter import convert_recorded_workflow_to_semantic
+from workflow_use.recorder.service import RecordingService
+from workflow_use.recorder.views import HttpRecordingStoppedEvent, RecordingStatusPayload
 from workflow_use.workflow.service import Workflow
 
 from .views import (
+	RecordingStatusResponse,
 	TaskInfo,
 	WorkflowCancelResponse,
 	WorkflowExecuteRequest,
@@ -54,6 +58,89 @@ class WorkflowService:
 		self.active_tasks: Dict[str, TaskInfo] = {}
 		self.workflow_tasks: Dict[str, asyncio.Task] = {}
 		self.cancel_events: Dict[str, asyncio.Event] = {}
+
+		# Recording session state (one at a time)
+		self.recording_service: Optional[RecordingService] = None
+		self.recording_task: Optional[asyncio.Task] = None
+		self.recording_result: Optional[RecordingStatusResponse] = None
+
+	# ---------- Recording control ----------
+
+	def _recording_active(self) -> bool:
+		return self.recording_task is not None and not self.recording_task.done()
+
+	async def start_recording(self) -> RecordingStatusResponse:
+		if self._recording_active():
+			return RecordingStatusResponse(status='recording', message='A recording session is already running')
+
+		self.recording_service = RecordingService()
+		self.recording_result = None
+		self.recording_task = asyncio.create_task(self._run_recording_session())
+		return RecordingStatusResponse(
+			status='recording',
+			message='Recording started — interact in the opened browser, then stop the recording',
+		)
+
+	async def _run_recording_session(self) -> None:
+		try:
+			captured = await self.recording_service.capture_workflow()
+			if captured is None:
+				self.recording_result = RecordingStatusResponse(
+					status='no_data', message='Recording ended without capturing any steps'
+				)
+				return
+
+			recording_data = captured.model_dump(mode='json')
+			semantic = convert_recorded_workflow_to_semantic(recording_data)
+
+			filename = f'recorded-{time.strftime("%Y%m%d-%H%M%S")}.workflow.yaml'
+			output_path = self.tmp_dir / filename
+			output_path.write_text(json.dumps(semantic, indent=2))
+			self.recording_result = RecordingStatusResponse(
+				status='done', message='Recording saved', workflow_file=filename
+			)
+		except asyncio.CancelledError:
+			self.recording_result = RecordingStatusResponse(status='no_data', message='Recording cancelled')
+			raise
+		except Exception as exc:  # surface the failure to the UI instead of dying silently
+			self.recording_result = RecordingStatusResponse(status='error', message=str(exc))
+
+	async def stop_recording(self) -> RecordingStatusResponse:
+		if not self._recording_active():
+			return self.recording_result or RecordingStatusResponse(status='idle')
+
+		# No steps captured: the recorder's finalizer would wait forever, so cancel outright.
+		if self.recording_service and self.recording_service.last_workflow_update_event is None:
+			self.recording_task.cancel()
+			try:
+				await self.recording_task
+			except (asyncio.CancelledError, Exception):
+				pass
+			if self.recording_service.browser:
+				try:
+					await self.recording_service.browser.stop()
+				except Exception:
+					pass
+			return self.recording_result or RecordingStatusResponse(
+				status='no_data', message='Recording stopped without capturing any steps'
+			)
+
+		await self.recording_service.event_queue.put(
+			HttpRecordingStoppedEvent(
+				timestamp=int(time.time() * 1000),
+				payload=RecordingStatusPayload(message='Stopped from GUI'),
+			)
+		)
+		try:
+			await asyncio.wait_for(asyncio.shield(self.recording_task), timeout=30)
+		except asyncio.TimeoutError:
+			return RecordingStatusResponse(status='saving', message='Recording is being finalized')
+		return self.recording_result or RecordingStatusResponse(status='error', message='Recording ended unexpectedly')
+
+	def recording_status(self) -> RecordingStatusResponse:
+		if self._recording_active():
+			return RecordingStatusResponse(status='recording')
+		return self.recording_result or RecordingStatusResponse(status='idle')
 
 	async def _log_file_position(self) -> int:
 		log_file = self.log_dir / 'backend.log'
