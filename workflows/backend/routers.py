@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException
 
 from .service import WorkflowService
 from .views import (
+	RecordingStatusResponse,
 	WorkflowCancelResponse,
 	WorkflowExecuteRequest,
 	WorkflowExecuteResponse,
@@ -18,9 +19,16 @@ from .views import (
 
 router = APIRouter(prefix='/api/workflows')
 
+# Single shared service: per-request instances would lose in-memory task
+# and recording state, breaking /tasks/{id}/status and recording control.
+_service: WorkflowService | None = None
+
 
 def get_service() -> WorkflowService:
-	return WorkflowService()
+	global _service
+	if _service is None:
+		_service = WorkflowService()
+	return _service
 
 
 @router.get('', response_model=WorkflowListResponse)
@@ -117,3 +125,21 @@ async def cancel_workflow(task_id: str):
 	if not result.success and result.message == 'Task not found':
 		raise HTTPException(status_code=404, detail=f'Task {task_id} not found')
 	return result
+
+
+@router.post('/recordings/start', response_model=RecordingStatusResponse)
+async def start_recording():
+	service = get_service()
+	return await service.start_recording()
+
+
+@router.post('/recordings/stop', response_model=RecordingStatusResponse)
+async def stop_recording():
+	service = get_service()
+	return await service.stop_recording()
+
+
+@router.get('/recordings/status', response_model=RecordingStatusResponse)
+async def recording_status():
+	service = get_service()
+	return service.recording_status()
