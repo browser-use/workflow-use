@@ -25,7 +25,7 @@ import Sidebar from "./sidebar";
 import { NodeConfigMenu } from "./node-config-menu";
 import { PlayButton } from "./play-button";
 import NoWorkflowsMessage from "./no-workflow-message";
-import { $api } from "../lib/api";
+import { $api, fetchClient } from "../lib/api";
 
 const WorkflowLayout: React.FC = () => {
   const [selected, setSelected] = useState<string | null>(null);
@@ -36,6 +36,9 @@ const WorkflowLayout: React.FC = () => {
     useState<WorkflowMetadata | null>(null);
   const [savedNodePositions, setSavedNodePositions] = useState<
     Record<string, Record<string, { x: number; y: number }>>
+  >({});
+  const [allWorkflowsMetadata, setAllWorkflowsMetadata] = useState<
+    Record<string, WorkflowMetadata>
   >({});
   const { fitView } = useReactFlow();
 
@@ -159,6 +162,37 @@ const WorkflowLayout: React.FC = () => {
     }
   }, [workflows, selected]);
 
+  // Fetch metadata for every workflow so sidebar items show their real
+  // names instead of a permanent "Loading workflow…" placeholder
+  useEffect(() => {
+    if (!workflows.length) return;
+    let cancelled = false;
+    (async () => {
+      const entries = await Promise.all(
+        workflows.map(async (name) => {
+          try {
+            const { data } = await fetchClient.GET("/api/workflows/{name}", {
+              params: { path: { name } },
+            });
+            if (!data) return null;
+            const parsed = typeof data === "string" ? JSON.parse(data) : data;
+            return [name, parsed as WorkflowMetadata] as const;
+          } catch {
+            return null;
+          }
+        })
+      );
+      if (!cancelled) {
+        setAllWorkflowsMetadata(
+          Object.fromEntries(entries.filter((e): e is NonNullable<typeof e> => e !== null))
+        );
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [workflows]);
+
   const isLoading = isLoadingWorkflows || isLoadingSelectedWorkflow;
 
   if (isLoading) {
@@ -183,6 +217,7 @@ const WorkflowLayout: React.FC = () => {
         onSelect={setSelected}
         selected={selected}
         workflowMetadata={workflowMetadata}
+        allWorkflowsMetadata={allWorkflowsMetadata}
         onUpdateMetadata={async (metadata: WorkflowMetadata) => {
           if (selected) {
             await updateWorkflowMetadata(selected, metadata);
