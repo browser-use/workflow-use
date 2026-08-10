@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 import pathlib
 from typing import Optional
 
@@ -20,6 +21,45 @@ from workflow_use.recorder.views import (
 SCRIPT_DIR = pathlib.Path(__file__).resolve().parent
 EXT_DIR = SCRIPT_DIR.parent.parent.parent / 'extension' / '.output' / 'chrome-mv3'
 USER_DATA_DIR = SCRIPT_DIR / 'user_data_dir'
+
+
+def _find_extension_capable_browser() -> str | None:
+	"""Find a Chromium binary that still honors --load-extension.
+
+	Branded Google Chrome 137+ silently ignores --load-extension, so the
+	recorder extension never loads there and no events reach the recording
+	server. Prefer an explicit override, then Playwright's bundled
+	Chromium/Chrome for Testing, then fall back to browser-use's default.
+	"""
+	override = os.environ.get('WORKFLOW_USE_RECORDER_BROWSER')
+	if override:
+		return override
+
+	playwright_caches = [
+		pathlib.Path.home() / 'Library/Caches/ms-playwright',  # macOS
+		pathlib.Path.home() / '.cache/ms-playwright',  # Linux
+		pathlib.Path(os.environ.get('LOCALAPPDATA', '')) / 'ms-playwright',  # Windows
+	]
+	binary_globs = [
+		'chromium-*/chrome-mac*/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing',
+		'chromium-*/chrome-mac*/Chromium.app/Contents/MacOS/Chromium',
+		'chromium-*/chrome-linux/chrome',
+		'chromium-*/chrome-win/chrome.exe',
+	]
+	for cache in playwright_caches:
+		if not cache.is_dir():
+			continue
+		for pattern in binary_globs:
+			matches = sorted(cache.glob(pattern), reverse=True)  # newest revision first
+			if matches:
+				return str(matches[0])
+
+	print(
+		'[Service] WARNING: No Playwright Chromium found. If recording captures no '
+		'events, branded Google Chrome may be ignoring --load-extension (137+); '
+		'set WORKFLOW_USE_RECORDER_BROWSER to a Chromium/Chrome for Testing binary.'
+	)
+	return None
 
 
 class RecordingService:
@@ -117,6 +157,10 @@ class RecordingService:
 			profile = BrowserProfile(
 				headless=False,
 				user_data_dir=str(USER_DATA_DIR.resolve()),
+				executable_path=_find_extension_capable_browser(),
+				# browser-use's default extensions add a second --load-extension flag
+				# which overrides ours — the recorder extension must win.
+				enable_default_extensions=False,
 				args=[
 					f'--disable-extensions-except={str(EXT_DIR.resolve())}',
 					f'--load-extension={str(EXT_DIR.resolve())}',
