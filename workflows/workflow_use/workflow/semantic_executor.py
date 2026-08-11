@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import re
 import traceback
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
@@ -22,6 +23,7 @@ from workflow_use.schema.views import (
 	WorkflowStep,
 )
 from workflow_use.workflow.error_reporter import ErrorCategory, ErrorContext, ErrorReporter
+from workflow_use.workflow.redaction import redact_step_value
 from workflow_use.workflow.semantic_extractor import SemanticExtractor
 from workflow_use.workflow.step_verifier import StepVerifier, VerificationResult
 
@@ -368,7 +370,6 @@ class SemanticWorkflowExecutor:
 		Returns:
 		    Element info dict if found, None otherwise
 		"""
-		import re
 
 		logger.info(f"Finding element by pattern: '{pattern}' (position: {position_hint}, container: {container_hint})")
 
@@ -1531,7 +1532,7 @@ class SemanticWorkflowExecutor:
 			# Click removed - not needed after fill and CDP doesn't support force parameter
 			await asyncio.sleep(0.5)
 
-			msg = f"⌨️ Input '{step.value}' into: {target_identifier or step.description or selector_to_use}"
+			msg = f"⌨️ Input '{redact_step_value(step, step.value)}' into: {target_identifier or step.description or selector_to_use}"
 			logger.info(msg)
 			return ActionResult(extracted_content=msg, include_in_memory=True)
 
@@ -2098,7 +2099,7 @@ class SemanticWorkflowExecutor:
 			consecutive_verification_failures=self.consecutive_verification_failures,
 			retry_attempts=self.max_retries + 1,
 			target_text=getattr(step, 'target_text', None),
-			input_value=getattr(step, 'value', None),
+			input_value=redact_step_value(step, getattr(step, 'value', None)),
 			last_successful_step=self.last_successful_step,
 			current_url=current_url,
 			page_title=page_title,
@@ -3130,7 +3131,6 @@ EXTRACTED INFORMATION:"""
 
 	def _normalize_date(self, date_str: str) -> str:
 		"""Normalize date string to YYYY-MM-DD format."""
-		import re
 		from datetime import datetime
 
 		# Remove extra whitespace and common words
@@ -3207,7 +3207,6 @@ EXTRACTED INFORMATION:"""
 
 	def _price_in_range(self, price_str: str, price_range: str) -> bool:
 		"""Check if price falls within specified range."""
-		import re
 
 		try:
 			# Extract numeric price

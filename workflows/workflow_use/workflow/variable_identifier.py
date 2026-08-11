@@ -491,12 +491,15 @@ class VariableIdentifier:
 			if candidate.description:
 				entry['description'] = candidate.description
 
-			# IMPORTANT: Always add default value (original value from workflow)
-			# This allows the workflow to run without user input if desired
-			if candidate.suggested_default:
+			# Add a default so the workflow can run without user input - EXCEPT for
+			# high-confidence sensitive matches (SSN, credit card, password, ...),
+			# where suggested_default is deliberately None: persisting the recorded
+			# value as a plaintext default would write the secret into the saved
+			# .workflow.yaml on disk.
+			if candidate.suggested_default is not None:
 				entry['default'] = candidate.suggested_default
-			else:
-				# If no suggested default, use the original value
+			elif candidate.confidence < 0.95:
+				# Low-confidence candidate without an explicit suggestion
 				entry['default'] = candidate.value
 
 			schema.append(entry)

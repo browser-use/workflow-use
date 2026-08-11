@@ -236,6 +236,33 @@ function stopRecorder() {
 }
 
 // --- Helper function to extract semantic information ---
+const SENSITIVE_VALUE_MASK = "********";
+
+// Broader than type=password: OTP fields are type=text/tel with
+// autocomplete=one-time-code, card/CVV fields are type=text/number, and many
+// sites only reveal sensitivity through name/id/label conventions.
+function isSensitiveField(element: HTMLElement): boolean {
+  const el = element as HTMLInputElement;
+  const type = (el.type || "").toLowerCase();
+  if (type === "password") return true;
+  if (el.tagName.toLowerCase() !== "input" && el.tagName.toLowerCase() !== "textarea") return false;
+  const autocomplete = (el.getAttribute("autocomplete") || "").toLowerCase();
+  if (/(one-time-code|cc-number|cc-csc|cc-exp|new-password|current-password)/.test(autocomplete)) {
+    return true;
+  }
+  const hints = [
+    el.name || "",
+    el.id || "",
+    el.getAttribute("aria-label") || "",
+    (el as HTMLInputElement).placeholder || "",
+  ]
+    .join(" ")
+    .toLowerCase();
+  return /(password|passwd|pwd|otp\b|one.?time|verification.?code|security.?code|cvv|cvc|csc\b|card.?number|kart.?no|ssn\b|social.?security|tckn|tc.?kimlik|iban)/.test(
+    hints
+  );
+}
+
 function extractSemanticInfo(element: HTMLElement) {
   // Get associated label text using multiple strategies
   let labelText = '';
@@ -531,6 +558,12 @@ function extractSemanticInfo(element: HTMLElement) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const radioButtonInfo = (element as any)._radioButtonInfo || null;
 
+  // NEVER carry the raw value of a sensitive field: semanticInfo is embedded in
+  // stored events and shipped to the server, so an unmasked value here leaked
+  // real passwords even while the step's own value field was masked.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rawValue = (element as any).value || "";
+
   return {
     labelText,
     textContent: element.textContent?.trim().slice(0, 200) || "",
@@ -538,8 +571,7 @@ function extractSemanticInfo(element: HTMLElement) {
     placeholder: (element as any).placeholder || "",
     title: element.title || "",
     ariaLabel: element.getAttribute('aria-label') || "",
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    value: (element as any).value || "",
+    value: rawValue && isSensitiveField(element) ? SENSITIVE_VALUE_MASK : rawValue,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     name: (element as any).name || "",
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -633,7 +665,7 @@ function handleCustomClick(event: MouseEvent) {
       // Enhanced radio button information
       radioButtonInfo: semanticInfo.radioButtonInfo,
     };
-    console.log("Sending CUSTOM_CLICK_EVENT:", clickData);
+    console.log("Sending CUSTOM_CLICK_EVENT");
     chrome.runtime.sendMessage({
       type: "CUSTOM_CLICK_EVENT",
       payload: clickData,
@@ -689,7 +721,8 @@ function handleInput(event: Event) {
   if (!isRecordingActive) return;
   const targetElement = event.target as HTMLInputElement | HTMLTextAreaElement;
   if (!targetElement || !("value" in targetElement)) return;
-  const isPassword = targetElement.type === "password";
+  // Mask anything sensitive, not just type=password (OTP, card, CVV, SSN, ...)
+  const isSensitive = isSensitiveField(targetElement as HTMLElement);
 
   try {
     const xpath = getXPath(targetElement);
@@ -711,14 +744,14 @@ function handleInput(event: Event) {
       xpath: xpath,
       cssSelector: getEnhancedCSSSelector(targetElement, xpath),
       elementTag: targetElement.tagName,
-      value: isPassword ? "********" : targetElement.value,
+      value: isSensitive ? SENSITIVE_VALUE_MASK : targetElement.value,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       inputType: (targetElement as any).type?.toLowerCase() || 'text', // Input type (text, password, email, etc.)
       // Semantic information for target_text based workflows
       targetText: targetText,
       semanticInfo: semanticInfo,
     };
-    console.log("Sending CUSTOM_INPUT_EVENT:", inputData);
+    console.log("Sending CUSTOM_INPUT_EVENT");
     chrome.runtime.sendMessage({
       type: "CUSTOM_INPUT_EVENT",
       payload: inputData,
@@ -769,7 +802,7 @@ function handleSelectChange(event: Event) {
       targetText: semanticInfo.labelText || fieldName,
       semanticInfo: semanticInfo
     };
-    console.log("Sending CUSTOM_SELECT_EVENT:", selectData);
+    console.log("Sending CUSTOM_SELECT_EVENT");
     chrome.runtime.sendMessage({
       type: "CUSTOM_SELECT_EVENT",
       payload: selectData,
@@ -845,7 +878,7 @@ function handleKeydown(event: KeyboardEvent) {
         cssSelector: cssSelector, // CSS selector of the element in focus (if any)
         elementTag: elementTag, // Tag name of the element in focus
       };
-      console.log("Sending CUSTOM_KEY_EVENT:", keyData);
+      console.log("Sending CUSTOM_KEY_EVENT");
       chrome.runtime.sendMessage({
         type: "CUSTOM_KEY_EVENT",
         payload: keyData,
