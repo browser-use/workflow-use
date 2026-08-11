@@ -189,9 +189,10 @@ function startRecorder() {
         chrome.runtime.sendMessage({ type: "RRWEB_EVENT", payload: event });
       }
     },
-    maskInputOptions: {
-      password: true,
-    },
+    // Mask EVERY input at the rrweb layer: workflow steps never read rrweb
+    // input records, so OTP/card/phone values must not ride along in any
+    // rrweb payload (maskInputOptions{password} left them in cleartext).
+    maskAllInputs: true,
     checkoutEveryNms: 10000,
     checkoutEveryNth: 200,
   });
@@ -246,8 +247,11 @@ function isSensitiveField(element: HTMLElement): boolean {
   const type = (el.type || "").toLowerCase();
   if (type === "password") return true;
   if (el.tagName.toLowerCase() !== "input" && el.tagName.toLowerCase() !== "textarea") return false;
+  // Phone numbers are PII: a real number typed into a tel field is exactly
+  // what leaked into a saved workflow before this masking existed.
+  if (type === "tel") return true;
   const autocomplete = (el.getAttribute("autocomplete") || "").toLowerCase();
-  if (/(one-time-code|cc-number|cc-csc|cc-exp|new-password|current-password)/.test(autocomplete)) {
+  if (/(one-time-code|cc-number|cc-csc|cc-exp|new-password|current-password|\btel\b)/.test(autocomplete)) {
     return true;
   }
   const hints = [
@@ -258,7 +262,10 @@ function isSensitiveField(element: HTMLElement): boolean {
   ]
     .join(" ")
     .toLowerCase();
-  return /(password|passwd|pwd|otp\b|one.?time|verification.?code|security.?code|cvv|cvc|csc\b|card.?number|kart.?no|ssn\b|social.?security|tckn|tc.?kimlik|iban)/.test(
+  // Phone vocabulary must cover fields that are NOT type="tel": mobile/cell
+  // naming conventions (EN) and mobil/cep (TR) are how sites commonly name
+  // free-text phone inputs.
+  return /(password|passwd|pwd|otp\b|one.?time|verification.?code|security.?code|cvv|cvc|csc\b|card.?number|kart.?no|ssn\b|social.?security|tckn|tc.?kimlik|iban|secret|token\b|telefon|phone|gsm\b|mobile|mobil\b|\bcell(ular)?\b|msisdn|\bcep\b|cep.?tel)/.test(
     hints
   );
 }
