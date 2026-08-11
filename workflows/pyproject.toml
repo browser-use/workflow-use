@@ -35,7 +35,6 @@ dev-dependencies = [
     "build==1.2.2.post1",
     "ruff==0.11.12",
     "pytest==8.4.2",
-    "pytest-asyncio==1.2.0",
 ]
 # Security constraints for transitive dependencies (pulled in by browser-use
 # and friends). Each floor lifts the resolved version out of a vulnerable range.
@@ -98,6 +97,3 @@ include = [
 [tool.hatch.metadata]
 allow-direct-references = true
 
-[tool.pytest.ini_options]
-asyncio_mode = "auto"
-testpaths = ["tests"]
