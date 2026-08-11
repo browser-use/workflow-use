@@ -1,6 +1,8 @@
 import logging
 import re
 
+from workflow_use.compat import cdp
+
 logger = logging.getLogger(__name__)
 
 
@@ -9,41 +11,66 @@ def truncate_selector(selector: str, max_length: int = 35) -> str:
 	return selector if len(selector) <= max_length else f'{selector[:max_length]}...'
 
 
+async def _find_by_tag_and_text(page, tag: str, text: str, timeout_ms: float):
+	"""Text-based fallback: match a *tag* element whose visible text contains *text*.
+
+	(Replaces the Playwright-only ``:has-text()`` pseudo-class, which is not
+	valid CSS and throws in ``document.querySelectorAll``.)
+	"""
+	wanted = ' '.join(text.split()).lower()
+	if not wanted:
+		return None
+	elements = await cdp.query_selector_all(page, tag)
+	for element in elements[:40]:  # bound the scan on huge pages
+		try:
+			candidate = ' '.join((await cdp.element_text_content(element)).split()).lower()
+			if wanted in candidate and await cdp.element_is_visible(element):
+				return element
+		except Exception:
+			continue
+	return None
+
+
 async def get_best_element_handle(page, selector, params=None, timeout_ms=100):
-	"""Find element using stability-ranked selector strategies."""
+	"""Find an element using stability-ranked selector strategies.
+
+	Returns ``(element, selector_used)`` where *element* is a browser-use actor
+	``Element``. Raises when every strategy fails.
+	"""
 	original_selector = selector
 
 	# Generate stability-ranked fallback selectors
 	fallbacks = generate_stable_selectors(selector, params)
 
-	# Try all selectors with exponential backoff for timeouts
 	selectors_to_try = [original_selector] + fallbacks
 
 	for try_selector in selectors_to_try:
-		try:
-			logger.info(f'Trying selector: {truncate_selector(try_selector)}')
-			locator = page.locator(try_selector)
-			await locator.wait_for(state='visible', timeout=timeout_ms)
+		logger.info(f'Trying selector: {truncate_selector(try_selector)}')
+		element = await cdp.wait_for_element(page, try_selector, timeout_ms=timeout_ms)
+		if element is not None:
 			logger.info(f'Found element with selector: {truncate_selector(try_selector)}')
-			return locator, try_selector
-		except Exception as e:
-			logger.error(f'Selector failed: {truncate_selector(try_selector)} with error: {e}')
+			return element, try_selector
+		logger.debug(f'Selector failed: {truncate_selector(try_selector)}')
+
+	# Text-based fallback (tag + recorded element text)
+	element_tag = params.elementTag if params and getattr(params, 'elementTag', None) else None
+	element_text = params.elementText if params and getattr(params, 'elementText', None) else None
+	if element_tag and element_text and element_text.strip():
+		logger.info(f'Trying text fallback: <{element_tag}> containing "{element_text.strip()[:35]}"')
+		element = await _find_by_tag_and_text(page, element_tag.lower(), element_text, timeout_ms)
+		if element is not None:
+			return element, f'{element_tag.lower()}:text({element_text.strip()[:35]})'
 
 	# Try XPath as last resort
 	if params and getattr(params, 'xpath', None):
-		xpath = params.xpath
-		try:
-			# Generate stable XPath alternatives
-			xpath_alternatives = [xpath] + generate_stable_xpaths(xpath, params)
-
-			for try_xpath in xpath_alternatives:
-				xpath_selector = f'xpath={try_xpath}'
-				logger.info(f'Trying XPath: {truncate_selector(xpath_selector)}')
-				locator = page.locator(xpath_selector)
-				await locator.wait_for(state='visible', timeout=timeout_ms)
-				return locator, xpath_selector
-		except Exception as e:
-			logger.error(f'All XPaths failed with error: {e}')
+		xpath_alternatives = [params.xpath] + generate_stable_xpaths(params.xpath, params)
+		for try_xpath in xpath_alternatives:
+			xpath_selector = f'xpath={try_xpath}'
+			logger.info(f'Trying XPath: {truncate_selector(xpath_selector)}')
+			element = await cdp.get_element_by_xpath(page, try_xpath, timeout_ms=timeout_ms)
+			if element is not None:
+				return element, xpath_selector
+			logger.debug(f'XPath failed: {truncate_selector(xpath_selector)}')
 
 	raise Exception(f'Failed to find element. Original: {original_selector}')
 
@@ -94,9 +121,8 @@ def generate_stable_selectors(selector, params=None):
 		if state in selector:
 			fallbacks.append(selector.replace(state, ''))
 
-	# 5. Use text-based selector if we have element tag and text
-	if params and getattr(params, 'elementTag', None) and getattr(params, 'elementText', None) and params.elementText.strip():
-		fallbacks.append(f"{params.elementTag}:has-text('{params.elementText}')")
+	# NOTE: text-based fallback lives in get_best_element_handle/_find_by_tag_and_text;
+	# Playwright's :has-text() pseudo-class is not valid CSS on the CDP surface.
 
 	return list(dict.fromkeys(fallbacks))  # Remove duplicates while preserving order
 

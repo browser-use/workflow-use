@@ -133,10 +133,10 @@ class TestCdpSurfaceContract:
 FORBIDDEN_PATTERNS: list[tuple[str, str]] = [
 	(r'\.locator\(', 'Page.locator does not exist on the CDP actor Page'),
 	(r'\bpage\.wait_for_selector\(', 'Page.wait_for_selector does not exist'),
-	(r'\.wait_for_load_state\(', 'Page.wait_for_load_state does not exist'),
+	(r'(?<!cdp)\.wait_for_load_state\(', 'Page.wait_for_load_state does not exist'),
 	(r'\bpage\.check\(', 'Page.check does not exist (use Element.check)'),
 	(r'\bpage\.uncheck\(', 'Page.uncheck does not exist (use compat set_checkbox_state)'),
-	(r'\.query_selector_all\(', 'query_selector_all does not exist (use get_elements_by_css_selector)'),
+	(r'(?<!cdp)\.query_selector_all\(', 'query_selector_all does not exist (use get_elements_by_css_selector)'),
 	(r'(?<!asyncio)\.wait_for\(', 'Locator.wait_for does not exist (use compat wait_for_element)'),
 	(r'select_option\(\s*label=', 'Element.select_option takes values only, no label='),
 	(r'\.click\(\s*force=', 'Element.click takes no force= kwarg'),
