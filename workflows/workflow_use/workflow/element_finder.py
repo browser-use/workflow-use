@@ -26,9 +26,18 @@ logger = logging.getLogger(__name__)
 
 
 def _node_attr(node: Any, name: str, default: str = '') -> str:
-	"""Read an HTML attribute from the node's attributes dict (dict nodes supported for tests)."""
+	"""Read an HTML attribute from the node's attributes dict.
+
+	Dict-form nodes are supported both flat ({'placeholder': ...}) and in
+	browser-use's nested shape ({'attributes': {'placeholder': ...}}).
+	"""
 	if isinstance(node, dict):
-		return str(node.get(name) or default)
+		value = node.get(name)
+		if value is None:
+			nested = node.get('attributes')
+			if isinstance(nested, dict):
+				value = nested.get(name)
+		return str(value) if value is not None else default
 	attrs = getattr(node, 'attributes', None) or {}
 	value = attrs.get(name)
 	return str(value) if value is not None else default

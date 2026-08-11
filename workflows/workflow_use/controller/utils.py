@@ -12,23 +12,16 @@ def truncate_selector(selector: str, max_length: int = 35) -> str:
 
 
 async def _find_by_tag_and_text(page, tag: str, text: str, timeout_ms: float):
-	"""Text-based fallback: match a *tag* element whose visible text contains *text*.
+	"""Text-based fallback: match a *tag* element by its recorded text.
 
-	(Replaces the Playwright-only ``:has-text()`` pseudo-class, which is not
-	valid CSS and throws in ``document.querySelectorAll``.)
+	Delegates to the compat finder: one page-side pass over ALL candidates
+	(rendered innerText plus aria-label/title/placeholder/value), polled until
+	*timeout_ms* so late-rendering elements are still found. (Replaces the
+	Playwright-only text pseudo-class, which is not valid CSS.)
 	"""
-	wanted = ' '.join(text.split()).lower()
-	if not wanted:
+	if not text.strip():
 		return None
-	elements = await cdp.query_selector_all(page, tag)
-	for element in elements[:40]:  # bound the scan on huge pages
-		try:
-			candidate = ' '.join((await cdp.element_text_content(element)).split()).lower()
-			if wanted in candidate and await cdp.element_is_visible(element):
-				return element
-		except Exception:
-			continue
-	return None
+	return await cdp.find_element_by_text(page, tag, text, timeout_ms=timeout_ms)
 
 
 async def get_best_element_handle(page, selector, params=None, timeout_ms=100):

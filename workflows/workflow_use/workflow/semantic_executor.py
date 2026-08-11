@@ -145,12 +145,7 @@ class SemanticWorkflowExecutor:
 		if not elements:
 			logger.debug(f'_set_checked_by_selector: no element for {selector}')
 			return False
-		element = elements[0]
-		if await self._element_is_checked(element) == checked:
-			return True
-		await element.click()
-		await asyncio.sleep(0.1)
-		return await self._element_is_checked(element) == checked
+		return await cdp.set_checkbox_state(elements[0], checked)
 
 	async def _element_is_visible(self, element) -> bool:
 		"""Check if an element is visible."""
@@ -812,14 +807,20 @@ class SemanticWorkflowExecutor:
 		return {{ success: false, error: error.message }};
 	}}
 }}"""
-						click_result = await page.evaluate(click_js)
+						# evaluate returns a JSON string; decode before inspecting -
+						# treating it as a dict raised AttributeError AFTER the click
+						# already fired in the page (click-then-report-failure trap)
+						click_result = await cdp.evaluate(page, click_js)
 
-						if click_result and click_result.get('success'):
+						if isinstance(click_result, dict) and click_result.get('success'):
 							msg = f'🖱️ Clicked element using XPath: {xpath_or_selector}'
 							logger.info(msg)
 							return ActionResult(extracted_content=msg, include_in_memory=True)
 						else:
-							raise Exception(f'Failed to click element: {click_result.get("error", "Unknown error")}')
+							error_detail = (
+								click_result.get('error', 'Unknown error') if isinstance(click_result, dict) else click_result
+							)
+							raise Exception(f'Failed to click element: {error_detail}')
 					else:
 						raise Exception(f'Unsupported strategy type: {strategy_used.get("type")}')
 

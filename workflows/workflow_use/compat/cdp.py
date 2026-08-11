@@ -18,6 +18,7 @@ import asyncio
 import base64
 import json
 import logging
+import secrets
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -76,14 +77,6 @@ async def element_text_content(element: 'Element') -> str:
 		return ''
 
 
-async def element_inner_text(element: 'Element') -> str:
-	"""Playwright ``inner_text()`` equivalent."""
-	try:
-		return str(await element.evaluate('() => this.innerText || ""'))
-	except Exception:
-		return ''
-
-
 async def query_selector_all(page: 'Page', selector: str) -> list['Element']:
 	"""Playwright ``query_selector_all`` equivalent; [] on invalid selector."""
 	try:
@@ -117,43 +110,102 @@ async def wait_for_element(
 		await asyncio.sleep(poll_interval_s)
 
 
-_XPATH_MARK_JS = """(xpath, marker) => {
+_MARKER_ATTR = 'data-workflow-use-match'
+
+_XPATH_MARK_JS = """(xpath, marker, token) => {
 	try {
 		const result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
 		const node = result.singleNodeValue;
 		if (node && node.nodeType === Node.ELEMENT_NODE) {
-			node.setAttribute(marker, '1');
+			node.setAttribute(marker, token);
 			return true;
 		}
 	} catch (e) {}
 	return false;
 }"""
 
-_XPATH_MARKER_ATTR = 'data-workflow-use-xpath-match'
+
+async def _fetch_marked_element(page: 'Page', token: str) -> 'Element | None':
+	"""Fetch the element tagged with our per-lookup token and untag it."""
+	elements = await query_selector_all(page, f'[{_MARKER_ATTR}="{token}"]')
+	if not elements:
+		return None
+	element = elements[0]
+	try:
+		await element.evaluate(f"() => this.removeAttribute('{_MARKER_ATTR}')")
+	except Exception:
+		pass
+	return element
 
 
 async def get_element_by_xpath(page: 'Page', xpath: str, timeout_ms: float = 2000) -> 'Element | None':
 	"""Resolve an XPath to an Element handle.
 
 	The CDP actor API only queries by CSS, so the matched node is tagged with a
-	temporary attribute, fetched by CSS, then untagged.
+	temporary attribute, fetched by CSS, then untagged. The marker value is a
+	per-lookup token so overlapping lookups can't select each other's element.
 	"""
 	deadline = asyncio.get_event_loop().time() + max(timeout_ms, 0) / 1000
 	while True:
+		token = secrets.token_hex(6)
 		try:
-			found = await evaluate(page, _XPATH_MARK_JS, xpath, _XPATH_MARKER_ATTR)
+			found = await evaluate(page, _XPATH_MARK_JS, xpath, _MARKER_ATTR, token)
 			if found is True:
-				elements = await query_selector_all(page, f'[{_XPATH_MARKER_ATTR}]')
-				if elements:
-					element = elements[0]
-					try:
-						await element.evaluate(f"() => this.removeAttribute('{_XPATH_MARKER_ATTR}')")
-					except Exception:
-						pass
-					if await element_is_visible(element):
-						return element
+				element = await _fetch_marked_element(page, token)
+				if element is not None and await element_is_visible(element):
+					return element
 		except Exception as e:
 			logger.debug(f'get_element_by_xpath({xpath!r}) failed: {e}')
+		if asyncio.get_event_loop().time() >= deadline:
+			return None
+		await asyncio.sleep(DEFAULT_POLL_INTERVAL_S)
+
+
+_TEXT_MATCH_MARK_JS = """(tag, wanted, marker, token) => {
+	const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim().toLowerCase();
+	const target = norm(wanted);
+	if (!target) return false;
+	let candidates;
+	try { candidates = document.querySelectorAll(tag); } catch (e) { return false; }
+	for (const el of candidates) {
+		const rect = el.getBoundingClientRect();
+		const style = getComputedStyle(el);
+		const visible = rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+		if (!visible) continue;
+		const haystacks = [
+			el.innerText,
+			el.getAttribute('aria-label'),
+			el.getAttribute('title'),
+			el.getAttribute('placeholder'),
+			el.value,
+		];
+		if (haystacks.some((h) => norm(h).includes(target))) {
+			el.setAttribute(marker, token);
+			return true;
+		}
+	}
+	return false;
+}"""
+
+
+async def find_element_by_text(page: 'Page', tag: str, text: str, timeout_ms: float = 2000) -> 'Element | None':
+	"""Find a visible *tag* element whose rendered text or accessible attributes contain *text*.
+
+	One page-side pass over ALL candidates (rendered ``innerText`` - not hidden
+	``textContent`` - plus aria-label/title/placeholder/value), polled until the
+	deadline so late-rendering elements are still found.
+	"""
+	deadline = asyncio.get_event_loop().time() + max(timeout_ms, 0) / 1000
+	while True:
+		token = secrets.token_hex(6)
+		try:
+			found = await evaluate(page, _TEXT_MATCH_MARK_JS, tag, text, _MARKER_ATTR, token)
+			if found is True:
+				element = await _fetch_marked_element(page, token)
+				if element is not None:
+					return element
+		except Exception as e:
+			logger.debug(f'find_element_by_text({tag!r}, {text!r}) failed: {e}')
 		if asyncio.get_event_loop().time() >= deadline:
 			return None
 		await asyncio.sleep(DEFAULT_POLL_INTERVAL_S)
