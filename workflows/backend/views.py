@@ -28,6 +28,18 @@ class WorkflowExecuteRequest(BaseModel):
 	inputs: Dict[str, Any]
 
 
+class WorkflowMetadataEntry(BaseModel):
+	file: str
+	name: Optional[str] = None
+	description: Optional[str] = None
+	version: Optional[str] = None
+	input_schema: Optional[list] = None
+
+
+class WorkflowMetadataListResponse(BaseModel):
+	workflows: list[WorkflowMetadataEntry]
+
+
 class RecordingStatusResponse(BaseModel):
 	status: str  # 'idle' | 'recording' | 'saving' | 'done' | 'error' | 'no_data'
 	message: Optional[str] = None

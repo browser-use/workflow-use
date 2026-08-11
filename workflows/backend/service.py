@@ -51,10 +51,11 @@ class WorkflowService:
 		except ValueError:
 			self.llm_instance = None
 
-		self.browser_instance = Browser()
-		self.controller_instance = WorkflowController()
+		# Browser/controller are created per execution in run_workflow_in_background:
+		# a shared instance would let concurrent tasks close each other's browser.
 
-		# In‑memory task tracking
+		# In‑memory task tracking (completed entries pruned beyond MAX_FINISHED_TASKS)
+		self.MAX_FINISHED_TASKS = 100
 		self.active_tasks: Dict[str, TaskInfo] = {}
 		self.workflow_tasks: Dict[str, asyncio.Task] = {}
 		self.cancel_events: Dict[str, asyncio.Event] = {}
@@ -63,6 +64,13 @@ class WorkflowService:
 		self.recording_service: Optional[RecordingService] = None
 		self.recording_task: Optional[asyncio.Task] = None
 		self.recording_result: Optional[RecordingStatusResponse] = None
+
+	def _prune_finished_tasks(self) -> None:
+		"""Cap remembered finished tasks so long-lived processes don't grow unboundedly."""
+		finished = [tid for tid, info in self.active_tasks.items() if info.status not in ('running', 'pending')]
+		excess = len(finished) - self.MAX_FINISHED_TASKS
+		for tid in finished[:max(0, excess)]:  # dict preserves insertion order → oldest first
+			self.active_tasks.pop(tid, None)
 
 	# ---------- Recording control ----------
 
@@ -116,9 +124,12 @@ class WorkflowService:
 				await self.recording_task
 			except (asyncio.CancelledError, Exception):
 				pass
-			if self.recording_service.browser:
+			# RecordingService.browser is only annotated, not assigned, until the
+			# browser launches — a stop right after start must not AttributeError.
+			browser = getattr(self.recording_service, 'browser', None)
+			if browser:
 				try:
-					await self.recording_service.browser.stop()
+					await browser.stop()
 				except Exception:
 					pass
 			return self.recording_result or RecordingStatusResponse(
@@ -185,6 +196,21 @@ class WorkflowService:
 			and not f.name.startswith('temp_recording')
 			and (f.name.endswith('.workflow.json') or f.name.endswith('.workflow.yaml') or f.name.endswith('.workflow.yml'))
 		]
+
+	def list_workflow_metadata(self) -> list[dict]:
+		"""Lightweight metadata for every workflow — for list views, without shipping full step bodies."""
+		entries = []
+		for name in self.list_workflows():
+			entry: dict = {'file': name}
+			try:
+				content = yaml.safe_load((self.tmp_dir / name).read_text())
+				if isinstance(content, dict):
+					for key in ('name', 'description', 'version', 'input_schema'):
+						entry[key] = content.get(key)
+			except Exception:
+				pass  # unreadable file still gets listed by filename
+			entries.append(entry)
+		return entries
 
 	def get_workflow(self, name: str) -> str:
 		"""Get workflow content, converting YAML to JSON for frontend compatibility."""
@@ -261,6 +287,7 @@ class WorkflowService:
 		inputs = request.inputs
 		log_file = self.log_dir / 'backend.log'
 		try:
+			self._prune_finished_tasks()
 			self.active_tasks[task_id] = TaskInfo(status='running', workflow=workflow_name)
 			ts = time.strftime('%Y-%m-%d %H:%M:%S')
 			await self._write_log(log_file, f"[{ts}] Starting workflow '{workflow_name}'\n")
@@ -273,11 +300,13 @@ class WorkflowService:
 
 			workflow_path = self.tmp_dir / workflow_name
 			try:
-				self.workflow_obj = Workflow.load_from_file(
-					str(workflow_path), llm=self.llm_instance, browser=self.browser_instance, controller=self.controller_instance
+				workflow_obj = Workflow.load_from_file(
+					str(workflow_path), llm=self.llm_instance, browser=Browser(), controller=WorkflowController()
 				)
 			except Exception as e:
-				print(f'Error loading workflow: {e}')
+				await self._write_log(log_file, f'[{ts}] Error loading workflow: {e}\n')
+				self.active_tasks[task_id].status = 'failed'
+				self.active_tasks[task_id].error = str(e)
 				return
 
 			await self._write_log(log_file, f'[{ts}] Executing workflow...\n')
@@ -287,7 +316,7 @@ class WorkflowService:
 				self.active_tasks[task_id].status = 'cancelled'
 				return
 
-			result = await self.workflow_obj.run(inputs, close_browser_at_end=True, cancel_event=cancel_event)
+			result = await workflow_obj.run(inputs, close_browser_at_end=True, cancel_event=cancel_event)
 
 			if cancel_event.is_set():
 				await self._write_log(log_file, f'[{ts}] Workflow execution was cancelled\n')

@@ -7,6 +7,7 @@ from .service import WorkflowService
 from .views import (
 	RecordingStatusResponse,
 	WorkflowCancelResponse,
+	WorkflowMetadataListResponse,
 	WorkflowExecuteRequest,
 	WorkflowExecuteResponse,
 	WorkflowListResponse,
@@ -36,6 +37,13 @@ async def list_workflows():
 	service = get_service()
 	workflows = service.list_workflows()
 	return WorkflowListResponse(workflows=workflows)
+
+
+# NOTE: must be registered before GET /{name}, which would otherwise capture 'metadata'
+@router.get('/metadata', response_model=WorkflowMetadataListResponse)
+async def list_workflow_metadata():
+	service = get_service()
+	return WorkflowMetadataListResponse(workflows=service.list_workflow_metadata())
 
 
 @router.get('/{name}', response_model=str)

@@ -46,11 +46,19 @@ def _find_extension_capable_browser() -> str | None:
 		'chromium-*/chrome-linux/chrome',
 		'chromium-*/chrome-win/chrome.exe',
 	]
+	def _revision(path: pathlib.Path) -> int:
+		# .../ms-playwright/chromium-1234/... — lexicographic sort would rank
+		# chromium-999 above chromium-1017, so compare the revision numerically.
+		for part in path.parts:
+			if part.startswith('chromium-') and part.removeprefix('chromium-').isdigit():
+				return int(part.removeprefix('chromium-'))
+		return -1
+
 	for cache in playwright_caches:
 		if not cache.is_dir():
 			continue
 		for pattern in binary_globs:
-			matches = sorted(cache.glob(pattern), reverse=True)  # newest revision first
+			matches = sorted(cache.glob(pattern), key=_revision, reverse=True)  # newest revision first
 			if matches:
 				return str(matches[0])
 

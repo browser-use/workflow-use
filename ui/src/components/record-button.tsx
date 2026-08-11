@@ -74,8 +74,10 @@ const RecordButton: React.FC<RecordButtonProps> = ({ onRecordingSaved }) => {
       const res = await fetch(`${API_BASE}/api/workflows/recordings/stop`, {
         method: "POST",
       });
-      applyStatus((await res.json()) as RecordingStatus);
-      if ((status.status as string) === "saving") startPolling();
+      const next = (await res.json()) as RecordingStatus;
+      applyStatus(next);
+      // Decide from the response, not the pre-request closure state.
+      if (next.status === "saving") startPolling();
     } catch (e) {
       setStatus({ status: "error", message: String(e) });
     } finally {

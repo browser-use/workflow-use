@@ -25,7 +25,7 @@ import Sidebar from "./sidebar";
 import { NodeConfigMenu } from "./node-config-menu";
 import { PlayButton } from "./play-button";
 import NoWorkflowsMessage from "./no-workflow-message";
-import { $api, fetchClient } from "../lib/api";
+import { $api } from "../lib/api";
 import { useQueryClient } from "@tanstack/react-query";
 
 const WorkflowLayout: React.FC = () => {
@@ -89,6 +89,12 @@ const WorkflowLayout: React.FC = () => {
       await updateMetadataMutation.mutateAsync({
         body: { name, metadata: metadata as unknown as Record<string, never> },
       });
+      // Keep the sidebar cache in sync, or the row's label reverts to the
+      // pre-save name as soon as another workflow is selected.
+      setAllWorkflowsMetadata((prev) => ({
+        ...prev,
+        [name]: { ...prev[name], ...metadata },
+      }));
     },
     [updateMetadataMutation]
   );
@@ -173,30 +179,24 @@ const WorkflowLayout: React.FC = () => {
     }
   }, [workflows, selected]);
 
-  // Fetch metadata for every workflow so sidebar items show their real
-  // names instead of a permanent "Loading workflow…" placeholder
+  // Fetch lightweight metadata for every workflow in ONE request so sidebar
+  // items show their real names instead of a "Loading workflow…" placeholder
   useEffect(() => {
     if (!workflows.length) return;
     let cancelled = false;
     (async () => {
-      const entries = await Promise.all(
-        workflows.map(async (name) => {
-          try {
-            const { data } = await fetchClient.GET("/api/workflows/{name}", {
-              params: { path: { name } },
-            });
-            if (!data) return null;
-            const parsed = typeof data === "string" ? JSON.parse(data) : data;
-            return [name, parsed as WorkflowMetadata] as const;
-          } catch {
-            return null;
-          }
-        })
-      );
-      if (!cancelled) {
-        setAllWorkflowsMetadata(
-          Object.fromEntries(entries.filter((e): e is NonNullable<typeof e> => e !== null))
-        );
+      try {
+        const res = await fetch("http://localhost:8000/api/workflows/metadata");
+        const data = (await res.json()) as {
+          workflows: Array<{ file: string } & WorkflowMetadata>;
+        };
+        if (!cancelled) {
+          setAllWorkflowsMetadata(
+            Object.fromEntries(data.workflows.map((w) => [w.file, w]))
+          );
+        }
+      } catch {
+        /* list still renders with filename placeholders */
       }
     })();
     return () => {

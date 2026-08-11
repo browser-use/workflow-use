@@ -1193,6 +1193,13 @@ def run_workflow_command(
 	"""
 	Loads and executes a workflow, prompting the user for required inputs.
 	"""
+	if not llm_instance:
+		typer.secho(
+			'LLM is required for run-workflow (agent steps / fallbacks). Set BROWSER_USE_API_KEY, '
+			'or use run-workflow-no-ai for fully deterministic execution.',
+			fg=typer.colors.RED,
+		)
+		raise typer.Exit(code=1)
 
 	async def _run_workflow():
 		typer.echo(
