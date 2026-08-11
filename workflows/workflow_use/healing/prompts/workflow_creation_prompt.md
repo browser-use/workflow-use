@@ -23,10 +23,10 @@ You are a master at building re-executable workflows from browser automation ste
    - Use `{{variable}}` syntax (one pair of curly braces) in `target_text` for dynamic values
    - Example: `{{"type": "click", "target_text": "{{repo_name}}"}}`
 
-4. **Variables MUST use {variable} syntax (one pair of curly braces)**
+4. **Variables MUST use {{variable}} syntax (one pair of curly braces)**
    - ✅ CORRECT: `"value": "{{email}}"` or `"target_text": "{{repo_name}}"`
    - ❌ WRONG: `"value": "{{{{email}}}}"` or `"value": "email"`
-   - Python's str.format() substitutes {variable} with actual values at runtime
+   - Python's str.format() substitutes {{variable}} with actual values at runtime
 
 5. **Prefer direct navigation over search engines!**
    - If task involves "search GitHub" → Navigate directly to https://github.com
