@@ -19,13 +19,23 @@ from workflow_use.controller.service import WorkflowController
 from workflow_use.controller.utils import get_best_element_handle
 from workflow_use.schema.views import (
 	AgenticWorkflowStep,
+	ClickStep,
 	DeterministicWorkflowStep,
+	InputStep,
+	KeyPressStep,
+	NavigationStep,
+	ScrollStep,
+	SelectChangeStep,
 	WorkflowDefinitionSchema,
 	WorkflowInputSchemaDefinition,
 	WorkflowStep,
 )
 from workflow_use.workflow.element_finder import ElementFinder
-from workflow_use.workflow.prompts import AGENT_STEP_SYSTEM_PROMPT, STRUCTURED_OUTPUT_PROMPT
+from workflow_use.workflow.prompts import (
+	AGENT_STEP_SYSTEM_PROMPT,
+	STRUCTURED_OUTPUT_PROMPT,
+	WORKFLOW_FALLBACK_PROMPT_TEMPLATE,
+)
 from workflow_use.workflow.step_agent.controller import WorkflowStepAgentController
 from workflow_use.workflow.views import WorkflowRunOutput
 
@@ -418,79 +428,75 @@ Extracted Information:"""
 			include_in_memory=True,
 		)
 
-	# async def _fallback_to_agent(
-	# 	self,
-	# 	step_resolved: WorkflowStep,
-	# 	step_index: int,
-	# 	error: Exception | str | None = None,
-	# ) -> AgentHistoryList:
-	# 	"""Handle step failure by delegating to an agent."""
+	async def _fallback_to_agent(
+		self,
+		step_resolved: WorkflowStep,
+		step_index: int,
+		error: Exception | str | None = None,
+	) -> AgentHistoryList:
+		"""Handle step failure by delegating to an agent."""
 
-	# 	# print('Workflow steps:', step_resolved)
-	# 	# Extract details from the failed step dictionary
-	# 	failed_action_name = step_resolved.type
-	# 	failed_params = step_resolved.model_dump()
-	# 	step_description = step_resolved.description or 'No description provided'
-	# 	error_msg = str(error) if error else 'Unknown error'
-	# 	total_steps = len(self.steps)
-	# 	fail_details = (
-	# 		f"step={step_index + 1}/{total_steps}, action='{failed_action_name}', "
-	# 		f"description='{step_description}', params={str(failed_params)}, error='{error_msg}'"
-	# 	)
+		# Extract details from the failed step dictionary
+		failed_action_name = step_resolved.type
+		failed_params = step_resolved.model_dump()
+		step_description = step_resolved.description or 'No description provided'
+		error_msg = str(error) if error else 'Unknown error'
+		total_steps = len(self.schema.steps)
+		fail_details = (
+			f"step={step_index + 1}/{total_steps}, action='{failed_action_name}', "
+			f"description='{step_description}', params={str(failed_params)}, error='{error_msg}'"
+		)
 
-	# 	# Determine the failed_value based on step type and attributes
-	# 	failed_value = None
-	# 	description_prefix = f'Purpose: {step_description}. ' if step_description else ''
+		# Determine the failed_value based on step type and attributes
+		failed_value = None
+		description_prefix = f'Purpose: {step_description}. ' if step_description else ''
 
-	# 	if isinstance(step_resolved, NavigationStep):
-	# 		failed_value = f'{description_prefix}Navigate to URL: {step_resolved.url}'
-	# 	elif isinstance(step_resolved, ClickStep):
-	# 		# element_info = step_resolved.elementText or step_resolved.cssSelector
-	# 		# failed_value = f"{description_prefix}Click element: {element_info}"
-	# 		failed_value = f'Find and click element with description: {step_resolved.description}'
-	# 	elif isinstance(step_resolved, InputStep):
-	# 		failed_value = f"{description_prefix}Input text: '{step_resolved.value}' into element."
-	# 	elif isinstance(step_resolved, SelectChangeStep):
-	# 		failed_value = f"{description_prefix}Select option: '{step_resolved.selectedText}' in dropdown."
-	# 	elif isinstance(step_resolved, KeyPressStep):
-	# 		failed_value = f"{description_prefix}Press key: '{step_resolved.key}'"
-	# 	elif isinstance(step_resolved, ScrollStep):
-	# 		failed_value = f'{description_prefix}Scroll to position: (x={step_resolved.scrollX}, y={step_resolved.scrollY})'
-	# 	else:
-	# 		failed_value = f"{description_prefix}No specific target value available for action '{failed_action_name}'"
+		if isinstance(step_resolved, NavigationStep):
+			failed_value = f'{description_prefix}Navigate to URL: {step_resolved.url}'
+		elif isinstance(step_resolved, ClickStep):
+			failed_value = f'Find and click element with description: {step_resolved.description}'
+		elif isinstance(step_resolved, InputStep):
+			failed_value = f"{description_prefix}Input text: '{step_resolved.value}' into element."
+		elif isinstance(step_resolved, SelectChangeStep):
+			failed_value = f"{description_prefix}Select option: '{step_resolved.selectedText}' in dropdown."
+		elif isinstance(step_resolved, KeyPressStep):
+			failed_value = f"{description_prefix}Press key: '{step_resolved.key}'"
+		elif isinstance(step_resolved, ScrollStep):
+			failed_value = f'{description_prefix}Scroll to position: (x={step_resolved.scrollX}, y={step_resolved.scrollY})'
+		else:
+			failed_value = f"{description_prefix}No specific target value available for action '{failed_action_name}'"
 
-	# 	# Build workflow overview using the stored dictionaries
-	# 	workflow_overview_lines: list[str] = []
-	# 	for idx, step in enumerate(self.steps):
-	# 		desc = step.description or ''
-	# 		step_type_info = step.type
-	# 		details = step.model_dump()
-	# 		workflow_overview_lines.append(f'  {idx + 1}. ({step_type_info}) {desc} - {details}')
-	# 	workflow_overview = '\n'.join(workflow_overview_lines)
-	# 	# print(workflow_overview)
+		# Build workflow overview using the stored dictionaries
+		workflow_overview_lines: list[str] = []
+		for idx, step in enumerate(self.schema.steps):
+			desc = step.description or ''
+			step_type_info = step.type
+			details = step.model_dump()
+			workflow_overview_lines.append(f'  {idx + 1}. ({step_type_info}) {desc} - {details}')
+		workflow_overview = '\n'.join(workflow_overview_lines)
 
-	# 	# Build the fallback task with the failed_value
-	# 	fallback_task = WORKFLOW_FALLBACK_PROMPT_TEMPLATE.format(
-	# 		step_index=step_index + 1,
-	# 		total_steps=len(self.steps),
-	# 		workflow_details=workflow_overview,
-	# 		action_type=failed_action_name,
-	# 		fail_details=fail_details,
-	# 		failed_value=failed_value,
-	# 		step_description=step_description,
-	# 	)
-	# 	logger.info(f'Agent fallback task: {fallback_task}')
+		# Build the fallback task with the failed_value
+		fallback_task = WORKFLOW_FALLBACK_PROMPT_TEMPLATE.format(
+			step_index=step_index + 1,
+			total_steps=len(self.schema.steps),
+			workflow_details=workflow_overview,
+			action_type=failed_action_name,
+			fail_details=fail_details,
+			failed_value=failed_value,
+			step_description=step_description,
+		)
+		logger.info(f'Agent fallback task: {fallback_task}')
 
-	# 	# Prepare agent step config based on the failed step, adding task
-	# 	agent_step_config = AgenticWorkflowStep(
-	# 		type='agent',
-	# 		task=fallback_task,
-	# 		max_steps=5,
-	# 		output=None,
-	# 		description='Fallback agent to handle step failure',
-	# 	)
+		# Prepare agent step config based on the failed step, adding task
+		agent_step_config = AgenticWorkflowStep(
+			type='agent',
+			task=fallback_task,
+			max_steps=5,
+			output=None,
+			description='Fallback agent to handle step failure',
+		)
 
-	# 	return await self._run_agent_step(agent_step_config)
+		return await self._run_agent_step(agent_step_config, step_index)
 
 	def _validate_inputs(self, inputs: dict[str, Any]) -> None:
 		"""Validate provided inputs against the workflow's input schema definition."""
@@ -672,7 +678,12 @@ Extracted Information:"""
 						logger.warning(
 							f'Deterministic step {step_index + 1} ({action_name}) failed: {e}. Attempting fallback with agent.'
 						)
-						raise ValueError(f'Deterministic step {step_index + 1} ({action_name}) failed: {e}')
+						if self.fallback_to_agent:
+							result = await self._fallback_to_agent(step_resolved, step_index, e)
+							if not result.is_successful():
+								raise ValueError(f'Deterministic step {step_index + 1} ({action_name}) failed even after fallback')
+						else:
+							raise ValueError(f'Deterministic step {step_index + 1} ({action_name}) failed: {e}')
 			else:
 				# Use deterministic controller execution for all other actions
 				try:
@@ -686,14 +697,12 @@ Extracted Information:"""
 					logger.warning(
 						f'Deterministic step {step_index + 1} ({action_name}) failed: {e}. Attempting fallback with agent.'
 					)
-					raise ValueError(f'Deterministic step {step_index + 1} ({action_name}) failed: {e}')
-
-				# if self.fallback_to_agent:
-				# 	result = await self._fallback_to_agent(step_resolved, step_index, e)
-				# 	if not result.is_successful():
-				# 		raise ValueError(f'Deterministic step {step_index + 1} ({action_name}) failed even after fallback')
-				# else:
-				# 	raise ValueError(f'Deterministic step {step_index + 1} ({action_name}) failed: {e}')
+					if self.fallback_to_agent:
+						result = await self._fallback_to_agent(step_resolved, step_index, e)
+						if not result.is_successful():
+							raise ValueError(f'Deterministic step {step_index + 1} ({action_name}) failed even after fallback')
+					else:
+						raise ValueError(f'Deterministic step {step_index + 1} ({action_name}) failed: {e}')
 
 		elif isinstance(step_resolved, AgenticWorkflowStep):
 			# Use task key from step dictionary
