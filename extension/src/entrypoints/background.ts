@@ -1,6 +1,6 @@
 // import { eventWithTime } from 'rrweb'; // Type not directly available
 import { EventType, IncrementalSource } from "@rrweb/types";
-import {
+import type {
   StoredCustomClickEvent,
   StoredCustomInputEvent,
   StoredCustomKeyEvent,
@@ -8,7 +8,7 @@ import {
   StoredRrwebEvent,
   StoredExtractionEvent,
 } from "../lib/types";
-import {
+import type {
   ClickStep,
   InputStep,
   KeyPressStep,
@@ -18,7 +18,7 @@ import {
   Workflow,
   ExtractStep,
 } from "../lib/workflow-types";
-import {
+import type {
   HttpEvent,
   HttpRecordingStartedEvent,
   HttpRecordingStoppedEvent,
