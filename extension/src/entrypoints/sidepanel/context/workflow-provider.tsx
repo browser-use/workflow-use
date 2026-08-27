@@ -6,7 +6,7 @@ import React, {
   useState,
 } from "react";
 import type { ReactNode } from "react";
-import type { Workflow } from "../../../lib/workflow-types"; // Adjust path as needed
+import type { Workflow } from "../../../lib/workflow-types";
 
 type WorkflowState = {
   workflow: Workflow | null;
