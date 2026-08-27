@@ -37,13 +37,18 @@
     "vite": "6.4.3"
   },
   "overrides": {
-    "tar": "7.5.20",
+    "tar": "7.5.21",
     "rollup": "4.62.2",
-    "js-yaml": "4.3.0",
+    "@babel/core": "7.29.6",
+    "ajv@6": "6.14.0",
+    "brace-expansion@1": "1.1.18",
+    "brace-expansion@2": "2.1.4",
+    "js-yaml": "4.3.1",
     "minimatch@3": "3.1.5",
     "minimatch@5": "5.1.9",
     "minimatch@9": "9.0.9",
     "picomatch@2": "2.3.2",
+    "nanoid": "3.3.18",
     "postcss": "8.5.24",
     "flatted": "3.4.2"
   }

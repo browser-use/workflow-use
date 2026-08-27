@@ -13,7 +13,9 @@ classifiers = [
 
 dependencies = [
     "aiofiles==24.1.0",
-    "browser-use==0.13.4",
+    # Keep a patch range so pip can select the first browser-use release whose
+    # own pins satisfy the security floors below. Vulnerable releases fail closed.
+    "browser-use>=0.13.8,<0.14",
     "fastapi==0.139.2",
     "fastmcp==3.4.0",
     # starlette is transitive (via fastapi/fastmcp) but pinned directly so the
@@ -27,6 +29,22 @@ dependencies = [
     "pandas==2.3.0",
     "markdownify==1.2.2",
     "pyyaml==6.0.3",
+    # Security floors are direct dependencies so they are included in the
+    # published wheel's Requires-Dist metadata, not only the local uv lockfile.
+    "authlib>=1.6.9",
+    "urllib3>=2.7.0",
+    "pyasn1>=0.6.3",
+    "protobuf>=6.33.5,<7",
+    "cryptography>=50.0.0",
+    "soupsieve>=2.8.4",
+    "idna>=3.15",
+    "httplib2>=0.32.0",
+    "pygments>=2.20.0",
+    "aiohttp>=3.14.1",
+    "pillow>=12.3.0",
+    "mcp>=1.28.1,<2",
+    "click>=8.3.3,<9",
+    "pypdf>=6.15.0,<7",
 ]
 
 
@@ -35,31 +53,18 @@ dev-dependencies = [
     "build==1.2.2.post1",
     "ruff==0.11.12",
 ]
-# Security constraints for transitive dependencies (pulled in by browser-use
-# and friends). Each floor lifts the resolved version out of a vulnerable range.
-constraint-dependencies = [
-    "authlib>=1.6.9",       # CVE-2026-27962 (<= 1.6.8)
-    "urllib3>=2.7.0",       # CVE-2026-44431 / CVE-2025-66418 / CVE-2025-66471 / CVE-2026-21441
-    "pyasn1>=0.6.3",        # CVE-2026-23490 / CVE-2026-30922 (<= 0.6.2)
-    "protobuf>=6.33.5,<7",  # CVE-2026-0994 (<= 6.33.4); stay on the 6.x line
-    "cryptography>=48.0.1", # CVE-2026-26007 / GHSA-537c-gmf6-5ccf (< 48.0.1)
-    "soupsieve>=2.8.4",     # CVE-2026-49476 / CVE-2026-49477 (<= 2.8.3)
-    "idna>=3.15",           # CVE-2026-45409 (< 3.15)
-]
-# browser-use 0.13.x pins vulnerable aiohttp, Pillow, and pypdf versions, so
-# constraints alone cannot move the lockfile onto patched lines. Remove these
-# overrides once upstream updates its pins.
+# Published browser-use 0.13.x releases still pin vulnerable Click, MCP, and
+# pypdf versions. Keep local resolution patched while waiting for an upstream
+# release that satisfies the direct security floors above.
 override-dependencies = [
-    # CVE-2026-34993 / CVE-2026-47265 / CVE-2026-54273 / CVE-2026-54274 /
-    # CVE-2026-54276 / CVE-2026-54277 / CVE-2026-54278 (<= 3.14.0)
-    "aiohttp>=3.14.1",
-    # CVE-2026-25990 / CVE-2026-40192 / CVE-2026-42311 / CVE-2026-55798 /
-    # CVE-2026-59198 / CVE-2026-59203 (< 12.3.0)
-    "pillow>=12.3.0",
+    # CVE-2026-52869 / CVE-2026-52870 / CVE-2026-59950 (< 1.28.1)
+    "mcp>=1.28.1,<2",
+    # PYSEC-2026-2132 (< 8.3.3)
+    "click>=8.3.3,<9",
     # CVE-2026-48155 / CVE-2026-48156 / CVE-2026-48735 / CVE-2026-49460 /
     # CVE-2026-49461 / CVE-2026-54530 / CVE-2026-54531 / CVE-2026-54651 /
     # CVE-2026-59937 / CVE-2026-59938 / GHSA-jm82-fx9c-mx94
-    "pypdf>=6.14.0",
+    "pypdf>=6.15.0,<7",
 ]
 
 [tool.codespell]

@@ -22,6 +22,7 @@ function getXPath(element: HTMLElement): string {
   if (siblings) {
     for (let i = 0; i < siblings.length; i++) {
       const sibling = siblings[i];
+      if (!sibling) continue;
       if (sibling === element) {
         return `${getXPath(
           element.parentElement as HTMLElement
@@ -744,6 +745,7 @@ function handleSelectChange(event: Event) {
     const allOptions: Array<{text: string, value: string}> = [];
     for (let i = 0; i < targetElement.options.length; i++) {
       const option = targetElement.options[i];
+      if (!option) continue;
       allOptions.push({
         text: option.text.trim(),
         value: option.value

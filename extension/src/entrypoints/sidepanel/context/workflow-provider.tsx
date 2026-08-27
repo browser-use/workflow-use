@@ -1,12 +1,12 @@
 import React, {
   createContext,
-  ReactNode,
   useCallback,
   useContext,
   useEffect,
   useState,
 } from "react";
-import { Workflow } from "../../../lib/workflow-types"; // Adjust path as needed
+import type { ReactNode } from "react";
+import type { Workflow } from "../../../lib/workflow-types";
 
 type WorkflowState = {
   workflow: Workflow | null;

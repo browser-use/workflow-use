@@ -1,4 +1,4 @@
-import { Workflow } from "./workflow-types"; // Assuming Workflow is in this path
+import type { Workflow } from "./workflow-types";
 
 // Types for events sent via HTTP to the Python server
 

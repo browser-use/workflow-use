@@ -55,4 +55,8 @@ jobs:
       - uses: astral-sh/setup-uv@v5
       - run: uv run ruff check --no-fix --select PLE # check only for syntax errors
       - run: uv build
+      # Use pip intentionally: unlike uv, it cannot apply this project's local
+      # dependency overrides and therefore validates the published wheel graph.
+      - name: Verify wheel dependencies resolve without uv overrides
+        run: uvx --from pip pip install --dry-run --ignore-installed dist/*.whl
       - run: uv publish --token ${{ secrets.PYPI_API_TOKEN }}
