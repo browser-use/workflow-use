@@ -52,6 +52,7 @@ dependencies = [
 dev-dependencies = [
     "build==1.2.2.post1",
     "ruff==0.11.12",
+    "pytest==8.4.2",
 ]
 # Published browser-use 0.13.x releases still pin vulnerable Click, MCP, and
 # pypdf versions. Keep local resolution patched while waiting for an upstream
@@ -100,3 +101,4 @@ include = [
 
 [tool.hatch.metadata]
 allow-direct-references = true
+

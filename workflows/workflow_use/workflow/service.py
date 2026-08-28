@@ -15,6 +15,7 @@ from browser_use.llm.base import BaseChatModel
 from browser_use.tools.views import NoParamsAction
 from pydantic import BaseModel, Field, create_model
 
+from workflow_use.compat import cdp
 from workflow_use.controller.service import WorkflowController
 from workflow_use.controller.utils import get_best_element_handle
 from workflow_use.schema.views import (
@@ -233,12 +234,13 @@ class Workflow:
 			params = NoParamsAction()  # type: ignore
 
 		ActionModel = self.controller.registry.create_action_model(include_actions=[action_name])
-		# Pass the params dictionary directly
-		# For empty actions, ActionModel itself IS the action (EmptyActionModel), so don't wrap in dict
-		if action_name in empty_actions:
-			action_model = ActionModel()
-		else:
-			action_model = ActionModel(**{action_name: params})
+		if not ActionModel.model_fields:
+			# include_actions found nothing: a bare ActionModel() would dump to {} and
+			# Tools.act would silently no-op while reporting success.
+			raise RuntimeError(f"Action '{action_name}' is not registered in the workflow controller")
+		# The action model always wraps params under the action name; NoParamsAction
+		# instances included (an EMPTY ActionModel() would silently no-op).
+		action_model = ActionModel(**{action_name: params})
 
 		try:
 			result = await self.controller.act(action_model, self.browser, page_extraction_llm=self.page_extraction_llm)
@@ -250,12 +252,14 @@ class Workflow:
 		if action_name in actions_requiring_wait:
 			try:
 				page = await self.browser.get_current_page()
-				# Wait for network to be idle (no more than 2 connections for at least 500ms)
-				await page.wait_for_load_state('networkidle', timeout=10000)
-				logger.info(f'Page stabilized after {action_name} action')
+				# Wait for the document to finish loading and settle briefly
+				if await cdp.wait_for_load_state(page, 'networkidle', timeout_ms=10000):
+					logger.info(f'Page stabilized after {action_name} action')
+				else:
+					logger.warning(f'Timeout waiting for page to stabilize after {action_name}')
 			except Exception as e:
-				# Don't fail if wait times out, just log and continue
-				logger.warning(f'Timeout waiting for page to stabilize after {action_name}: {e}')
+				# Don't fail if the wait itself errors, just log and continue
+				logger.warning(f'Error waiting for page to stabilize after {action_name}: {e}')
 
 		# Helper function to truncate long selectors in logs
 		def truncate_selector(selector: str) -> str:
@@ -839,9 +843,9 @@ Extracted Information:"""
 			filename = f'step_{step_index + 1:02d}_{prefix_str}{clean_description}_{timestamp}.png'
 			screenshot_path = self.debug_log_folder / filename
 
-			# Capture screenshot
+			# Capture screenshot (CDP screenshot returns base64; write it ourselves)
 			page = await self.browser.get_current_page()
-			await page.screenshot(path=str(screenshot_path), full_page=True)
+			await cdp.screenshot_to_file(page, str(screenshot_path))
 
 			logger.info(f'📸 Debug screenshot saved: {screenshot_path}')
 
