@@ -59,6 +59,13 @@ python cli.py generate-workflow "Your task" \
   --extraction-model "gpt-4.1-mini" \
   --workflow-model "gpt-4o"
 
+# Route generation through OrcaRouter's gateway (adaptive routing, failover,
+# observability) using an OpenAI-compatible endpoint
+python cli.py generate-workflow "Your task" \
+  --llm-provider orcarouter \
+  --agent-model "orcarouter/auto" \
+  --extraction-model "orcarouter/auto"
+
 # Use Browser-Use Cloud browser
 python cli.py generate-workflow "Your task" --use-cloud
 
