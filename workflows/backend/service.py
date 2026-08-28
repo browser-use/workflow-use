@@ -6,13 +6,17 @@ from typing import Dict, List, Optional, Tuple
 
 import aiofiles
 import yaml
-from browser_use.browser.browser import Browser
+from browser_use import Browser
 from browser_use.llm import ChatBrowserUse
 
 from workflow_use.controller.service import WorkflowController
+from workflow_use.recorder.semantic_converter import convert_recorded_workflow_to_semantic
+from workflow_use.recorder.service import RecordingService
+from workflow_use.recorder.views import HttpRecordingStoppedEvent, RecordingStatusPayload
 from workflow_use.workflow.service import Workflow
 
 from .views import (
+	RecordingStatusResponse,
 	TaskInfo,
 	WorkflowCancelResponse,
 	WorkflowExecuteRequest,
@@ -41,16 +45,113 @@ class WorkflowService:
 		self.log_dir: Path = self.tmp_dir / 'logs'
 		self.log_dir.mkdir(exist_ok=True, parents=True)
 
-		# LLM / workflow executor
-		self.llm_instance = ChatBrowserUse(model='bu-latest')
+		# LLM / workflow executor (optional — deterministic runs work without it)
+		try:
+			self.llm_instance = ChatBrowserUse(model='bu-latest')
+		except ValueError:
+			self.llm_instance = None
 
-		self.browser_instance = Browser()
-		self.controller_instance = WorkflowController()
+		# Browser/controller are created per execution in run_workflow_in_background:
+		# a shared instance would let concurrent tasks close each other's browser.
 
-		# In‑memory task tracking
+		# In‑memory task tracking (completed entries pruned beyond MAX_FINISHED_TASKS)
+		self.MAX_FINISHED_TASKS = 100
 		self.active_tasks: Dict[str, TaskInfo] = {}
 		self.workflow_tasks: Dict[str, asyncio.Task] = {}
 		self.cancel_events: Dict[str, asyncio.Event] = {}
+
+		# Recording session state (one at a time)
+		self.recording_service: Optional[RecordingService] = None
+		self.recording_task: Optional[asyncio.Task] = None
+		self.recording_result: Optional[RecordingStatusResponse] = None
+
+	def _prune_finished_tasks(self) -> None:
+		"""Cap remembered finished tasks so long-lived processes don't grow unboundedly."""
+		finished = [tid for tid, info in self.active_tasks.items() if info.status not in ('running', 'pending')]
+		excess = len(finished) - self.MAX_FINISHED_TASKS
+		for tid in finished[:max(0, excess)]:  # dict preserves insertion order → oldest first
+			self.active_tasks.pop(tid, None)
+
+	# ---------- Recording control ----------
+
+	def _recording_active(self) -> bool:
+		return self.recording_task is not None and not self.recording_task.done()
+
+	async def start_recording(self) -> RecordingStatusResponse:
+		if self._recording_active():
+			return RecordingStatusResponse(status='recording', message='A recording session is already running')
+
+		self.recording_service = RecordingService()
+		self.recording_result = None
+		self.recording_task = asyncio.create_task(self._run_recording_session())
+		return RecordingStatusResponse(
+			status='recording',
+			message='Recording started — interact in the opened browser, then stop the recording',
+		)
+
+	async def _run_recording_session(self) -> None:
+		try:
+			captured = await self.recording_service.capture_workflow()
+			if captured is None:
+				self.recording_result = RecordingStatusResponse(
+					status='no_data', message='Recording ended without capturing any steps'
+				)
+				return
+
+			recording_data = captured.model_dump(mode='json')
+			semantic = convert_recorded_workflow_to_semantic(recording_data)
+
+			filename = f'recorded-{time.strftime("%Y%m%d-%H%M%S")}.workflow.yaml'
+			output_path = self.tmp_dir / filename
+			output_path.write_text(json.dumps(semantic, indent=2))
+			self.recording_result = RecordingStatusResponse(
+				status='done', message='Recording saved', workflow_file=filename
+			)
+		except asyncio.CancelledError:
+			self.recording_result = RecordingStatusResponse(status='no_data', message='Recording cancelled')
+			raise
+		except Exception as exc:  # surface the failure to the UI instead of dying silently
+			self.recording_result = RecordingStatusResponse(status='error', message=str(exc))
+
+	async def stop_recording(self) -> RecordingStatusResponse:
+		if not self._recording_active():
+			return self.recording_result or RecordingStatusResponse(status='idle')
+
+		# No steps captured: the recorder's finalizer would wait forever, so cancel outright.
+		if self.recording_service and self.recording_service.last_workflow_update_event is None:
+			self.recording_task.cancel()
+			try:
+				await self.recording_task
+			except (asyncio.CancelledError, Exception):
+				pass
+			# RecordingService.browser is only annotated, not assigned, until the
+			# browser launches — a stop right after start must not AttributeError.
+			browser = getattr(self.recording_service, 'browser', None)
+			if browser:
+				try:
+					await browser.stop()
+				except Exception:
+					pass
+			return self.recording_result or RecordingStatusResponse(
+				status='no_data', message='Recording stopped without capturing any steps'
+			)
+
+		await self.recording_service.event_queue.put(
+			HttpRecordingStoppedEvent(
+				timestamp=int(time.time() * 1000),
+				payload=RecordingStatusPayload(message='Stopped from GUI'),
+			)
+		)
+		try:
+			await asyncio.wait_for(asyncio.shield(self.recording_task), timeout=30)
+		except asyncio.TimeoutError:
+			return RecordingStatusResponse(status='saving', message='Recording is being finalized')
+		return self.recording_result or RecordingStatusResponse(status='error', message='Recording ended unexpectedly')
+
+	def recording_status(self) -> RecordingStatusResponse:
+		if self._recording_active():
+			return RecordingStatusResponse(status='recording')
+		return self.recording_result or RecordingStatusResponse(status='idle')
 
 	async def _log_file_position(self) -> int:
 		log_file = self.log_dir / 'backend.log'
@@ -95,6 +196,21 @@ class WorkflowService:
 			and not f.name.startswith('temp_recording')
 			and (f.name.endswith('.workflow.json') or f.name.endswith('.workflow.yaml') or f.name.endswith('.workflow.yml'))
 		]
+
+	def list_workflow_metadata(self) -> list[dict]:
+		"""Lightweight metadata for every workflow — for list views, without shipping full step bodies."""
+		entries = []
+		for name in self.list_workflows():
+			entry: dict = {'file': name}
+			try:
+				content = yaml.safe_load((self.tmp_dir / name).read_text())
+				if isinstance(content, dict):
+					for key in ('name', 'description', 'version', 'input_schema'):
+						entry[key] = content.get(key)
+			except Exception:
+				pass  # unreadable file still gets listed by filename
+			entries.append(entry)
+		return entries
 
 	def get_workflow(self, name: str) -> str:
 		"""Get workflow content, converting YAML to JSON for frontend compatibility."""
@@ -171,6 +287,7 @@ class WorkflowService:
 		inputs = request.inputs
 		log_file = self.log_dir / 'backend.log'
 		try:
+			self._prune_finished_tasks()
 			self.active_tasks[task_id] = TaskInfo(status='running', workflow=workflow_name)
 			ts = time.strftime('%Y-%m-%d %H:%M:%S')
 			await self._write_log(log_file, f"[{ts}] Starting workflow '{workflow_name}'\n")
@@ -183,11 +300,13 @@ class WorkflowService:
 
 			workflow_path = self.tmp_dir / workflow_name
 			try:
-				self.workflow_obj = Workflow.load_from_file(
-					str(workflow_path), llm=self.llm_instance, browser=self.browser_instance, controller=self.controller_instance
+				workflow_obj = Workflow.load_from_file(
+					str(workflow_path), llm=self.llm_instance, browser=Browser(), controller=WorkflowController()
 				)
 			except Exception as e:
-				print(f'Error loading workflow: {e}')
+				await self._write_log(log_file, f'[{ts}] Error loading workflow: {e}\n')
+				self.active_tasks[task_id].status = 'failed'
+				self.active_tasks[task_id].error = str(e)
 				return
 
 			await self._write_log(log_file, f'[{ts}] Executing workflow...\n')
@@ -197,7 +316,7 @@ class WorkflowService:
 				self.active_tasks[task_id].status = 'cancelled'
 				return
 
-			result = await self.workflow_obj.run(inputs, close_browser_at_end=True, cancel_event=cancel_event)
+			result = await workflow_obj.run(inputs, close_browser_at_end=True, cancel_event=cancel_event)
 
 			if cancel_event.is_set():
 				await self._write_log(log_file, f'[{ts}] Workflow execution was cancelled\n')

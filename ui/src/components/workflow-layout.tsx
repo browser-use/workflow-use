@@ -26,6 +26,7 @@ import { NodeConfigMenu } from "./node-config-menu";
 import { PlayButton } from "./play-button";
 import NoWorkflowsMessage from "./no-workflow-message";
 import { $api } from "../lib/api";
+import { useQueryClient } from "@tanstack/react-query";
 
 const WorkflowLayout: React.FC = () => {
   const [selected, setSelected] = useState<string | null>(null);
@@ -37,7 +38,20 @@ const WorkflowLayout: React.FC = () => {
   const [savedNodePositions, setSavedNodePositions] = useState<
     Record<string, Record<string, { x: number; y: number }>>
   >({});
+  const [allWorkflowsMetadata, setAllWorkflowsMetadata] = useState<
+    Record<string, WorkflowMetadata>
+  >({});
   const { fitView } = useReactFlow();
+  const queryClient = useQueryClient();
+
+  // After a GUI recording is saved, reload the list and select the new file
+  const handleRecordingSaved = useCallback(
+    (workflowFile: string) => {
+      queryClient.invalidateQueries();
+      setSelected(workflowFile);
+    },
+    [queryClient]
+  );
 
   // ----- Queries using $api -----
   // Fetch all workflows
@@ -75,6 +89,12 @@ const WorkflowLayout: React.FC = () => {
       await updateMetadataMutation.mutateAsync({
         body: { name, metadata: metadata as unknown as Record<string, never> },
       });
+      // Keep the sidebar cache in sync, or the row's label reverts to the
+      // pre-save name as soon as another workflow is selected.
+      setAllWorkflowsMetadata((prev) => ({
+        ...prev,
+        [name]: { ...prev[name], ...metadata },
+      }));
     },
     [updateMetadataMutation]
   );
@@ -159,6 +179,31 @@ const WorkflowLayout: React.FC = () => {
     }
   }, [workflows, selected]);
 
+  // Fetch lightweight metadata for every workflow in ONE request so sidebar
+  // items show their real names instead of a "Loading workflow…" placeholder
+  useEffect(() => {
+    if (!workflows.length) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("http://localhost:8000/api/workflows/metadata");
+        const data = (await res.json()) as {
+          workflows: Array<{ file: string } & WorkflowMetadata>;
+        };
+        if (!cancelled) {
+          setAllWorkflowsMetadata(
+            Object.fromEntries(data.workflows.map((w) => [w.file, w]))
+          );
+        }
+      } catch {
+        /* list still renders with filename placeholders */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [workflows]);
+
   const isLoading = isLoadingWorkflows || isLoadingSelectedWorkflow;
 
   if (isLoading) {
@@ -183,6 +228,8 @@ const WorkflowLayout: React.FC = () => {
         onSelect={setSelected}
         selected={selected}
         workflowMetadata={workflowMetadata}
+        allWorkflowsMetadata={allWorkflowsMetadata}
+        onRecordingSaved={handleRecordingSaved}
         onUpdateMetadata={async (metadata: WorkflowMetadata) => {
           if (selected) {
             await updateWorkflowMetadata(selected, metadata);
