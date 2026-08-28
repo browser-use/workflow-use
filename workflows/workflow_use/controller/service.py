@@ -16,6 +16,7 @@ from workflow_use.controller.views import (
 	ScrollDeterministicAction,
 	SelectDropdownOptionDeterministicAction,
 )
+from workflow_use.workflow.redaction import redact_step_value
 
 logger = logging.getLogger(__name__)
 
@@ -138,7 +139,8 @@ class WorkflowController(Controller):
 				await locator.click(force=True)
 				await asyncio.sleep(0.5)
 
-				msg = f'⌨️  Input "{params.value}" into element with CSS selector: {truncate_selector(selector_used)} (original: {truncate_selector(original_selector)})'
+				logged_value = redact_step_value(params, params.value)
+				msg = f'⌨️  Input "{logged_value}" into element with CSS selector: {truncate_selector(selector_used)} (original: {truncate_selector(original_selector)})'
 				logger.info(msg)
 				return ActionResult(extracted_content=msg, include_in_memory=True)
 			except Exception as e:
