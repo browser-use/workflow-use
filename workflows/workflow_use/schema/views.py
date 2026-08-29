@@ -1,6 +1,6 @@
 from typing import Any, Dict, List, Literal, Optional, Union
 
-from pydantic import BaseModel, Field, validator
+from pydantic import AliasChoices, BaseModel, Field
 
 
 # --- Base Step Model ---
@@ -28,6 +28,8 @@ class BaseWorkflowStep(BaseModel):
 
 # --- Steps that require interaction with a DOM element ---
 class SelectorWorkflowSteps(BaseWorkflowStep):
+	model_config = {'extra': 'allow', 'populate_by_name': True}
+
 	# Legacy fields - kept for backward compatibility but discouraged
 	cssSelector: Optional[str] = Field(
 		None, description='[LEGACY] CSS selector - avoid in new workflows, use target_text instead.'
@@ -43,8 +45,10 @@ class SelectorWorkflowSteps(BaseWorkflowStep):
 	)
 
 	# PRIMARY: Text-based semantic targeting (non-brittle)
+	# Chrome recorder exports `targetText`; semantic replay reads `target_text`.
 	target_text: Optional[str] = Field(
 		None,
+		validation_alias=AliasChoices('target_text', 'targetText'),
 		description='Visible or accessible text to identify the element. Use hierarchical context for disambiguation (e.g., "Submit (in Personal Information)", "Edit (item 2 of 3)"). If None, relies on selectorStrategies fallback.',
 	)
 
@@ -214,7 +218,12 @@ class WorkflowInputSchemaDefinition(BaseModel):
 
 
 class WorkflowDefinitionSchema(BaseModel):
-	"""Pydantic model representing the structure of the workflow JSON file."""
+	"""Pydantic model representing the structure of the workflow JSON file.
+
+	A trailing extract step is recommended for LLM generation (`run-as-tool`) but is
+	not required. Chrome recorder exports often end on click/input and must still load
+	for `run-workflow-no-ai`.
+	"""
 
 	workflow_analysis: Optional[str] = Field(
 		None,
@@ -236,26 +245,6 @@ class WorkflowDefinitionSchema(BaseModel):
 		# default=WorkflowInputSchemaDefinition(),
 		description='List of input schema definitions.',
 	)
-
-	@validator('steps')
-	def validate_ends_with_extract(cls, steps: List[WorkflowStep]) -> List[WorkflowStep]:
-		"""Validate that the workflow ends with an extract step."""
-		if not steps:
-			raise ValueError('Workflow must have at least one step')
-
-		last_step = steps[-1]
-		# Check if last step is an extract step
-		# We need to check the 'type' attribute from the step dict/model
-		step_type = getattr(last_step, 'type', None)
-
-		if step_type not in ['extract', 'extract_page_content']:
-			raise ValueError(
-				f'Workflow must end with an extract step (extract or extract_page_content). '
-				f'Current last step type: {step_type}. '
-				f'AI processing is always needed at the end of a workflow.'
-			)
-
-		return steps
 
 	# Add loader from json file
 	@classmethod
