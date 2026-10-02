@@ -517,8 +517,8 @@ Extracted Information:"""
 					formatted_data = data.format(**self.context)
 					return formatted_data
 				return data  # No placeholders, return as is
-			except KeyError:
-				# A key in the placeholder was not found in the context.
+			except (KeyError, IndexError):
+				# A placeholder could not be resolved from the context.
 				# Return the original string as per previous behavior.
 				return data
 
