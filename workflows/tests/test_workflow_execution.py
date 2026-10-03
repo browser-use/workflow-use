@@ -4,7 +4,10 @@ Unit tests for workflow execution - Empty actions and deterministic step executi
 Tests the fixes for go_back/go_forward (empty action models) and deterministic execution.
 """
 
-from workflow_use.schema.views import NavigationStep
+import pytest
+
+from workflow_use.schema.views import InputStep, NavigationStep
+from workflow_use.workflow.service import Workflow
 
 
 class TestWorkflowExecution:
@@ -178,6 +181,61 @@ class TestWorkflowExecution:
 		# Actions NOT requiring wait
 		assert 'input' not in actions_requiring_wait
 		assert 'extract' not in actions_requiring_wait
+
+	def test_resolve_placeholders_preserves_positional_input(self):
+		"""Positional placeholders in input steps remain literal without positional context."""
+		workflow = Workflow.__new__(Workflow)
+		workflow.context = {'name': 'Ada'}
+		value = 'Query param: {0}'
+		step = InputStep(type='input', target_text='Query', value=value)
+
+		resolved = workflow._resolve_placeholders(step)
+
+		assert resolved.value == value
+
+	def test_resolve_placeholders_keeps_named_context_behavior(self):
+		"""Known named placeholders resolve and unknown names remain literal."""
+		workflow = Workflow.__new__(Workflow)
+		workflow.context = {'name': 'Ada', 'items': ['first']}
+		data = {'known': 'Hello {name}', 'unknown': 'Hello {missing}', 'nested': '{items[0]}'}
+
+		assert workflow._resolve_placeholders(data) == {'known': 'Hello Ada', 'unknown': 'Hello {missing}', 'nested': 'first'}
+
+	def test_resolve_placeholders_positional_input_uses_default(self):
+		"""Unresolved positional input still follows the existing default-value path."""
+		workflow = Workflow.__new__(Workflow)
+		workflow.context = {}
+		step = InputStep(type='input', target_text='Query', value='{0}', default_value='fallback')
+
+		resolved = workflow._resolve_placeholders(step)
+
+		assert resolved.value == 'fallback'
+		assert step.value == '{0}'
+
+	def test_resolve_placeholders_preserves_automatic_input(self):
+		"""Automatic positional placeholders remain literal without positional context."""
+		workflow = Workflow.__new__(Workflow)
+		workflow.context = {}
+		step = InputStep(type='input', target_text='Query', value='literal {}')
+
+		assert workflow._resolve_placeholders(step).value == 'literal {}'
+
+	def test_resolve_placeholders_named_index_error_propagates(self):
+		"""An invalid index on a known context value is not a missing positional field."""
+		workflow = Workflow.__new__(Workflow)
+		workflow.context = {'items': []}
+
+		with pytest.raises(IndexError):
+			workflow._resolve_placeholders('{items[0]}')
+
+	def test_resolve_placeholders_named_index_error_does_not_use_default(self):
+		"""Input defaults must not hide indexing errors on a known context value."""
+		workflow = Workflow.__new__(Workflow)
+		workflow.context = {'items': []}
+		step = InputStep(type='input', target_text='Query', value='{items[0]}', default_value='fallback')
+
+		with pytest.raises(IndexError):
+			workflow._resolve_placeholders(step)
 
 
 # Helper to run async tests
