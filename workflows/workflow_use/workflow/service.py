@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 from pathlib import Path
+from string import Formatter
 from typing import Any, Dict, List, TypeVar
 from typing import cast as _cast
 
@@ -517,10 +518,18 @@ Extracted Information:"""
 					formatted_data = data.format(**self.context)
 					return formatted_data
 				return data  # No placeholders, return as is
-			except (KeyError, IndexError):
-				# A placeholder could not be resolved from the context.
-				# Return the original string as per previous behavior.
+			except KeyError:
+				# A named placeholder could not be resolved from the context.
 				return data
+			except IndexError:
+				# Only bare positional fields have no context to resolve. Preserve
+				# indexing/formatting errors from named context values.
+				if all(
+					field_name is None or field_name == '' or field_name.isdecimal()
+					for _, field_name, _, _ in Formatter().parse(data)
+				):
+					return data
+				raise
 
 		# TODO: This next things are not really supported atm, we'll need to to do it in the future.
 		elif isinstance(data, list):

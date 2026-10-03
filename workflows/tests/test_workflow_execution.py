@@ -182,38 +182,60 @@ class TestWorkflowExecution:
 		assert 'input' not in actions_requiring_wait
 		assert 'extract' not in actions_requiring_wait
 
+	def test_resolve_placeholders_preserves_positional_input(self):
+		"""Positional placeholders in input steps remain literal without positional context."""
+		workflow = Workflow.__new__(Workflow)
+		workflow.context = {'name': 'Ada'}
+		value = 'Query param: {0}'
+		step = InputStep(type='input', target_text='Query', value=value)
 
-@pytest.mark.parametrize('value', ['Query param: {0}', 'literal {}'])
-def test_resolve_placeholders_preserves_positional_input(value):
-	"""Positional placeholders in input steps remain literal without positional context."""
-	workflow = Workflow.__new__(Workflow)
-	workflow.context = {'name': 'Ada'}
-	step = InputStep(type='input', target_text='Query', value=value)
+		resolved = workflow._resolve_placeholders(step)
 
-	resolved = workflow._resolve_placeholders(step)
+		assert resolved.value == value
 
-	assert resolved.value == value
+	def test_resolve_placeholders_keeps_named_context_behavior(self):
+		"""Known named placeholders resolve and unknown names remain literal."""
+		workflow = Workflow.__new__(Workflow)
+		workflow.context = {'name': 'Ada', 'items': ['first']}
+		data = {'known': 'Hello {name}', 'unknown': 'Hello {missing}', 'nested': '{items[0]}'}
 
+		assert workflow._resolve_placeholders(data) == {'known': 'Hello Ada', 'unknown': 'Hello {missing}', 'nested': 'first'}
 
-def test_resolve_placeholders_keeps_named_context_behavior():
-	"""Known named placeholders resolve and unknown names remain literal."""
-	workflow = Workflow.__new__(Workflow)
-	workflow.context = {'name': 'Ada'}
-	data = {'known': 'Hello {name}', 'unknown': 'Hello {missing}'}
+	def test_resolve_placeholders_positional_input_uses_default(self):
+		"""Unresolved positional input still follows the existing default-value path."""
+		workflow = Workflow.__new__(Workflow)
+		workflow.context = {}
+		step = InputStep(type='input', target_text='Query', value='{0}', default_value='fallback')
 
-	assert workflow._resolve_placeholders(data) == {'known': 'Hello Ada', 'unknown': 'Hello {missing}'}
+		resolved = workflow._resolve_placeholders(step)
 
+		assert resolved.value == 'fallback'
+		assert step.value == '{0}'
 
-def test_resolve_placeholders_positional_input_uses_default():
-	"""Unresolved positional input still follows the existing default-value path."""
-	workflow = Workflow.__new__(Workflow)
-	workflow.context = {}
-	step = InputStep(type='input', target_text='Query', value='{0}', default_value='fallback')
+	def test_resolve_placeholders_preserves_automatic_input(self):
+		"""Automatic positional placeholders remain literal without positional context."""
+		workflow = Workflow.__new__(Workflow)
+		workflow.context = {}
+		step = InputStep(type='input', target_text='Query', value='literal {}')
 
-	resolved = workflow._resolve_placeholders(step)
+		assert workflow._resolve_placeholders(step).value == 'literal {}'
 
-	assert resolved.value == 'fallback'
-	assert step.value == '{0}'
+	def test_resolve_placeholders_named_index_error_propagates(self):
+		"""An invalid index on a known context value is not a missing positional field."""
+		workflow = Workflow.__new__(Workflow)
+		workflow.context = {'items': []}
+
+		with pytest.raises(IndexError):
+			workflow._resolve_placeholders('{items[0]}')
+
+	def test_resolve_placeholders_named_index_error_does_not_use_default(self):
+		"""Input defaults must not hide indexing errors on a known context value."""
+		workflow = Workflow.__new__(Workflow)
+		workflow.context = {'items': []}
+		step = InputStep(type='input', target_text='Query', value='{items[0]}', default_value='fallback')
+
+		with pytest.raises(IndexError):
+			workflow._resolve_placeholders(step)
 
 
 # Helper to run async tests
