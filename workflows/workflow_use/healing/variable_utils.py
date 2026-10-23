@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 from typing import Optional
 
+import yaml
+
 from workflow_use.healing.variable_extractor import VariableExtractor
 from workflow_use.schema.views import WorkflowDefinitionSchema
 
@@ -57,9 +59,9 @@ def process_workflow_file_with_markers(
 	input_path = Path(input_path)
 	output_path = Path(output_path) if output_path else input_path
 
-	# Load the workflow
+	# Load the workflow. YAML is a superset of JSON, so this reads both formats.
 	with open(input_path, 'r') as f:
-		workflow_data = json.load(f)
+		workflow_data = yaml.safe_load(f)
 
 	workflow = WorkflowDefinitionSchema(**workflow_data)
 
@@ -67,9 +69,12 @@ def process_workflow_file_with_markers(
 	extractor = VariableExtractor()
 	updated_workflow, extracted_inputs = extractor.process_workflow_with_markers(workflow)
 
-	# Save the updated workflow
+	# Save the updated workflow in the format that matches the output file extension
 	with open(output_path, 'w') as f:
-		json.dump(updated_workflow.model_dump(), f, indent=2)
+		if output_path.suffix.lower() in ('.yaml', '.yml'):
+			yaml.dump(updated_workflow.model_dump(mode='json'), f, default_flow_style=False, sort_keys=False)
+		else:
+			json.dump(updated_workflow.model_dump(mode='json'), f, indent=2)
 
 	print(f'Processed workflow: {input_path}')
 	if extracted_inputs:
