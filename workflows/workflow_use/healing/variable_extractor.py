@@ -14,6 +14,7 @@ from browser_use.llm.base import BaseChatModel
 from pydantic import BaseModel
 
 from workflow_use.schema.views import (
+	AgentTaskWorkflowStep,
 	InputStep,
 	NavigationStep,
 	SelectChangeStep,
@@ -105,6 +106,9 @@ class VariableExtractor:
 	# Value is captured until whitespace or end of string
 	MANUAL_MARKER_PATTERN = re.compile(r'VAR:([a-z_][a-z0-9_]*):(\S+)')
 
+	# A field that is a single marker whose value may contain spaces, e.g. VAR:country:United States
+	WHOLE_FIELD_MARKER_PATTERN = re.compile(r'\s*VAR:([a-z_][a-z0-9_]*):((?:(?!VAR:).)+?)\s*', re.DOTALL)
+
 	def __init__(self, llm: Optional[BaseChatModel] = None):
 		"""Initialize the variable extractor.
 
@@ -175,6 +179,8 @@ class VariableExtractor:
 			fields_to_check.append('selectedText')
 		elif isinstance(step, NavigationStep):
 			fields_to_check.append('url')
+		elif isinstance(step, AgentTaskWorkflowStep):
+			fields_to_check.append('task')
 
 		# Check target_text for steps that have it (this is the key feature!)
 		if hasattr(step, 'target_text'):
@@ -203,8 +209,13 @@ class VariableExtractor:
 						required=True,
 					)
 
-				# Replace entire field value with placeholder (since marker is the whole value)
-				updated_value = f'{{{var_name}}}'
+			whole_field = self.WHOLE_FIELD_MARKER_PATTERN.fullmatch(field_value)
+			if whole_field:
+				# The marker is the whole value, so a value with spaces stays with the marker
+				updated_value = f'{{{whole_field.group(1)}}}'
+			else:
+				# Replace each marker where it appears and keep the surrounding text
+				updated_value = self.MANUAL_MARKER_PATTERN.sub(lambda m: f'{{{m.group(1)}}}', field_value)
 
 			# Update the field
 			setattr(step, field_name, updated_value.strip())

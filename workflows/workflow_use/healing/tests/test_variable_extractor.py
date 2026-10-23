@@ -4,7 +4,9 @@ import pytest
 
 from workflow_use.healing.variable_extractor import VariableExtractor
 from workflow_use.schema.views import (
+	AgentTaskWorkflowStep,
 	ClickStep,
+	ExtractStep,
 	InputStep,
 	NavigationStep,
 	SelectChangeStep,
@@ -49,6 +51,7 @@ def test_process_workflow_with_markers():
 			NavigationStep(type='navigation', url='https://example.com'),
 			InputStep(type='input', target_text='Email', value='VAR:user_email:test@example.com', description='Enter email'),
 			InputStep(type='input', target_text='Name', value='VAR:user_name:John Doe', description='Enter name'),
+			ExtractStep(type='extract', extractionGoal='Extract the result'),
 		],
 		input_schema=[],
 	)
@@ -81,6 +84,7 @@ def test_process_workflow_preserves_existing_inputs():
 		version='1.0',
 		steps=[
 			InputStep(type='input', target_text='Email', value='VAR:new_var:test@example.com'),
+			ExtractStep(type='extract', extractionGoal='Extract the result'),
 		],
 		input_schema=[existing_input],
 	)
@@ -103,6 +107,7 @@ def test_marker_in_select_step():
 		version='1.0',
 		steps=[
 			SelectChangeStep(type='select_change', target_text='Country', selectedText='VAR:country:United States'),
+			ExtractStep(type='extract', extractionGoal='Extract the result'),
 		],
 		input_schema=[],
 	)
@@ -126,6 +131,7 @@ def test_marker_in_navigation_url():
 		version='1.0',
 		steps=[
 			NavigationStep(type='navigation', url='https://example.com/search?q=VAR:search_term:laptop'),
+			ExtractStep(type='extract', extractionGoal='Extract the result'),
 		],
 		input_schema=[],
 	)
@@ -141,6 +147,50 @@ def test_marker_in_navigation_url():
 	assert nav_step.url == 'https://example.com/search?q={search_term}'
 
 
+def test_multiple_markers_in_one_field():
+	"""Test that every marker in a field becomes its own placeholder."""
+	workflow = WorkflowDefinitionSchema(
+		name='Test Workflow',
+		description='Test',
+		version='1.0',
+		steps=[
+			InputStep(type='input', target_text='Full name', value='VAR:first_name:John VAR:last_name:Doe'),
+			ExtractStep(type='extract', extractionGoal='Extract the result'),
+		],
+		input_schema=[],
+	)
+
+	extractor = VariableExtractor()
+	updated_workflow, extracted_inputs = extractor.process_workflow_with_markers(workflow)
+
+	assert {inp.name for inp in extracted_inputs} == {'first_name', 'last_name'}
+	input_step = updated_workflow.steps[0]
+	assert isinstance(input_step, InputStep)
+	assert input_step.value == '{first_name} {last_name}'
+
+
+def test_marker_in_agent_task():
+	"""Test variable marker inside an agent step task."""
+	workflow = WorkflowDefinitionSchema(
+		name='Test Workflow',
+		description='Test',
+		version='1.0',
+		steps=[
+			AgentTaskWorkflowStep(type='agent', task='Find and click the product named VAR:product_name:iPhone'),
+			ExtractStep(type='extract', extractionGoal='Extract the result'),
+		],
+		input_schema=[],
+	)
+
+	extractor = VariableExtractor()
+	updated_workflow, extracted_inputs = extractor.process_workflow_with_markers(workflow)
+
+	assert [inp.name for inp in extracted_inputs] == ['product_name']
+	agent_step = updated_workflow.steps[0]
+	assert isinstance(agent_step, AgentTaskWorkflowStep)
+	assert agent_step.task == 'Find and click the product named {product_name}'
+
+
 def test_no_markers():
 	"""Test processing workflow without any markers."""
 	workflow = WorkflowDefinitionSchema(
@@ -150,6 +200,7 @@ def test_no_markers():
 		steps=[
 			NavigationStep(type='navigation', url='https://example.com'),
 			ClickStep(type='click', target_text='Submit'),
+			ExtractStep(type='extract', extractionGoal='Extract the result'),
 		],
 		input_schema=[],
 	)
