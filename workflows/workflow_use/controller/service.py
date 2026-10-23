@@ -5,7 +5,9 @@ from browser_use import Browser
 from browser_use.agent.views import ActionResult
 from browser_use.controller import Controller
 from browser_use.llm.base import BaseChatModel
+from browser_use.tools.views import NoParamsAction
 
+from workflow_use.compat import cdp
 from workflow_use.controller.utils import get_best_element_handle, truncate_selector
 from workflow_use.controller.views import (
 	ClickElementDeterministicAction,
@@ -21,41 +23,27 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_ACTION_TIMEOUT_MS = 1000
 
-# List of default actions from browser_use.controller.service.Controller to disable
-# todo: come up with a better way to filter out the actions (filter IN the actions would be much nicer in this case)
-DISABLED_DEFAULT_ACTIONS = [
-	'done',
-	'search_google',
-	'go_to_url',  # I am using this action from the main controller to avoid duplication
-	'go_back',
-	'wait',
-	'click_element_by_index',
-	'input_text',
-	'save_pdf',
-	'switch_tab',
-	'open_tab',
-	'close_tab',
-	'extract_content',
-	'scroll_down',
-	'scroll_up',
-	'send_keys',
-	'scroll_to_text',
-	'get_dropdown_options',
-	'select_dropdown_option',
-	'drag_drop',
-	'get_sheet_contents',
-	'select_cell_or_range',
-	'get_range_contents',
-	'clear_selected_range',
-	'input_selected_cell_text',
-	'update_range_contents',
-]
+
+# The WorkflowController executes deterministic workflow steps only; agentic steps
+# run through their own Agent with a separate controller. Every browser-use builtin
+# is therefore excluded so that (a) the registry contains exactly the deterministic
+# step vocabulary, (b) our custom 'click'/'input'/'scroll' registrations don't rely
+# on silently overwriting builtins of the same name, and (c) the builder prompt
+# (which lists this registry) can only suggest step types the schema accepts.
+def _all_builtin_action_names() -> list[str]:
+	from browser_use.tools.service import Tools
+
+	return list(Tools().registry.registry.actions.keys())
 
 
 class WorkflowController(Controller):
 	def __init__(self, *args, **kwargs):
-		# Pass the list of actions to exclude to the base class constructor
-		super().__init__(*args, exclude_actions=DISABLED_DEFAULT_ACTIONS, **kwargs)
+		# Exclude every builtin (allowlist style): only actions registered below exist.
+		super().__init__(*args, exclude_actions=_all_builtin_action_names(), **kwargs)
+		# The exclusion list also applies to our own registrations below (several
+		# reuse builtin names like 'click'/'input'/'scroll'); clear it now that the
+		# builtins have been filtered out.
+		self.registry.exclude_actions = []
 		self.__register_actions()
 
 	def __register_actions(self):
@@ -65,12 +53,29 @@ class WorkflowController(Controller):
 			"""Navigate to the given URL."""
 			page = await browser_session.get_current_page()
 			await page.goto(params.url)
-			# Wait for page to load (CDP navigate doesn't wait automatically)
-			import asyncio
-
-			await asyncio.sleep(2)
+			# CDP navigate doesn't wait automatically; wait for the document to load.
+			await cdp.wait_for_load_state(page, 'load', timeout_ms=10000)
 
 			msg = f'🔗  Navigated to URL: {params.url}'
+			logger.info(msg)
+			return ActionResult(extracted_content=msg, include_in_memory=True)
+
+		# History navigation --------------------------------------------------------
+		@self.registry.action('Go back to the previous page', param_model=NoParamsAction)
+		async def go_back(_: NoParamsAction, browser_session: Browser) -> ActionResult:
+			page = await browser_session.get_current_page()
+			await page.go_back()
+			await cdp.wait_for_load_state(page, 'load', timeout_ms=10000)
+			msg = '🔙  Navigated back'
+			logger.info(msg)
+			return ActionResult(extracted_content=msg, include_in_memory=True)
+
+		@self.registry.action('Go forward to the next page', param_model=NoParamsAction)
+		async def go_forward(_: NoParamsAction, browser_session: Browser) -> ActionResult:
+			page = await browser_session.get_current_page()
+			await page.go_forward()
+			await cdp.wait_for_load_state(page, 'load', timeout_ms=10000)
+			msg = '🔜  Navigated forward'
 			logger.info(msg)
 			return ActionResult(extracted_content=msg, include_in_memory=True)
 
@@ -86,13 +91,13 @@ class WorkflowController(Controller):
 			original_selector = params.cssSelector
 
 			try:
-				locator, selector_used = await get_best_element_handle(
+				element, selector_used = await get_best_element_handle(
 					page,
 					params.cssSelector,
 					params,
 					timeout_ms=DEFAULT_ACTION_TIMEOUT_MS,
 				)
-				await locator.click(force=True)
+				await element.click()
 
 				msg = f'🖱️  Clicked element with CSS selector: {truncate_selector(selector_used)} (original: {truncate_selector(original_selector)})'
 				logger.info(msg)
@@ -117,25 +122,21 @@ class WorkflowController(Controller):
 			original_selector = params.cssSelector
 
 			try:
-				locator, selector_used = await get_best_element_handle(
+				element, selector_used = await get_best_element_handle(
 					page,
 					params.cssSelector,
 					params,
 					timeout_ms=DEFAULT_ACTION_TIMEOUT_MS,
 				)
 
-				# Check if it's a SELECT element
-				is_select = await locator.evaluate('(el) => el.tagName === "SELECT"')
-				if is_select:
+				# Check if it's a SELECT element (select values are set via select_change)
+				if await cdp.is_select_element(element):
 					return ActionResult(
 						extracted_content='Ignored input into select element',
 						include_in_memory=True,
 					)
 
-				# Add a small delay and click to ensure the element is focused
-				await locator.fill(params.value)
-				await asyncio.sleep(0.5)
-				await locator.click(force=True)
+				await element.fill(params.value)
 				await asyncio.sleep(0.5)
 
 				msg = f'⌨️  Input "{params.value}" into element with CSS selector: {truncate_selector(selector_used)} (original: {truncate_selector(original_selector)})'
@@ -157,14 +158,16 @@ class WorkflowController(Controller):
 			original_selector = params.cssSelector
 
 			try:
-				locator, selector_used = await get_best_element_handle(
+				element, selector_used = await get_best_element_handle(
 					page,
 					params.cssSelector,
 					params,
 					timeout_ms=DEFAULT_ACTION_TIMEOUT_MS,
 				)
 
-				await locator.select_option(label=params.selectedText)
+				# Match by visible label text (Element.select_option only matches values)
+				if not await cdp.select_option_by_text(element, params.selectedText):
+					raise Exception(f'No option with visible text "{params.selectedText}" found')
 
 				msg = f'Selected option "{params.selectedText}" in dropdown {truncate_selector(selector_used)} (original: {truncate_selector(original_selector)})'
 				logger.info(msg)
@@ -185,9 +188,10 @@ class WorkflowController(Controller):
 			original_selector = params.cssSelector
 
 			try:
-				locator, selector_used = await get_best_element_handle(page, params.cssSelector, params, timeout_ms=5000)
+				element, selector_used = await get_best_element_handle(page, params.cssSelector, params, timeout_ms=5000)
 
-				await locator.press(params.key)
+				# Element has no press(); focus it and press on the page
+				await cdp.press_key_on_element(page, element, params.key)
 
 				msg = f"🔑  Pressed key '{params.key}' on element with CSS selector: {truncate_selector(selector_used)} (original: {truncate_selector(original_selector)})"
 				logger.info(msg)

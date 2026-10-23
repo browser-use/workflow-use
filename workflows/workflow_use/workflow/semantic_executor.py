@@ -11,6 +11,7 @@ if TYPE_CHECKING:
 from browser_use.agent.views import ActionResult
 from browser_use.llm.base import BaseChatModel
 
+from workflow_use.compat import cdp
 from workflow_use.schema.views import (
 	ClickStep,
 	ExtractStep,
@@ -133,6 +134,18 @@ class SemanticWorkflowExecutor:
 		"""Check if an element is checked (for radio/checkbox)."""
 		checked = await self._element_get_property(element, 'checked')
 		return bool(checked)
+
+	async def _set_checked_by_selector(self, selector: str, checked: bool = True) -> bool:
+		"""Set a radio/checkbox checked state via CDP (Playwright check/uncheck equivalent).
+
+		Clicks the first element matching *selector* when its checked state differs
+		from the desired one. Returns True when the element ends in the desired state.
+		"""
+		elements = await self._get_elements_by_selector(selector)
+		if not elements:
+			logger.debug(f'_set_checked_by_selector: no element for {selector}')
+			return False
+		return await cdp.set_checkbox_state(elements[0], checked)
 
 	async def _element_is_visible(self, element) -> bool:
 		"""Check if an element is visible."""
@@ -562,22 +575,25 @@ class SemanticWorkflowExecutor:
 				if element_count == 0:
 					continue
 
-				# Check if it's visible
-				await page.wait_for_selector(selector, timeout=2000, state='visible')
+				# Check if it's visible (wait_for_selector doesn't exist on CDP)
+				if await cdp.wait_for_element(page, selector, timeout_ms=2000) is None:
+					continue
 
 				# Check if this selector resolves to multiple elements (strict mode violation)
 				if element_count > 1:
 					logger.warning(f'Selector {selector} matches {element_count} elements, trying to make it more specific')
 
 					# Try to make it more specific for form elements
-					specific_selectors = [f"{selector}:not([type='hidden'])", f'{selector}:visible', f'{selector}:first-of-type']
+					# (:visible is a Playwright-only pseudo-class - invalid CSS here)
+					specific_selectors = [f"{selector}:not([type='hidden'])", f'{selector}:first-of-type']
 
 					for specific_selector in specific_selectors:
 						try:
 							specific_elements = await self._get_elements_by_selector(specific_selector)
 							specific_count = len(specific_elements)
 							if specific_count == 1:
-								await page.wait_for_selector(specific_selector, timeout=1000, state='visible')
+								if await cdp.wait_for_element(page, specific_selector, timeout_ms=1000) is None:
+									continue
 								logger.info(f'Found specific element using selector: {specific_selector}')
 								return specific_selector
 						except Exception:
@@ -720,10 +736,7 @@ class SemanticWorkflowExecutor:
 		await asyncio.sleep(3)
 
 		# Wait for common form elements to be present (indicates page is ready)
-		try:
-			# Wait for any input, button, or form element to be present
-			await page.wait_for_selector('input, button, form, textarea, select', timeout=10000)
-		except Exception:
+		if await cdp.wait_for_element(page, 'input, button, form, textarea, select', timeout_ms=10000, state='attached') is None:
 			logger.warning('No form elements found after navigation, continuing anyway')
 
 		# Refresh semantic mapping after navigation
@@ -794,14 +807,20 @@ class SemanticWorkflowExecutor:
 		return {{ success: false, error: error.message }};
 	}}
 }}"""
-						click_result = await page.evaluate(click_js)
+						# evaluate returns a JSON string; decode before inspecting -
+						# treating it as a dict raised AttributeError AFTER the click
+						# already fired in the page (click-then-report-failure trap)
+						click_result = await cdp.evaluate(page, click_js)
 
-						if click_result and click_result.get('success'):
+						if isinstance(click_result, dict) and click_result.get('success'):
 							msg = f'🖱️ Clicked element using XPath: {xpath_or_selector}'
 							logger.info(msg)
 							return ActionResult(extracted_content=msg, include_in_memory=True)
 						else:
-							raise Exception(f'Failed to click element: {click_result.get("error", "Unknown error")}')
+							error_detail = (
+								click_result.get('error', 'Unknown error') if isinstance(click_result, dict) else click_result
+							)
+							raise Exception(f'Failed to click element: {error_detail}')
 					else:
 						raise Exception(f'Unsupported strategy type: {strategy_used.get("type")}')
 
@@ -1089,8 +1108,9 @@ class SemanticWorkflowExecutor:
 							logger.info(f'Successfully clicked ARIA radio button: {selector}')
 							return True
 						elif tag_name == 'input':
-							# Traditional input, use check() method
-							await page.check(selector)
+							# Traditional input: set checked state via CDP click
+							if not await self._set_checked_by_selector(selector):
+								raise Exception(f'Could not check {selector}')
 							logger.info(f'Successfully checked {element_info["element_type"]}: {selector}')
 							return True
 						else:
@@ -1122,7 +1142,8 @@ class SemanticWorkflowExecutor:
 										await element.click()
 										return True
 									else:
-										await page.check(input_selector)
+										if not await self._set_checked_by_selector(input_selector):
+											raise Exception(f'Could not check {input_selector}')
 										logger.info(
 											f'Successfully checked {element_info["element_type"]} input inside container: {input_selector}'
 										)
@@ -1336,15 +1357,17 @@ class SemanticWorkflowExecutor:
 									specific_elements = await self._get_elements_by_selector(specific_selector)
 									count = len(specific_elements)
 									if count == 1:
-										await page.check(specific_selector)
+										if not await self._set_checked_by_selector(specific_selector):
+											raise Exception(f'Could not check {specific_selector}')
 										logger.info(f'Successfully checked using specific selector: {specific_selector}')
 										return True
 								except Exception as e:
 									logger.debug(f'Specific check failed for {specific_selector}: {e}')
 									continue
 					else:
-						# Use the provided selector with .check()
-						await page.check(selector)
+						# Use the provided selector, setting checked state via CDP click
+						if not await self._set_checked_by_selector(selector):
+							raise Exception(f'Could not check {selector}')
 						logger.info(f'Successfully checked: {selector}')
 						return True
 
@@ -1368,8 +1391,9 @@ class SemanticWorkflowExecutor:
 								logger.info(f'Clicked specific radio/checkbox by value: {target_text}')
 								return True
 
-						# Fall back to first match - use page.check with selector since we can't .check() on element
-						await page.check(selector)
+						# Fall back to the first matching element
+						if not await self._set_checked_by_selector(selector):
+							raise Exception(f'Could not check {selector}')
 						logger.warning(f'Selected first radio button (multiple found): {selector}')
 						return True
 				except Exception as e:
@@ -1567,16 +1591,17 @@ class SemanticWorkflowExecutor:
 						radio_elements = await self._get_elements_by_selector(radio_selector)
 						count = len(radio_elements)
 						if count == 1:
-							await page.check(radio_selector)
+							if not await self._set_checked_by_selector(radio_selector):
+								raise Exception(f'Could not check {radio_selector}')
 							logger.info(f'Successfully selected radio button: {radio_selector}')
 							return True
 						elif count > 1:
 							# Multiple radio buttons with same value, try to narrow down by name or context
 							if target_text:
 								# Try to find by label association
+								# (:has-text() is Playwright-only and invalid CSS here)
 								contextual_selectors = [
 									f'input[type="radio"][value="{value.lower()}"][name*="{target_text.lower()}"]',
-									f'label:has-text("{target_text}") input[type="radio"][value="{value.lower()}"]',
 								]
 
 								for ctx_selector in contextual_selectors:
@@ -1584,15 +1609,17 @@ class SemanticWorkflowExecutor:
 										ctx_elements = await self._get_elements_by_selector(ctx_selector)
 										ctx_count = len(ctx_elements)
 										if ctx_count == 1:
-											await page.check(ctx_selector)
+											if not await self._set_checked_by_selector(ctx_selector):
+												raise Exception(f'Could not check {ctx_selector}')
 											logger.info(f'Selected radio button with context: {ctx_selector}')
 											return True
 									except Exception as e:
 										logger.debug(f'Contextual radio selection failed: {e}')
 										continue
 
-							# Fall back to first match - use page.check with selector since we can't .check() on element
-							await page.check(radio_selector)
+							# Fall back to the first matching radio button
+							if not await self._set_checked_by_selector(radio_selector):
+								raise Exception(f'Could not check {radio_selector}')
 							logger.warning(f'Selected first radio button (multiple found): {radio_selector}')
 							return True
 					except Exception as e:
@@ -1614,13 +1641,10 @@ class SemanticWorkflowExecutor:
 						raise Exception(f'Checkbox element not found: {selector}')
 					is_currently_checked = await self._element_is_checked(checkbox_elements[0])
 
-					if should_check and not is_currently_checked:
-						await page.check(selector)
-						logger.info(f'Checked checkbox: {target_text}')
-						return True
-					elif not should_check and is_currently_checked:
-						await page.uncheck(selector)
-						logger.info(f'Unchecked checkbox: {target_text}')
+					if is_currently_checked != should_check:
+						if not await self._set_checked_by_selector(selector, checked=should_check):
+							raise Exception(f'Could not set checkbox state for {selector}')
+						logger.info(f'{"Checked" if should_check else "Unchecked"} checkbox: {target_text}')
 						return True
 					else:
 						logger.info(f'Checkbox already in desired state: {target_text}')
@@ -1706,8 +1730,11 @@ class SemanticWorkflowExecutor:
 			if not elements:
 				raise Exception(f'Element not found with selector: {selector_to_use}')
 			element = elements[0]
-			# select_option takes values (text or value of the option)
-			await element.select_option(step.selectedText)
+			# Match by visible label text (Element.select_option only matches option
+			# VALUES - option label text is invisible to it, so it silently selects
+			# nothing when values differ from labels)
+			if not await cdp.select_option_by_text(element, step.selectedText):
+				raise Exception(f'No option with visible text "{step.selectedText}" in {selector_to_use}')
 
 			msg = f"🔽 Selected '{step.selectedText}' in: {target_identifier or step.description or selector_to_use}"
 			logger.info(msg)
@@ -2054,8 +2081,8 @@ class SemanticWorkflowExecutor:
 		screenshot_path = None
 		try:
 			page = await self.browser.get_current_page()
-			current_url = page.url if page else None
-			page_title = await page.title() if page else None
+			current_url = await page.get_url() if page else None
+			page_title = await page.get_title() if page else None
 
 			# Capture error screenshot for debugging
 			try:
@@ -2073,8 +2100,8 @@ class SemanticWorkflowExecutor:
 				screenshot_filename = f'error_{timestamp}_step{self.current_step_index}_{step_desc}.png'
 				screenshot_path = str(screenshot_dir / screenshot_filename)
 
-				# Capture screenshot
-				await page.screenshot(path=screenshot_path)
+				# Capture screenshot (CDP returns base64; decode and write ourselves)
+				await cdp.screenshot_to_file(page, screenshot_path)
 				logger.info(f'📸 Error screenshot saved: {screenshot_path}')
 
 			except Exception as screenshot_error:
@@ -2254,8 +2281,7 @@ class SemanticWorkflowExecutor:
 			try:
 				page = await self.browser.get_current_page()
 				direct_selector = await self._try_direct_selector(target_text)
-				if direct_selector:
-					await page.wait_for_selector(direct_selector, timeout=2000, state='visible')
+				if direct_selector and await cdp.wait_for_element(page, direct_selector, timeout_ms=2000) is not None:
 					logger.info(
 						f"Verification: Found next step element by direct selector '{target_text}' - navigation successful"
 					)
@@ -2659,8 +2685,12 @@ EXTRACTED INFORMATION:"""
 			# Call LLM for extraction
 			logger.info('Sending extraction request to LLM...')
 			try:
-				llm_response = await self.page_extraction_llm.ainvoke(formatted_prompt)
-				extracted_content = llm_response.content if hasattr(llm_response, 'content') else str(llm_response)
+				# BaseChatModel.ainvoke takes a message list and returns ChatInvokeCompletion
+				# (whose field is .completion - there is no .content)
+				from browser_use.llm import UserMessage
+
+				llm_response = await self.page_extraction_llm.ainvoke([UserMessage(content=formatted_prompt)])
+				extracted_content = llm_response.completion
 
 				# Create structured extracted data
 				extracted_data = {
@@ -2769,84 +2799,96 @@ EXTRACTED INFORMATION:"""
 		page = await self.browser.get_current_page()
 
 		try:
-			# Step 1: Find the container
-			container_element = None
+			# One page round-trip: resolve the container (by selector or by text) and
+			# scan its interactive descendants for the target text.
+			# (query_selector_all / text_content do not exist on the CDP surface.)
+			find_js = """(containerSelector, containerText, targetText) => {
+				let container = null;
+				if (containerSelector) {
+					try { container = document.querySelector(containerSelector); } catch (e) {}
+				} else if (containerText) {
+					const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+					let node;
+					while ((node = walker.nextNode())) {
+						if (node.textContent && node.textContent.includes(containerText)) {
+							container = node.parentElement && node.parentElement.closest('tr, section, form');
+							if (container) break;
+						}
+					}
+				}
+				if (!container) return { found: false, reason: 'container' };
+				const wanted = targetText.toLowerCase();
+				const candidates = container.querySelectorAll("button, input, select, a, [role='button']");
+				for (const el of candidates) {
+					const text = (el.textContent || el.value || '').trim();
+					if (text && text.toLowerCase().includes(wanted)) {
+						return {
+							found: true,
+							text: text,
+							tag: el.tagName.toLowerCase(),
+							id: el.id || '',
+							cls: el.className && typeof el.className === 'string' ? el.className : '',
+							containerTag: container.tagName.toLowerCase(),
+							containerId: container.id || '',
+							containerCls: container.className && typeof container.className === 'string' ? container.className : '',
+						};
+					}
+				}
+				return { found: false, reason: 'target' };
+			}"""
 
-			if container_selector:
-				# Use provided selector
-				container_elements = await page.query_selector_all(container_selector)
-				if container_elements:
-					container_element = container_elements[0]
-					logger.info(f'Found container using selector: {container_selector}')
+			result = await cdp.evaluate(page, find_js, container_selector or '', container_text or '', target_text)
 
-			elif container_text:
-				# Find container by text content using XPath
-				xpath_query = f"xpath=//*[contains(text(), '{container_text}')]/ancestor-or-self::tr | //*[contains(text(), '{container_text}')]/ancestor-or-self::section | //*[contains(text(), '{container_text}')]/ancestor-or-self::form"
-				container_element = await page.query_selector(xpath_query)
-				if container_element:
-					logger.info(f'Found container containing text: {container_text}')
-
-			if not container_element:
-				logger.warning(f'Could not find container for {target_text}')
+			if not isinstance(result, dict) or not result.get('found'):
+				reason = result.get('reason') if isinstance(result, dict) else 'error'
+				if reason == 'container':
+					logger.warning(f'Could not find container for {target_text}')
+				else:
+					logger.warning(f"Could not find '{target_text}' within the container")
 				return None
 
-			# Step 2: Find the target element within the container
-			target_elements = await container_element.query_selector_all("button, input, select, a, [role='button']")
+			element_tag = result.get('tag') or 'unknown'
+			element_id = result.get('id') or ''
+			element_class = result.get('cls') or ''
 
-			for element in target_elements:
-				element_text = await element.text_content()
-				if element_text and target_text.lower() in element_text.lower().strip():
-					# Generate a dynamic selector for this element
-					element_id = await element.get_attribute('id')
-					element_class = await element.get_attribute('class')
-					element_tag_upper = await self._element_get_property(element, 'tagName')
-					element_tag = element_tag_upper.lower() if element_tag_upper else 'unknown'
+			# Build selector
+			if element_id:
+				dynamic_selector = f'#{element_id}'
+			elif element_class:
+				classes = element_class.split()[0] if element_class.split() else ''
+				dynamic_selector = f'{element_tag}.{classes}' if classes else element_tag
+			else:
+				dynamic_selector = element_tag
 
-					# Build selector
-					if element_id:
-						dynamic_selector = f'#{element_id}'
-					elif element_class:
-						classes = element_class.split()[0] if element_class.split() else ''
-						dynamic_selector = f'{element_tag}.{classes}' if classes else element_tag
-					else:
-						dynamic_selector = element_tag
+			# Make it specific to the container
+			if container_selector:
+				final_selector = f'{container_selector} {dynamic_selector}'
+			else:
+				container_tag = result.get('containerTag') or 'unknown'
+				container_id = result.get('containerId') or ''
+				container_class = result.get('containerCls') or ''
+				if container_id:
+					container_sel = f'#{container_id}'
+				elif container_class:
+					first_class = container_class.split()[0] if container_class.split() else ''
+					container_sel = f'{container_tag}.{first_class}' if first_class else container_tag
+				else:
+					container_sel = container_tag
+				final_selector = f'{container_sel} {dynamic_selector}'
 
-					# Make it specific to the container
-					if container_selector:
-						final_selector = f'{container_selector} {dynamic_selector}'
-					else:
-						# Generate container selector on the fly
-						container_id = await container_element.get_attribute('id')
-						container_class = await container_element.get_attribute('class')
-						container_tag_upper = await self._element_get_property(container_element, 'tagName')
-						container_tag = container_tag_upper.lower() if container_tag_upper else 'unknown'
+			logger.info(f"Found '{target_text}' in container: {final_selector}")
 
-						if container_id:
-							container_sel = f'#{container_id}'
-						elif container_class:
-							first_class = container_class.split()[0] if container_class.split() else ''
-							container_sel = f'{container_tag}.{first_class}' if first_class else container_tag
-						else:
-							container_sel = container_tag
-
-						final_selector = f'{container_sel} {dynamic_selector}'
-
-					logger.info(f"Found '{target_text}' in container: {final_selector}")
-
-					# Return element info in the same format as semantic mapping
-					return {
-						'selectors': final_selector,
-						'hierarchical_selector': final_selector,
-						'fallback_selector': dynamic_selector,
-						'text_xpath': f"//*[contains(text(), '{target_text}')]",
-						'element_type': 'button',
-						'original_text': element_text.strip(),
-						'class': element_class or '',
-						'id': element_id or '',
-					}
-
-			logger.warning(f"Could not find '{target_text}' within the container")
-			return None
+			# Return element info in the same format as semantic mapping
+			return {
+				'selectors': final_selector,
+				'hierarchical_selector': final_selector,
+				'fallback_selector': dynamic_selector,
+				'text_xpath': f"//*[contains(text(), '{target_text}')]",
+				'element_type': 'button',
+				'original_text': str(result.get('text') or '').strip(),
+				'class': element_class,
+				'id': element_id,
+			}
 
 		except Exception as e:
 			logger.error(f'Error in find_element_in_container: {e}')
@@ -3098,18 +3140,25 @@ EXTRACTED INFORMATION:"""
 				logger.warning(f'Trigger element not found: {selector}')
 				return False
 
-			# Wait for expected content to appear
-			try:
-				# Try multiple strategies to detect content loading
-				await page.wait_for_selector(f':has-text("{expected_content}")', timeout=timeout)
-				logger.info(f'Dynamic content loaded: {expected_content}')
-				return True
+			# Wait for expected content to appear by polling the page text
+			# (:has-text() is Playwright-only; poll body text via evaluate instead)
+			deadline = asyncio.get_event_loop().time() + timeout / 1000
+			while asyncio.get_event_loop().time() < deadline:
+				try:
+					found = await cdp.evaluate(
+						page,
+						'(needle) => document.body && document.body.innerText.includes(needle)',
+						expected_content,
+					)
+					if found is True:
+						logger.info(f'Dynamic content loaded: {expected_content}')
+						return True
+				except Exception:
+					pass
+				await asyncio.sleep(0.2)
 
-			except Exception:
-				# Wait for dynamic content to load
-				await asyncio.sleep(timeout / 1000)  # Convert ms to seconds
-				logger.info('Dynamic content loading completed (timeout-based)')
-				return True
+			logger.info('Dynamic content loading completed (timeout-based)')
+			return True
 
 		except Exception as e:
 			logger.error(f'Error handling dynamic content loading: {e}')

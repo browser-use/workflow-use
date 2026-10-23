@@ -12,9 +12,75 @@ import logging
 from difflib import SequenceMatcher
 from typing import Any, Dict, List, Optional, Tuple
 
+from workflow_use.compat import cdp
 from workflow_use.workflow.error_reporter import StrategyAttempt
 
 logger = logging.getLogger(__name__)
+
+
+# --- EnhancedDOMTreeNode accessors -------------------------------------------------
+# browser-use's EnhancedDOMTreeNode is a slotted dataclass WITHOUT flat convenience
+# attributes like .text/.aria_label/.placeholder — reading those via getattr silently
+# returns '' and no strategy can ever match. Real sources: the attributes dict, the
+# accessibility node, and get_all_children_text() for subtree text.
+
+
+def _node_attr(node: Any, name: str, default: str = '') -> str:
+	"""Read an HTML attribute from the node's attributes dict.
+
+	Dict-form nodes are supported both flat ({'placeholder': ...}) and in
+	browser-use's nested shape ({'attributes': {'placeholder': ...}}).
+	"""
+	if isinstance(node, dict):
+		value = node.get(name)
+		if value is None:
+			nested = node.get('attributes')
+			if isinstance(nested, dict):
+				value = nested.get(name)
+		return str(value) if value is not None else default
+	attrs = getattr(node, 'attributes', None) or {}
+	value = attrs.get(name)
+	return str(value) if value is not None else default
+
+
+def _node_ax(node: Any, field: str) -> str:
+	ax = getattr(node, 'ax_node', None)
+	value = getattr(ax, field, None) if ax is not None else None
+	return str(value) if value else ''
+
+
+def _node_text(node: Any) -> str:
+	"""Visible text of the node: subtree text first, accessible name as fallback."""
+	if isinstance(node, dict):
+		return str(node.get('text') or '')
+	try:
+		text = (node.get_all_children_text(max_depth=2) or '').strip()
+	except Exception:
+		text = ''
+	if not text:
+		text = _node_ax(node, 'name').strip()
+	if not text:
+		# Inputs/images carry their label in attributes rather than text children
+		text = (_node_attr(node, 'value') or _node_attr(node, 'alt') or _node_attr(node, 'title')).strip()
+	return text
+
+
+def _node_aria_label(node: Any) -> str:
+	if isinstance(node, dict):
+		return str(node.get('aria_label') or '')
+	return _node_attr(node, 'aria-label') or _node_ax(node, 'name')
+
+
+def _node_role(node: Any) -> str:
+	if isinstance(node, dict):
+		return str(node.get('role') or node.get('tag_name') or '')
+	return _node_attr(node, 'role') or _node_ax(node, 'role') or str(getattr(node, 'tag_name', '') or '')
+
+
+def _node_tag(node: Any) -> str:
+	if isinstance(node, dict):
+		return str(node.get('tag_name') or '')
+	return str(getattr(node, 'tag_name', '') or '')
 
 
 class ElementFinder:
@@ -303,51 +369,36 @@ class ElementFinder:
 		    True if node matches the strategy
 		"""
 		try:
-			# Helper to get attribute from dict or object
-			def get_attr(obj, attr, default=''):
-				if isinstance(obj, dict):
-					return obj.get(attr, default)
-				return getattr(obj, attr, default)
-
 			# Semantic Strategy 1: Exact text match
 			if strategy_type == 'text_exact':
-				node_text = get_attr(node, 'text', '') or ''
-				return node_text.strip() == value
+				return _node_text(node).strip() == value
 
 			# Semantic Strategy 2: Role + text
 			elif strategy_type == 'role_text':
 				expected_role = metadata.get('role', '').lower()
-				node_role = get_attr(node, 'role', '') or get_attr(node, 'tag_name', '')
-				node_role = node_role.lower() if node_role else ''
-				node_text = get_attr(node, 'text', '') or ''
-
-				return node_role == expected_role and node_text.strip() == value
+				node_role = _node_role(node).lower()
+				return node_role == expected_role and _node_text(node).strip() == value
 
 			# Semantic Strategy 3: ARIA label
 			elif strategy_type == 'aria_label':
-				aria_label = get_attr(node, 'aria_label', '') or ''
-				return aria_label.strip() == value
+				return _node_aria_label(node).strip() == value
 
 			# Semantic Strategy 4: Placeholder
 			elif strategy_type == 'placeholder':
-				placeholder = get_attr(node, 'placeholder', '') or ''
-				return placeholder.strip() == value
+				return _node_attr(node, 'placeholder').strip() == value
 
 			# Semantic Strategy 5: Title attribute
 			elif strategy_type == 'title':
-				title = get_attr(node, 'title', '') or ''
-				return title.strip() == value
+				return _node_attr(node, 'title').strip() == value
 
 			# Semantic Strategy 6: Alt text (images)
 			elif strategy_type == 'alt_text':
-				alt = get_attr(node, 'alt', '') or ''
-				return alt.strip() == value
+				return _node_attr(node, 'alt').strip() == value
 
 			# Semantic Strategy 7: Fuzzy text match
 			elif strategy_type == 'text_fuzzy':
 				threshold = metadata.get('threshold', 0.8)
-				node_text = get_attr(node, 'text', '') or ''
-				return self._fuzzy_match(value, node_text.strip(), threshold)
+				return self._fuzzy_match(value, _node_text(node).strip(), threshold)
 
 			# Note: XPath and CSS strategies are handled separately in find_element_with_strategies
 			# They cannot be matched against browser-use's node representation
@@ -376,8 +427,8 @@ class ElementFinder:
 		"""
 		try:
 			# Check if node is visible - this is a hard requirement
-			is_visible = getattr(node, 'is_visible', True)
-			if not is_visible:
+			# (is_visible is Optional on EnhancedDOMTreeNode; only explicit False rejects)
+			if getattr(node, 'is_visible', None) is False:
 				logger.debug(f'Element at index {index} is not visible')
 				return False
 
@@ -390,35 +441,16 @@ class ElementFinder:
 				# Collect all text sources from the element
 				text_sources = []
 
-				# Get element's visible text
-				node_text = getattr(node, 'text', '') or ''
-				if node_text:
-					text_sources.append(node_text.lower().strip())
-
-				# Get aria-label
-				aria_label = getattr(node, 'aria_label', '') or ''
-				if aria_label:
-					text_sources.append(aria_label.lower().strip())
-
-				# Get placeholder
-				placeholder = getattr(node, 'placeholder', '') or ''
-				if placeholder:
-					text_sources.append(placeholder.lower().strip())
-
-				# Get title
-				title = getattr(node, 'title', '') or ''
-				if title:
-					text_sources.append(title.lower().strip())
-
-				# Get alt text
-				alt = getattr(node, 'alt', '') or ''
-				if alt:
-					text_sources.append(alt.lower().strip())
-
-				# Get name attribute
-				attrs = getattr(node, 'attributes', {}) or {}
-				if 'name' in attrs:
-					text_sources.append(attrs['name'].lower().strip())
+				for source in (
+					_node_text(node),
+					_node_aria_label(node),
+					_node_attr(node, 'placeholder'),
+					_node_attr(node, 'title'),
+					_node_attr(node, 'alt'),
+					_node_attr(node, 'name'),
+				):
+					if source:
+						text_sources.append(source.lower().strip())
 
 				# Check if target_text matches any text source
 				found_match = any(target_lower in source or source in target_lower for source in text_sources if source)
@@ -501,7 +533,8 @@ class ElementFinder:
 	}}
 }}"""
 
-			result = await page.evaluate(js_code)
+			# Page.evaluate returns a JSON string; decode it before inspecting
+			result = await cdp.evaluate(page, js_code)
 
 			if not result:
 				logger.info('         ⚠️  XPath evaluation returned null')
@@ -544,14 +577,14 @@ class ElementFinder:
 			checks = 0
 
 			# Check tag name
-			node_tag = getattr(node, 'tag_name', '').lower()
+			node_tag = _node_tag(node).lower()
 			if node_tag and element_data.get('tagName'):
 				checks += 1
-				if node_tag == element_data['tagName']:
+				if node_tag == element_data['tagName'].lower():
 					matches += 1
 
 			# Check text content (allow partial match for robustness)
-			node_text = (getattr(node, 'text', '') or '').strip()
+			node_text = _node_text(node).strip()
 			element_text = element_data.get('text', '').strip()
 			if node_text and element_text:
 				checks += 1
@@ -559,31 +592,31 @@ class ElementFinder:
 					matches += 1
 
 			# Check ID
-			node_id = getattr(node, 'element_id', '') or ''
+			node_id = _node_attr(node, 'id')
 			if node_id and element_data.get('id'):
 				checks += 1
 				if node_id == element_data['id']:
 					matches += 2  # ID is a strong indicator
 
 			# Check aria-label
-			node_aria = getattr(node, 'aria_label', '') or ''
+			node_aria = _node_aria_label(node)
 			if node_aria and element_data.get('ariaLabel'):
 				checks += 1
 				if node_aria == element_data['ariaLabel']:
 					matches += 1
 
 			# Check placeholder
-			node_placeholder = getattr(node, 'placeholder', '') or ''
+			node_placeholder = _node_attr(node, 'placeholder')
 			if node_placeholder and element_data.get('placeholder'):
 				checks += 1
 				if node_placeholder == element_data['placeholder']:
 					matches += 1
 
 			# Check name attribute
-			node_attrs = getattr(node, 'attributes', {}) or {}
-			if 'name' in node_attrs and element_data.get('name'):
+			node_name = _node_attr(node, 'name')
+			if node_name and element_data.get('name'):
 				checks += 1
-				if node_attrs['name'] == element_data['name']:
+				if node_name == element_data['name']:
 					matches += 1
 
 			# Require at least 2 matches or 1 strong match (ID)
