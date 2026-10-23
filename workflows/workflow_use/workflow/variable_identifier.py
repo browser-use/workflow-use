@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+from workflow_use.workflow.redaction import is_sensitive_hint
+
 logger = logging.getLogger(__name__)
 
 
@@ -29,6 +31,20 @@ class VariableType(str, Enum):
 	SSN = 'ssn'
 	ZIP_CODE = 'zip_code'
 	PASSWORD = 'password'
+
+
+# Types whose recorded value must NEVER be persisted as a plaintext default,
+# regardless of detection confidence (a context-detected password at 0.85 is
+# just as much a secret as a pattern-detected one at 0.95).
+SENSITIVE_VARIABLE_TYPES = frozenset(
+	{
+		VariableType.PASSWORD,
+		VariableType.CREDIT_CARD,
+		VariableType.SSN,
+		VariableType.EMAIL,
+		VariableType.PHONE,
+	}
+)
 
 
 @dataclass
@@ -491,12 +507,25 @@ class VariableIdentifier:
 			if candidate.description:
 				entry['description'] = candidate.description
 
-			# IMPORTANT: Always add default value (original value from workflow)
-			# This allows the workflow to run without user input if desired
-			if candidate.suggested_default:
+			# Add a default so the workflow can run without user input - EXCEPT for
+			# sensitive values: persisting the recorded value as a plaintext default
+			# would write the secret into the saved .workflow.yaml on disk.
+			# Sensitivity is decided by TYPE (password, credit card, SSN, email,
+			# phone) *or* by NAME/CONTEXT hints - a field named "password" or
+			# "iban" that pattern-matching classified as plain STRING is just as
+			# much a secret. Never emit a default for these, not even a masked
+			# '********' one: defaults are typed verbatim on replay, so a masked
+			# default would literally enter eight asterisks into the login field.
+			is_sensitive = candidate.variable_type in SENSITIVE_VARIABLE_TYPES or is_sensitive_hint(
+				var_name, *(candidate.context or {}).values()
+			)
+			if is_sensitive:
+				# No default; the value must come from the caller at run time.
+				entry['required'] = True
+			elif candidate.suggested_default is not None:
 				entry['default'] = candidate.suggested_default
-			else:
-				# If no suggested default, use the original value
+			elif candidate.confidence < 0.95:
+				# Low-confidence candidate without an explicit suggestion
 				entry['default'] = candidate.value
 
 			schema.append(entry)
