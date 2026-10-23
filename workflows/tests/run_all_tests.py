@@ -44,6 +44,7 @@ def main():
 		'test_selector_generator.py',
 		'test_element_finder.py',
 		'test_workflow_execution.py',
+		'test_run_workflow_csv_string_dtype.py',
 	]
 
 	print('\n' + '=' * 80)

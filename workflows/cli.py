@@ -15,6 +15,7 @@ from browser_use.llm.base import BaseChatModel
 
 from workflow_use.builder.service import BuilderService
 from workflow_use.controller.service import WorkflowController
+from workflow_use.csv_inputs import convert_csv_value, is_missing, load_workflow_csv
 from workflow_use.healing.service import HealingService
 from workflow_use.mcp.service import get_mcp_server
 from workflow_use.recorder.service import RecordingService  # Added import
@@ -1815,9 +1816,12 @@ def run_workflow_csv_command(
 		)
 		typer.echo()
 
-		# Load and validate CSV data
+		# Load and validate CSV data. All columns are read as strings so string-typed inputs keep
+		# their exact text (zip "01234", country code "NA", "null", ...); see
+		# workflow_use.csv_inputs.load_workflow_csv. Only empty cells are NaN, so the required-field
+		# check below is unchanged; number/bool inputs are coerced by convert_csv_value.
 		try:
-			df = pd.read_csv(csv_path)
+			df = load_workflow_csv(csv_path)
 			if df.empty:
 				typer.secho('Error: CSV file is empty.', fg=typer.colors.RED)
 				raise typer.Exit(code=1)
@@ -1983,7 +1987,7 @@ def run_workflow_csv_command(
 					typer.secho(f'  🚫 Consecutive failures: {count} (systematic issues)', fg=typer.colors.BRIGHT_RED)
 				elif failure_type == 'element_not_found':
 					typer.secho(f'  🔍 Element not found: {count} (form structure changed)', fg=typer.colors.RED)
-				elif failure_type == 'form_validation':
+				elif failure_type in ('form_validation', 'input_validation'):
 					typer.secho(f'  📝 Form validation: {count} (invalid input data)', fg=typer.colors.YELLOW)
 				else:
 					typer.secho(f'  ❓ Other failures: {count}', fg=typer.colors.RED)
@@ -1999,7 +2003,7 @@ def run_workflow_csv_command(
 			if 'element_not_found' in failure_types:
 				typer.secho('  • Update element selectors in workflow file', fg=typer.colors.CYAN)
 				typer.secho('  • Re-record workflow if form layout changed', fg=typer.colors.CYAN)
-			if 'form_validation' in failure_types:
+			if 'form_validation' in failure_types or 'input_validation' in failure_types:
 				typer.secho(
 					'  • Check CSV data for invalid values (missing required fields, wrong formats)', fg=typer.colors.CYAN
 				)
@@ -2032,12 +2036,13 @@ def run_workflow_csv_command(
 				raw_value = row_data[column_name]
 
 				# Handle NaN values
-				if pd.isna(raw_value):
+				if is_missing(raw_value, input_def.type):
 					if input_def.required:
 						typer.secho(f'  Error: Required field "{column_name}" is empty in row {row_number}', fg=typer.colors.RED)
 						return {
 							'row_number': row_number,
 							'status': 'failed',
+							'failure_type': 'input_validation',
 							'error': f'Required field "{column_name}" is empty',
 							'duration': 0,
 							'steps_executed': 0,
@@ -2048,12 +2053,7 @@ def run_workflow_csv_command(
 
 				# Type conversion
 				try:
-					if input_def.type.lower() == 'bool':
-						inputs[column_name] = str(raw_value).lower() in ['true', '1', 'yes', 'on']
-					elif input_def.type.lower() == 'number':
-						inputs[column_name] = float(raw_value)
-					else:  # string or default
-						inputs[column_name] = str(raw_value)
+					inputs[column_name] = convert_csv_value(raw_value, input_def.type)
 				except (ValueError, TypeError) as e:
 					typer.secho(
 						f'  Error: Cannot convert "{raw_value}" to {input_def.type} for field "{column_name}"',
@@ -2062,6 +2062,7 @@ def run_workflow_csv_command(
 					return {
 						'row_number': row_number,
 						'status': 'failed',
+						'failure_type': 'input_validation',
 						'error': f'Type conversion error for field "{column_name}": {e}',
 						'duration': 0,
 						'steps_executed': 0,
