@@ -10,7 +10,7 @@ import aiofiles
 import pandas as pd
 import typer
 from browser_use import Browser
-from browser_use.llm import ChatBrowserUse
+from browser_use.llm import ChatBrowserUse, ChatOpenAI
 from browser_use.llm.base import BaseChatModel
 
 from workflow_use.builder.service import BuilderService
@@ -2300,6 +2300,23 @@ def generate_csv_template_command(
 # ==================== GENERATION MODE COMMANDS ====================
 
 
+def _build_generation_llm(model: str, llm_provider: str) -> BaseChatModel:
+	"""Build the LLM used for workflow generation for a given provider.
+
+	``orcarouter`` points an OpenAI-compatible client at OrcaRouter's gateway so
+	its adaptive routing / failover stack is used directly. Any other value keeps
+	the existing browser-use cloud behavior (the ``bu-latest`` alias is resolved
+	by the gateway to the current premium model).
+	"""
+	if llm_provider == 'orcarouter':
+		return ChatOpenAI(
+			model=model,
+			base_url='https://api.orcarouter.ai/v1',
+			api_key=os.getenv('ORCAROUTER_API_KEY'),
+		)
+	return ChatBrowserUse(model='bu-latest')
+
+
 @app.command(name='generate-workflow')
 def generate_workflow_from_task(
 	task: str = typer.Argument(..., help='The task to automate (e.g., "Fill out the contact form")'),
@@ -2309,6 +2326,10 @@ def generate_workflow_from_task(
 	save_to_storage: bool = typer.Option(True, help='Save workflow to storage database'),
 	output_file: Path | None = typer.Option(None, help='Optional: Save to specific file path'),
 	use_cloud: bool = typer.Option(False, help='Use Browser-Use Cloud browser'),
+	llm_provider: str = typer.Option(
+		'browser-use',
+		help='LLM provider for workflow generation: "browser-use" (default) or "orcarouter"',
+	),
 ):
 	"""
 	🤖 GENERATION MODE: Generate a semantic workflow from a task description.
@@ -2331,10 +2352,11 @@ def generate_workflow_from_task(
 	typer.echo()
 
 	# Initialize LLMs
-	agent_llm = ChatBrowserUse(model='bu-latest')
-	extraction_llm = ChatBrowserUse(model='bu-latest')
+	agent_llm = _build_generation_llm(agent_model, llm_provider)
+	extraction_llm = _build_generation_llm(extraction_model, llm_provider)
 
 	typer.echo('Starting browser automation to complete the task...')
+	typer.echo(f'  LLM Provider: {llm_provider}')
 	typer.echo(f'  Agent Model: {agent_model}')
 	typer.echo(f'  Extraction Model: {extraction_model}')
 	typer.echo(f'  Workflow Model: {workflow_model}')
