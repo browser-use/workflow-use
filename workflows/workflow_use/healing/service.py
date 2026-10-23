@@ -244,7 +244,7 @@ class HealingService:
 			if screenshot:
 				# Assuming screenshot is a base64 encoded string.
 				# Adjust mime type if necessary (e.g., image/png)
-				image_block: Dict[str, Any] = {'type': 'image_url', 'image_url': {'url': f'data:image/jpeg;base64,{screenshot}'}}
+				image_block: Dict[str, Any] = {'type': 'image_url', 'image_url': {'url': f'data:image/png;base64,{screenshot}'}}
 				content_blocks.append(image_block)
 
 			messages.append(UserMessage(content=content_blocks))
