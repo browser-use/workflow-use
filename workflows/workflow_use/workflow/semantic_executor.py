@@ -159,43 +159,10 @@ class SemanticWorkflowExecutor:
 			await element.focus()
 			await asyncio.sleep(0.05)
 
-			# Get the page to send key events
+			# Page.press handles named keys, combos, and CDP session setup —
+			# hand-rolled dispatchKeyEvent hit 'method not found' on a stale session.
 			page = await self.browser.get_current_page()
-
-			# Send key event through CDP
-			key_map = {
-				'Enter': {'key': 'Enter', 'code': 'Enter', 'keyCode': 13},
-				'Tab': {'key': 'Tab', 'code': 'Tab', 'keyCode': 9},
-				'Escape': {'key': 'Escape', 'code': 'Escape', 'keyCode': 27},
-				'ArrowDown': {'key': 'ArrowDown', 'code': 'ArrowDown', 'keyCode': 40},
-				'ArrowUp': {'key': 'ArrowUp', 'code': 'ArrowUp', 'keyCode': 38},
-			}
-
-			key_info = key_map.get(key, {'key': key, 'code': f'Key{key.upper()}', 'keyCode': ord(key.upper())})
-
-			# Send keydown
-			await page._client.send.Input.dispatchKeyEvent(
-				params={
-					'type': 'keyDown',
-					'key': key_info['key'],
-					'code': key_info['code'],
-					'windowsVirtualKeyCode': key_info['keyCode'],
-				},
-				session_id=page._session_id,
-			)
-
-			await asyncio.sleep(0.05)
-
-			# Send keyup
-			await page._client.send.Input.dispatchKeyEvent(
-				params={
-					'type': 'keyUp',
-					'key': key_info['key'],
-					'code': key_info['code'],
-					'windowsVirtualKeyCode': key_info['keyCode'],
-				},
-				session_id=page._session_id,
-			)
+			await page.press(key)
 		except Exception as e:
 			raise Exception(f'Failed to press key {key}: {e}')
 
@@ -209,8 +176,15 @@ class SemanticWorkflowExecutor:
 
 	async def _refresh_semantic_mapping(self) -> None:
 		"""Refresh the semantic mapping for the current page."""
-		page = await self.browser.get_current_page()
-		self.current_mapping = await self.semantic_extractor.extract_semantic_mapping(page)
+		# An empty mapping usually means the page is mid-navigation — retry
+		# briefly instead of failing the step on a half-loaded document.
+		for attempt in range(4):
+			page = await self.browser.get_current_page()
+			self.current_mapping = await self.semantic_extractor.extract_semantic_mapping(page)
+			if self.current_mapping:
+				break
+			logger.info(f'Semantic mapping empty (attempt {attempt + 1}/4), waiting for page to settle...')
+			await asyncio.sleep(2)
 		logger.info(f'Refreshed semantic mapping with {len(self.current_mapping)} elements')
 
 		# Print detailed mapping for debugging
@@ -1792,10 +1766,15 @@ class SemanticWorkflowExecutor:
 			logger.info(msg)
 			return ActionResult(extracted_content=msg, include_in_memory=True)
 
+		pre_press_url = await page.get_url()
+
 		async def keypress_verifier():
-			# For key presses, just verify the element is still accessible
-			# (More specific verification could be added based on the key and context)
+			# Keys like Enter often navigate — the element disappearing is then
+			# success, not failure. Treat a URL change as the key taking effect.
 			try:
+				current_page = await self.browser.get_current_page()
+				if await current_page.get_url() != pre_press_url:
+					return True
 				elements = await self._get_elements_by_selector(selector_to_use)
 				if not elements:
 					return False

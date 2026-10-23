@@ -144,14 +144,14 @@ class Workflow:
 
 		# Filter out workflow metadata fields that shouldn't be passed to browser-use ActionModel
 		# Note: 'type' is NOT filtered here because some actions (like navigation) need it in their params
+		# cssSelector/xpath must pass through: click/input/key_press/select_change
+		# action models require cssSelector (extras are ignored via extra='ignore').
 		workflow_metadata_fields = {
 			'description',
 			'output',
 			'agent_reasoning',
 			'page_context_url',
 			'page_context_title',
-			'cssSelector',
-			'xpath',
 			'elementTag',
 			'elementHash',  # These are workflow-specific selector fields
 			'selectorStrategies',  # Multi-strategy selectors

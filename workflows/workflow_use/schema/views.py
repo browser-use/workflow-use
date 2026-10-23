@@ -239,22 +239,8 @@ class WorkflowDefinitionSchema(BaseModel):
 
 	@validator('steps')
 	def validate_ends_with_extract(cls, steps: List[WorkflowStep]) -> List[WorkflowStep]:
-		"""Validate that the workflow ends with an extract step."""
-		if not steps:
-			raise ValueError('Workflow must have at least one step')
-
-		last_step = steps[-1]
-		# Check if last step is an extract step
-		# We need to check the 'type' attribute from the step dict/model
-		step_type = getattr(last_step, 'type', None)
-
-		if step_type not in ['extract', 'extract_page_content']:
-			raise ValueError(
-				f'Workflow must end with an extract step (extract or extract_page_content). '
-				f'Current last step type: {step_type}. '
-				f'AI processing is always needed at the end of a workflow.'
-			)
-
+		"""Recordings arrive step-by-step, so an extract-terminated workflow
+		cannot be enforced here — it would reject every incremental update."""
 		return steps
 
 	# Add loader from json file

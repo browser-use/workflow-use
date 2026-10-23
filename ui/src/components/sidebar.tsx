@@ -1,5 +1,6 @@
 import React from "react";
 import WorkflowItem from "./workflow-item";
+import RecordButton from "./record-button";
 import { WorkflowMetadata } from "../types/workflow-layout.types";
 
 interface SidebarProps {
@@ -9,6 +10,7 @@ interface SidebarProps {
   workflowMetadata: WorkflowMetadata | null;
   onUpdateMetadata: (metadata: WorkflowMetadata) => Promise<void>;
   allWorkflowsMetadata?: Record<string, WorkflowMetadata>;
+  onRecordingSaved: (workflowFile: string) => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -18,6 +20,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   workflowMetadata,
   onUpdateMetadata,
   allWorkflowsMetadata = {},
+  onRecordingSaved,
 }) => (
   <aside className="w-[250px] border-r border-[#542e2e] p-3 bg-[#2a2a2a] text-white flex flex-col overflow-auto">
     {/* logo */}
@@ -30,6 +33,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
     </div>
 
     <h3 className="text-lg text-[#ddd]">Workflows</h3>
+
+    <RecordButton onRecordingSaved={onRecordingSaved} />
 
     <ul className="m-0 p-0">
       {workflows.map((id) => (
