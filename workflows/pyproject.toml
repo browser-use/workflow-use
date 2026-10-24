@@ -17,7 +17,7 @@ dependencies = [
     # own pins satisfy the security floors below. Vulnerable releases fail closed.
     "browser-use>=0.13.8,<0.14",
     "fastapi==0.139.2",
-    "fastmcp==3.4.0",
+    "fastmcp==3.4.10",
     # starlette is transitive (via fastapi/fastmcp) but pinned directly so the
     # security floor lands in the published wheel's Requires-Dist, not just the
     # uv lockfile. Clears CVE-2025-62727 (<= 0.49.0) / CVE-2026-48818 (< 1.1.0)
