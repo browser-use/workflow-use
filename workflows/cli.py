@@ -9,6 +9,7 @@ from pathlib import Path
 import aiofiles
 import pandas as pd
 import typer
+import yaml
 from browser_use import Browser
 from browser_use.llm import ChatBrowserUse
 from browser_use.llm.base import BaseChatModel
@@ -1124,7 +1125,7 @@ def run_as_tool_command(
 		file_okay=True,
 		dir_okay=False,
 		readable=True,
-		help='Path to the .workflow.json file.',
+		help='Path to the workflow file (.yaml or .json).',
 		show_default=False,
 	),
 	prompt: str = typer.Option(
@@ -1178,7 +1179,7 @@ def run_as_tool_command(
 		raise typer.Exit(code=1)
 
 
-@app.command(name='run-workflow', help='Runs an existing workflow from a JSON file.')
+@app.command(name='run-workflow', help='Runs an existing workflow from a workflow file.')
 def run_workflow_command(
 	workflow_path: Path = typer.Argument(
 		...,
@@ -1186,7 +1187,7 @@ def run_workflow_command(
 		file_okay=True,
 		dir_okay=False,
 		readable=True,
-		help='Path to the .workflow.json file.',
+		help='Path to the workflow file (.yaml or .json).',
 		show_default=False,
 	),
 	use_cloud: bool = typer.Option(False, help='Use Browser-Use Cloud browser'),
@@ -1332,7 +1333,7 @@ def run_workflow_no_ai_command(
 		file_okay=True,
 		dir_okay=False,
 		readable=True,
-		help='Path to the .workflow.json file.',
+		help='Path to the workflow file (.yaml or .json).',
 		show_default=False,
 	),
 	enable_extraction: bool = typer.Option(
@@ -1748,7 +1749,7 @@ def run_workflow_csv_command(
 		file_okay=True,
 		dir_okay=False,
 		readable=True,
-		help='Path to the .workflow.json file.',
+		help='Path to the workflow file (.yaml or .json).',
 		show_default=False,
 	),
 	csv_path: Path = typer.Argument(
@@ -2190,7 +2191,7 @@ def generate_csv_template_command(
 		file_okay=True,
 		dir_okay=False,
 		readable=True,
-		help='Path to the .workflow.json file.',
+		help='Path to the workflow file (.yaml or .json).',
 		show_default=False,
 	),
 	output_file: Path = typer.Option(
@@ -2220,7 +2221,8 @@ def generate_csv_template_command(
 	try:
 		# Load workflow to get input schema
 		with open(workflow_path, 'r') as f:
-			workflow_data = json.load(f)
+			# YAML is a superset of JSON, so this accepts both .workflow.yaml and .workflow.json files
+			workflow_data = yaml.safe_load(f)
 
 		workflow_name = workflow_data.get('name', 'workflow')
 		input_schema = workflow_data.get('input_schema', [])

@@ -39,19 +39,18 @@ Expected: "✅ TEST PASSED - Pure semantic workflow generated!"
 
 ---
 
-### `workflows/` - Example Workflow JSON Files
+### `workflows/` - Example Workflow Files
 
 #### `workflows/basic/`
-- **`example.workflow.json`** - Basic workflow example
-- **`pure_semantic.workflow.json`** - Pure semantic workflow
+- **`example.workflow.yaml`** - Basic workflow example
+- **`pure_semantic.workflow.yaml`** - Pure semantic workflow
 
 #### `workflows/form_filling/`
-- **`semantic_form_fill.workflow.json`** - Semantic form filling
+- **`semantic_form_fill.workflow.yaml`** - Semantic form filling
 - **`v1.json`**, **`v1.fully-semantic.json`** - Form filling examples
-- **`v17.json`**, **`v17_parameterized.json`** - Advanced form examples
 
 #### `workflows/parameterized/`
-- **`github_stars_parameterized.workflow.json`** - Example parameterized workflow
+- **`github_stars_parameterized.workflow.yaml`** - Example parameterized workflow
 
 ---
 

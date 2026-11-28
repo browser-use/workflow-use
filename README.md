@@ -73,7 +73,7 @@ python cli.py generate-workflow "Your task" --no-save-to-storage
 
 Workflows stored at `workflows/storage/`:
 - `metadata.json` - Searchable index of all workflows
-- `workflows/<id>.workflow.json` - Individual workflow files
+- `workflows/<id>.workflow.yaml` - Individual workflow files
 
 ### Programmatic Usage
 
@@ -130,13 +130,13 @@ cp .env.example .env # add your OPENAI_API_KEY to the .env file
 ## Run workflow as tool
 
 ```bash
-python cli.py run-as-tool examples/example.workflow.json --prompt "fill the form with example data"
+python cli.py run-as-tool examples/workflows/basic/example.workflow.yaml --prompt "fill the form with example data"
 ```
 
 ## Run workflow with predefined variables
 
 ```bash
-python cli.py run-workflow examples/example.workflow.json
+python cli.py run-workflow examples/workflows/basic/example.workflow.yaml
 ```
 
 ## Record your own workflow
