@@ -1124,7 +1124,7 @@ def run_as_tool_command(
 		file_okay=True,
 		dir_okay=False,
 		readable=True,
-		help='Path to the .workflow.json file.',
+		help='Path to the workflow file (.yaml or .json).',
 		show_default=False,
 	),
 	prompt: str = typer.Option(
@@ -1178,7 +1178,7 @@ def run_as_tool_command(
 		raise typer.Exit(code=1)
 
 
-@app.command(name='run-workflow', help='Runs an existing workflow from a JSON file.')
+@app.command(name='run-workflow', help='Runs an existing workflow from a workflow file.')
 def run_workflow_command(
 	workflow_path: Path = typer.Argument(
 		...,
@@ -1186,7 +1186,7 @@ def run_workflow_command(
 		file_okay=True,
 		dir_okay=False,
 		readable=True,
-		help='Path to the .workflow.json file.',
+		help='Path to the workflow file (.yaml or .json).',
 		show_default=False,
 	),
 	use_cloud: bool = typer.Option(False, help='Use Browser-Use Cloud browser'),
@@ -1332,7 +1332,7 @@ def run_workflow_no_ai_command(
 		file_okay=True,
 		dir_okay=False,
 		readable=True,
-		help='Path to the .workflow.json file.',
+		help='Path to the workflow file (.yaml or .json).',
 		show_default=False,
 	),
 	enable_extraction: bool = typer.Option(
@@ -1748,7 +1748,7 @@ def run_workflow_csv_command(
 		file_okay=True,
 		dir_okay=False,
 		readable=True,
-		help='Path to the .workflow.json file.',
+		help='Path to the workflow file (.yaml or .json).',
 		show_default=False,
 	),
 	csv_path: Path = typer.Argument(
@@ -2190,7 +2190,7 @@ def generate_csv_template_command(
 		file_okay=True,
 		dir_okay=False,
 		readable=True,
-		help='Path to the .workflow.json file.',
+		help='Path to the workflow file (.yaml or .json).',
 		show_default=False,
 	),
 	output_file: Path = typer.Option(
