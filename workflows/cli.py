@@ -9,6 +9,7 @@ from pathlib import Path
 import aiofiles
 import pandas as pd
 import typer
+import yaml
 from browser_use import Browser
 from browser_use.llm import ChatBrowserUse
 from browser_use.llm.base import BaseChatModel
@@ -2220,7 +2221,8 @@ def generate_csv_template_command(
 	try:
 		# Load workflow to get input schema
 		with open(workflow_path, 'r') as f:
-			workflow_data = json.load(f)
+			# YAML is a superset of JSON, so this accepts both .workflow.yaml and .workflow.json files
+			workflow_data = yaml.safe_load(f)
 
 		workflow_name = workflow_data.get('name', 'workflow')
 		input_schema = workflow_data.get('input_schema', [])
